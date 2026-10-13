@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Throttle Tribe</title>
+  <rect width="1024" height="1024" rx="200" fill="#F97316"/><g transform="translate(512 512) scale(1.04) translate(-512 -524)">
+    <path d="M512 192 L648 512 L512 432 L376 512 Z" fill="#0B0F14" stroke="#0B0F14" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M302.3 685.3 L452 597.3 L452 707.3 L240 832 Z" fill="#0B0F14" stroke="#0B0F14" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M721.7 685.3 L572 597.3 L572 707.3 L784 832 Z" fill="#0B0F14" stroke="#0B0F14" stroke-width="20" stroke-linejoin="round"/>
+  </g>
+</svg>

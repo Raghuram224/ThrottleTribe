@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- Bakes the static map images used by the mockups (maps/*.png). Open bake.html#<config>, wait for title READY, screenshot #map. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<link href="tokens.css" rel="stylesheet">
+<style>html,body{width:auto;height:auto;overflow:visible;background:#fff}</style>
+<script src="route.js"></script><script src="shared.js"></script><script src="ui.js"></script>
+</head><body><div id="map"></div><script>
+const cfg = location.hash.slice(1);
+const ME = 31000;
+const C = { KA: '#0E7490', AR: '#6D28D9', ME: '#4338CA', PR: '#BE185D' };
+const mk = (m, init, color, status) => ({ m, html: UI.mapAvatar(init, color, status) });
+const liveMarkers = [mk(ME + 500, 'KA', C.KA), mk(ME + 40, 'AR', C.AR), mk(ME - 850, 'ME', C.ME), mk(ME - 1300, 'PR', C.PR, 'offline'),
+  { m: ME, html: `<div>${UI.meArrow(34, TT.bearingAt(ME))}</div>` }];
+const pin = (bg, glyph, fg = '#fff', sz = 28) => `<div style="width:${sz}px;height:${sz}px;border-radius:${sz/2}px;background:${bg};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(11,15,20,.35);display:flex;align-items:center;justify-content:center"><span class="ms f" style="font-size:${sz > 24 ? 15 : 12}px;color:${fg}">${glyph}</span></div>`;
+const END = window.CUM[window.CUM.length - 1];
+const configs = {
+  'live-light': { w: 390, h: 240, style: 'positron', fit: [ME - 1450, ME + 650], padding: { top: 30, bottom: 30, left: 40, right: 90 },
+    trails: [{ fromM: 0, toM: ME + 500, color: '#F97316', width: ['interpolate',['linear'],['zoom'],8,4,11,5,13,6.5,15,8.5,17,11], casing: '#9A3412', casingWidth: ['interpolate',['linear'],['zoom'],8,7,11,8,13,9.5,15,12,17,15] }], markers: liveMarkers },
+  'live-dark': { w: 390, h: 240, style: 'dark', fit: [ME - 1450, ME + 650], padding: { top: 30, bottom: 30, left: 40, right: 90 },
+    trails: [{ fromM: 0, toM: ME + 500, color: '#FB923C', width: ['interpolate',['linear'],['zoom'],8,4,11,5,13,6.5,15,8.5,17,11], casing: '#0B0F14', casingWidth: ['interpolate',['linear'],['zoom'],8,7,11,8,13,9.5,15,12,17,15] }], markers: liveMarkers, dark: true },
+  'summary': { w: 390, h: 300, style: 'positron', fit: [0, END], padding: { top: 70, bottom: 56, left: 70, right: 70 },
+    trails: [{ fromM: 0, toM: END, color: '#F97316', width: ['interpolate',['linear'],['zoom'],8,4,11,5,13,6.5,15,8.5,17,11], casing: '#9A3412', casingWidth: ['interpolate',['linear'],['zoom'],8,7,11,8,13,9.5,15,12,17,15] }],
+    markers: [{ m: 0, html: pin('#111827', 'trip_origin') }, { m: 18500, html: pin('#F59E0B', 'pause', '#111827', 22) },
+      { m: 33600, html: pin('#B91C1C', 'warning', '#fff', 22) }, { m: END, html: pin('#F97316', 'sports_score', '#111827') }] },
+  'summary-dark': { w: 390, h: 300, style: 'dark', fit: [0, END], padding: { top: 70, bottom: 56, left: 70, right: 70 },
+    trails: [{ fromM: 0, toM: END, color: '#FB923C', width: ['interpolate',['linear'],['zoom'],8,4,11,5,13,6.5,15,8.5,17,11], casing: '#0B0F14', casingWidth: ['interpolate',['linear'],['zoom'],8,7,11,8,13,9.5,15,12,17,15] }], dark: true,
+    markers: [{ m: 0, html: pin('#F9FAFB', 'trip_origin', '#111827') }, { m: 18500, html: pin('#F59E0B', 'pause', '#111827', 22) },
+      { m: 33600, html: pin('#B91C1C', 'warning', '#fff', 22) }, { m: END, html: pin('#F97316', 'sports_score', '#111827') }] },
+  'welcome': { w: 390, h: 520, style: 'dark', fit: [ME - 2200, ME + 1600], bearing: -28, padding: { top: 60, bottom: 160, left: 40, right: 40 },
+    trails: [{ fromM: 0, toM: ME + 1400, color: '#F97316', width: 5, opacity: .9 }], dark: true,
+    markers: [mk(ME + 1400, 'KA', C.KA), mk(ME + 700, 'AR', C.AR), mk(ME - 900, 'ME', C.ME), mk(ME - 1700, 'PR', C.PR, 'stopped'),
+      { m: ME, html: `<div>${UI.meArrow(36, TT.bearingAt(ME) + 28)}</div>` }] },
+};
+const c = configs[cfg];
+const el = document.getElementById('map');
+el.style.width = c.w + 'px'; el.style.height = c.h + 'px';
+const map = makeMap({ el: 'map', ...c });
+map.on('load', () => map.once('idle', () => setTimeout(() => { document.title = 'READY'; document.body.insertAdjacentHTML('beforeend', '<p id="ready">READY</p>'); }, 800)));
+</script></body></html>

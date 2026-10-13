@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Throttle Tribe - keep your riding group together</title>
+<meta name="description" content="Throttle Tribe shows your whole riding group on one live map: who is ahead, behind, stopped or out of signal. One-tap SOS to your group. Free Android app, iPhone web app.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Throttle Tribe">
+<meta property="og:title" content="Throttle Tribe - nobody gets left behind">
+<meta property="og:description" content="One live map for your whole riding group, plus one-tap SOS to the riders in your ride.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23F97316'/%3E%3Cpath d='M32 12 L42 32 L32 27 L22 32 Z M20 40 L30 34 L30 46 L14 54 Z M44 40 L34 34 L34 46 L50 54 Z' fill='%230B0F14'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
+<style>
+:root{--bg:#fff;--fg:#0B0F14;--muted:#374151;--card:#F9FAFB;--line:#D1D5DB;--brand:#F97316;--onbrand:#0B0F14;--tribe:#EA580C;--hero:#FFF7ED;--link:#9A3412;--sos:#B91C1C}
+@media(prefers-color-scheme:dark){:root{--bg:#0B0F14;--fg:#F9FAFB;--muted:#D1D5DB;--card:#131A22;--line:#2B3542;--tribe:#FB923C;--hero:#161008;--link:#FDBA74;--sos:#F87171}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+a{color:var(--link)}
+a:focus-visible,summary:focus-visible{outline:3px solid var(--brand);outline-offset:3px;border-radius:6px}
+.wrap{max-width:960px;margin:0 auto;padding:0 16px}
+.skip{position:absolute;left:-999px;top:8px;background:var(--brand);color:var(--onbrand);padding:8px 12px;border-radius:8px;z-index:9}
+.skip:focus{left:8px}
+header.top{padding:16px 0}
+.logo{display:block;width:210px;max-width:70vw;height:auto;color:var(--fg)}
+.logo .tribe{stroke:var(--tribe);color:var(--tribe)}
+.hero{background:var(--hero);border-bottom:1px solid var(--line)}
+.hero .wrap{padding-top:8px;padding-bottom:48px}
+h1{font-size:clamp(32px,8.5vw,56px);line-height:1.08;margin:24px 0 16px;font-weight:800;letter-spacing:-.02em}
+h1 em{font-style:normal;color:var(--tribe);display:block}
+.lead{font-size:clamp(17px,4.5vw,20px);color:var(--muted);max-width:620px;margin:0 0 28px}
+.cta{display:flex;flex-wrap:wrap;gap:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:56px;padding:0 24px;border-radius:14px;font:700 17px Inter,system-ui,sans-serif;text-decoration:none;border:2px solid var(--fg);color:var(--fg);background:transparent;width:100%}
+.btn.p{background:var(--brand);border-color:var(--brand);color:var(--onbrand)}
+.btn:hover{filter:brightness(1.05)}
+.note{font-size:14px;color:var(--muted);margin:14px 0 0}
+section{padding:48px 0;border-bottom:1px solid var(--line)}
+h2{font-size:clamp(24px,6vw,34px);line-height:1.15;margin:0 0 12px;letter-spacing:-.01em}
+h3{font-size:18px;margin:0 0 6px}
+p{margin:0 0 14px;color:var(--muted)}
+.grid{display:grid;gap:16px;margin-top:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+.card p{margin:0}
+.num{display:inline-flex;width:36px;height:36px;border-radius:50%;background:var(--brand);color:var(--onbrand);font-weight:800;align-items:center;justify-content:center;margin-bottom:12px}
+.sos{border-left:6px solid var(--sos)}
+.sos h2{color:var(--sos)}
+ul.tick{padding:0;margin:16px 0 0;list-style:none}
+ul.tick li{padding-left:28px;position:relative;margin-bottom:10px;color:var(--muted)}
+ul.tick li::before{content:"";position:absolute;left:4px;top:.55em;width:10px;height:10px;background:var(--brand);border-radius:2px;transform:rotate(45deg)}
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-top:12px}
+summary{cursor:pointer;font-weight:700;color:var(--fg)}
+details p,details ol{margin:12px 0 0}
+details ol{padding-left:20px;color:var(--muted)}
+details li{margin-bottom:6px}
+code{background:var(--line);color:var(--fg);padding:1px 6px;border-radius:6px;font-size:.92em;word-break:break-all}
+footer{padding:32px 0 48px;font-size:14px;color:var(--muted)}
+footer a{display:inline-block;padding:10px 16px 10px 0}
+@media(min-width:640px){.btn{width:auto}.grid.three{grid-template-columns:repeat(3,1fr)}section{padding:64px 0}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="hero">
+<div class="wrap">
+<header class="top"><svg class="logo" role="img" aria-label="Throttle Tribe" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1019 216">  <g transform="translate(24 24) scale(0.1640625)"><g transform="translate(512 512) scale(1.18) translate(-512 -530)"> <path d="M512 192 L648 512 L512 432 L376 512 Z" fill="#F97316" stroke="#F97316" stroke-width="28" stroke-linejoin="round"/> <path d="M325 632 L472 545.5 L472 695.5 L240 832 Z" fill="currentColor" stroke="currentColor" stroke-width="28" stroke-linejoin="round"/> <path d="M699 632 L552 545.5 L552 695.5 L784 832 Z" fill="currentColor" stroke="currentColor" stroke-width="28" stroke-linejoin="round"/> </g></g> <g transform="translate(236 68) scale(0.92)"> <g fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="butt" stroke-linejoin="round"><g transform="translate(0 0)"><path d="M0 10 H64 M32 10 V100"/></g><g transform="translate(70 0)"><path d="M10 0 V100 M10 64 A24 24 0 0 1 58 64 V100"/></g><g transform="translate(148 0)"><path d="M10 30 V100 M10 64 A24 24 0 0 1 34 40 H48"/></g><g transform="translate(204 0)"><circle cx="35" cy="65" r="25"/></g><g transform="translate(282 0)"><path d="M20 6 V100 M0 40 H46"/></g><g transform="translate(336 0)"><path d="M20 6 V100 M0 40 H46"/></g><g transform="translate(392 0)"><path d="M10 0 V100"/></g><g transform="translate(422 0)"><path d="M10 65 H60 A25 25 0 1 0 52.7 82.7"/></g></g> <g class="tribe" fill="none" stroke-width="20" stroke-linecap="butt" stroke-linejoin="round"><g transform="translate(526 0)"><path d="M0 10 H64 M32 10 V100"/></g><g transform="translate(586 0)"><path d="M10 30 V100 M10 64 A24 24 0 0 1 34 40 H48"/></g><g transform="translate(644 0)"><path d="M10 30 V100"/><circle cx="10" cy="9" r="11" fill="currentColor" stroke="none"/></g><g transform="translate(674 0)"><path d="M10 0 V100"/><circle cx="35" cy="65" r="25"/></g><g transform="translate(754 0)"><path d="M10 65 H60 A25 25 0 1 0 52.7 82.7"/></g></g> </g> </svg> </header>
+<h1>Nobody gets left behind. <em>Ride together. Stay together.</em></h1>
+<p class="lead">One live map for your whole riding group: see who is ahead, behind, stopped or out of signal. One tap sends an SOS to every rider in your ride.</p>
+<div class="cta">
+<a class="btn p" href="https://github.com/Raghuram224/throttletribe/releases/latest/download/throttle-tribe.apk">Download for Android</a>
+<a class="btn" href="app/">Open on iPhone (web)</a>
+</div>
+<p class="note">Free. No sign-up. The Android app is a direct APK download for now; the Play Store comes later. <a href="#install">How to install</a></p>
+</div>
+</div>
+
+<main id="main">
+<section aria-labelledby="how"><div class="wrap">
+<h2 id="how">How it works</h2>
+<p>From the first tap to your whole group on the map in about a minute.</p>
+<div class="grid three">
+<div class="card"><span class="num" aria-hidden="true">1</span><h3>Start a ride</h3><p>Enter a riding name, create a ride and share the 6-digit code or link. No password.</p></div>
+<div class="card"><span class="num" aria-hidden="true">2</span><h3>Friends join</h3><p>Riders enter the code or tap your link. The leader starts the ride when everyone is ready.</p></div>
+<div class="card"><span class="num" aria-hidden="true">3</span><h3>See your tribe</h3><p>A live map and a simple list show ahead, behind, stopped or no signal. Get an alert when someone stops.</p></div>
+</div>
+</div></section>
+
+<section aria-labelledby="sos"><div class="wrap">
+<div class="card sos">
+<h2 id="sos">Help, one tap away</h2>
+<p>Hold the SOS button and your location goes to every rider in your ride. Six quick messages need no typing: Fuel stop, Puncture, Slow down, Regroup, Break, All good.</p>
+<ul class="tick">
+<li>Save up to 5 emergency contacts. After an SOS you get one-tap Call and "Text my location" buttons. You tap; nothing is sent for you.</li>
+<li>Throttle Tribe does <strong>not</strong> detect crashes and does <strong>not</strong> contact emergency services. In India, dial 112.</li>
+<li>It needs mobile data to share locations. With no signal, your updates reach the group when you are back online.</li>
+</ul>
+</div>
+</div></section>
+
+<section aria-labelledby="priv"><div class="wrap">
+<h2 id="priv">Private by design</h2>
+<ul class="tick">
+<li>Your location is shared only with riders in your current ride.</li>
+<li>Sharing runs only while a ride is open. It stops when the ride ends or you leave.</li>
+<li>We do not upload your phone contacts. No ads, no selling your data.</li>
+<li>Delete your account and data any time.</li>
+</ul>
+<p style="margin-top:16px"><a href="privacy/">Read the privacy policy</a> &middot; <a href="delete/">Delete your account</a></p>
+</div></section>
+
+<section id="install" aria-labelledby="inst"><div class="wrap">
+<h2 id="inst">Installing on Android</h2>
+<p>Throttle Tribe is a brand-new app from a new developer, so it comes as a signed APK from GitHub Releases rather than the Play Store (that comes later). Android shows a couple of extra prompts for apps installed this way. That is normal.</p>
+<details open><summary>Step by step</summary>
+<ol>
+<li>Tap <strong>Download for Android</strong> above and open <code>throttle-tribe.apk</code> when it finishes.</li>
+<li>If Android says it can't install from this source, tap <strong>Settings</strong> and switch on <strong>Allow from this source</strong> (also called "Install unknown apps") for your browser or Files app. Go back and tap Install.</li>
+<li>If Google Play Protect says it hasn't seen this app or developer before, tap <strong>More details</strong>, then <strong>Install anyway</strong>.</li>
+<li>Open Throttle Tribe, pick a riding name and allow location when asked.</li>
+</ol></details>
+<details><summary>Why does Play Protect warn me?</summary>
+<p>Play Protect shows this notice for any app from a developer it hasn't seen before. It does not mean it found a problem. The release page lists the APK's SHA-256 checksum so you can check that your download matches.</p></details>
+<details><summary>After installing</summary>
+<p>You can switch "Install unknown apps" back off for your browser in Settings. Updates are published on the same releases page.</p></details>
+</div></section>
+
+<section aria-labelledby="ios"><div class="wrap">
+<h2 id="ios">On iPhone: the web app</h2>
+<p>There is no iPhone app yet. You can join and ride using the web app in Safari.</p>
+<div class="card"><h3>Know the limits</h3>
+<ul class="tick">
+<li>It shares your location <strong>only while the page is open and the screen is on</strong>. If you lock your phone or switch apps, your group stops seeing you.</li>
+<li>Keep Safari open on the ride page, with the phone mounted and powered.</li>
+<li>Android and iPhone riders can be in the same ride.</li>
+</ul></div>
+<div class="cta" style="margin-top:20px"><a class="btn p" href="app/">Open on iPhone (web)</a></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+<a href="privacy/">Privacy</a> <a href="delete/">Delete account</a> <a href="https://github.com/Raghuram224/throttletribe/releases">All releases</a>
+<p>Map data: OpenStreetMap contributors via OpenFreeMap.</p>
+</div></footer>
+</body>
+</html>

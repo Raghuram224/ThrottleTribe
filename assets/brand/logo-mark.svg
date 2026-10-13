@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Throttle Tribe mark</title>
+  <g transform="translate(512 512) scale(1.18) translate(-512 -530)">
+    <path d="M512 192 L648 512 L512 432 L376 512 Z" fill="#F97316" stroke="#F97316" stroke-width="28" stroke-linejoin="round"/>
+    <path d="M325 632 L472 545.5 L472 695.5 L240 832 Z" fill="#0B0F14" stroke="#0B0F14" stroke-width="28" stroke-linejoin="round"/>
+    <path d="M699 632 L552 545.5 L552 695.5 L784 832 Z" fill="#0B0F14" stroke="#0B0F14" stroke-width="28" stroke-linejoin="round"/>
+  </g>
+</svg>

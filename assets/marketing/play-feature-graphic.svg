@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <title>Throttle Tribe: nobody gets left behind</title>
+  <defs>
+    <radialGradient id="glow" cx="230" cy="250" r="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F97316" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#F97316" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="500" fill="#0B0F14"/>
+  <rect width="1024" height="500" fill="url(#glow)"/>
+  <!-- road lines suggesting forward motion -->
+  <g stroke="#F97316" stroke-opacity="0.14" stroke-width="6" stroke-linecap="round">
+    <path d="M40 470 L230 40"/><path d="M130 480 L260 120"/><path d="M-10 380 L150 20"/>
+  </g>
+  <!-- brand mark: orange leader, paper riders -->
+  <g transform="translate(40 14) scale(0.46)">
+    <g transform="translate(512 512) scale(1.18) translate(-512 -530)">
+      <path d="M512 192 L648 512 L512 432 L376 512 Z" fill="#F97316" stroke="#F97316" stroke-width="28" stroke-linejoin="round"/>
+      <path d="M325 632 L472 545.5 L472 695.5 L240 832 Z" fill="#F9FAFB" stroke="#F9FAFB" stroke-width="28" stroke-linejoin="round"/>
+      <path d="M699 632 L552 545.5 L552 695.5 L784 832 Z" fill="#F9FAFB" stroke="#F9FAFB" stroke-width="28" stroke-linejoin="round"/>
+    </g>
+  </g>
+  <g font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-weight="800">
+    <text x="520" y="215" font-size="82" fill="#F9FAFB" letter-spacing="-2">Nobody gets</text>
+    <text x="520" y="305" font-size="82" fill="#F9FAFB" letter-spacing="-2">left <tspan fill="#F97316">behind.</tspan></text>
+    <text x="522" y="380" font-size="34" font-weight="700" fill="#FB923C" letter-spacing="1">THROTTLE TRIBE</text>
+  </g>
+</svg>

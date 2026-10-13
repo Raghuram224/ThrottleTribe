@@ -39,3 +39,17 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local env (secrets)
+.env
+
+# signing credentials
+/credentials/
+*.jks
+*.keystore
+/dist/
+/release/
+
+# local tool / IDE state
+.omc/
+.idea/

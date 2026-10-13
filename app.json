@@ -1,25 +1,98 @@
 {
   "expo": {
-    "name": "ThrottleTribe",
-    "slug": "ThrottleTribe",
+    "name": "Throttle Tribe",
+    "slug": "throttle-tribe",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/brand/png/icon.png",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.throttletribe.app"
     },
     "android": {
+      "package": "com.throttletribe.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/brand/png/android-icon-foreground.png",
+        "backgroundImage": "./assets/brand/png/android-icon-background.png",
+        "backgroundColor": "#F97316",
+        "monochromeImage": "./assets/brand/png/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
+      "blockedPermissions": [
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Throttle Tribe shows your position to your riding group during a ride so everyone can see who is ahead or behind.",
+          "locationAlwaysAndWhenInUsePermission": "During a ride, Throttle Tribe keeps sharing your position with your group while your phone is locked or in your pocket, so nobody loses track of you. Sharing stops when the ride ends.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F97316",
+          "image": "./assets/brand/png/splash-icon.png",
+          "imageWidth": 160,
+          "dark": {
+            "backgroundColor": "#0B0F14",
+            "image": "./assets/brand/png/splash-icon-dark.png"
+          }
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf",
+            "node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf",
+            "node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Throttle Tribe uses contacts only when you choose someone to invite or add as an emergency contact."
+        }
+      ],
+      "./plugins/with-release-signing"
+    ],
+    "scheme": "throttletribe",
+    "experiments": {
+      "typedRoutes": true,
+      "baseUrl": "/throttletribe/app"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "output": "single",
+      "bundler": "metro",
+      "favicon": "./assets/brand/png/favicon.png",
+      "name": "Throttle Tribe",
+      "shortName": "Throttle Tribe",
+      "description": "Group motorcycle ride tracking: see who is ahead, who is behind and who needs help.",
+      "themeColor": "#F97316",
+      "backgroundColor": "#0B0F14",
+      "display": "standalone",
+      "orientation": "portrait",
+      "lang": "en"
     }
   }
 }

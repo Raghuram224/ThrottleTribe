@@ -1,0 +1,93 @@
+import type { PendingProposal } from '../stop-proposals';
+import { approvalCardModel, categoryGlyph, navLineFor, rideStop, suggestedByName } from '../stop-ui';
+
+const prop = (id: number, userId: string, name = 'Cafe', kind: 'break' | 'destination' = 'break'): PendingProposal => ({
+  id,
+  userId,
+  createdAt: '2026-01-01T00:00:00Z',
+  stop: { name, address: null, lat: 12.9, lng: 77.5, kind },
+});
+const members = {
+  priya: { name: 'Priya Nair' },
+  karthik: { name: 'Karthik' },
+  gone: { name: 'Gone Rider', leftAt: '2026-01-01T00:00:00Z' },
+};
+const near = { lat: 12.9, lng: 77.52 }; // ~2.2 km west of the stop
+
+describe('rideStop', () => {
+  const cols = {
+    stop_name: 'Cafe',
+    stop_address: '',
+    stop_lat: 12.9,
+    stop_lng: 77.5,
+    stop_kind: 'destination',
+    stop_set_by: 'priya',
+  };
+  it('reads the columns, with an empty address as null', () => {
+    expect(rideStop(cols)).toEqual({ name: 'Cafe', address: null, lat: 12.9, lng: 77.5, kind: 'destination', setBy: 'priya' });
+  });
+  it('is null without a stop, and an unknown kind falls back to break', () => {
+    expect(rideStop(null)).toBeNull();
+    expect(rideStop({ ...cols, stop_name: null, stop_lat: null, stop_lng: null })).toBeNull();
+    expect(rideStop({ ...cols, stop_kind: 'x' })?.kind).toBe('break');
+  });
+});
+
+describe('suggestedByName', () => {
+  const nameOf = (id: string) => (members as Record<string, { name: string }>)[id]?.name;
+  it('shows the proposer first name only when it is not the leader', () => {
+    expect(suggestedByName({ setBy: 'priya' }, 'leader', nameOf)).toBe('Priya');
+    expect(suggestedByName({ setBy: 'leader' }, 'leader', nameOf)).toBeNull();
+    expect(suggestedByName({ setBy: null }, 'leader', nameOf)).toBeNull();
+    expect(suggestedByName(null, 'leader', nameOf)).toBeNull();
+    expect(suggestedByName({ setBy: 'stranger' }, 'leader', nameOf)).toBeNull();
+  });
+});
+
+describe('approvalCardModel', () => {
+  it('is null when nothing is pending', () => {
+    expect(approvalCardModel({ proposals: [], members, me: near })).toBeNull();
+  });
+  it('shows the newest proposal with name, kind text and distance, and counts the rest', () => {
+    const m = approvalCardModel({ proposals: [prop(5, 'karthik', 'Fuel Stop'), prop(9, 'priya', 'Coffee Day')], members, me: near });
+    expect(m).toMatchObject({ proposalId: 9, name: 'Priya', moreCount: 1, place: 'Coffee Day' });
+    expect(m?.text).toBe('Priya suggests a break · Coffee Day · 2.2 km');
+  });
+  it('uses the destination wording', () => {
+    const m = approvalCardModel({ proposals: [prop(1, 'priya', 'Home', 'destination')], members, me: near });
+    expect(m?.text).toBe('Priya suggests a destination · Home · 2.2 km');
+    expect(m?.moreCount).toBe(0);
+  });
+  it('skips proposals whose proposer has left', () => {
+    const m = approvalCardModel({ proposals: [prop(9, 'gone'), prop(2, 'karthik')], members, me: near });
+    expect(m?.proposalId).toBe(2);
+    expect(m?.moreCount).toBe(0);
+    expect(approvalCardModel({ proposals: [prop(9, 'gone')], members, me: near })).toBeNull();
+  });
+  it('drops the distance when my position is unknown', () => {
+    expect(approvalCardModel({ proposals: [prop(1, 'priya', 'Coffee Day')], members, me: null })?.text).toBe(
+      'Priya suggests a break · Coffee Day',
+    );
+  });
+});
+
+describe('categoryGlyph', () => {
+  it('has a glyph for every category', () => {
+    expect(categoryGlyph('cafe')).toBe('☕');
+    expect(categoryGlyph('other')).toBe('📍');
+  });
+});
+
+describe('navLineFor', () => {
+  const a = { lat: 1, lng: 1 };
+  const b = { lat: 2, lng: 2 };
+  it('prefers the road route, solid', () => {
+    expect(navLineFor({ route: { coords: [a, b] }, straightLine: [a, b] })).toEqual({ coords: [a, b], dashed: false });
+  });
+  it('falls back to the dashed straight line', () => {
+    expect(navLineFor({ route: null, straightLine: [a, b] })).toEqual({ coords: [a, b], dashed: true });
+  });
+  it('is null with nothing to draw', () => {
+    expect(navLineFor({ route: null, straightLine: [] })).toBeNull();
+  });
+});

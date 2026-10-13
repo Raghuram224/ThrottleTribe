@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Privacy Policy - Throttle Tribe</title>
+<meta name="description" content="Throttle Tribe privacy policy (draft).">
+<style>
+:root{--bg:#fff;--fg:#111827;--muted:#374151;--card:#fff7ed;--line:#9ca3af;--brand:#f97316;--onbrand:#111827;--warn:#b91c1c}
+@media(prefers-color-scheme:dark){:root{--bg:#11161d;--fg:#f9fafb;--muted:#d1d5db;--card:#2a1709;--line:#4b5563;--warn:#fca5a5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--brand);color:var(--onbrand);height:56px;display:flex;align-items:center;padding:0 16px;font-size:20px;font-weight:700}
+header a{color:inherit;text-decoration:none}
+main{max-width:680px;margin:0 auto;padding:24px 16px 40px}
+h1{font-size:28px;line-height:1.2;margin:0 0 12px}
+h2{font-size:22px;margin:32px 0 8px}
+h3{font-size:17px;margin:20px 0 6px}
+p,li{color:var(--muted)}
+li{margin-bottom:6px}
+a{color:var(--fg)}
+.draft{border:2px solid var(--warn);border-radius:8px;padding:8px 12px;color:var(--fg)}
+.draft strong{color:var(--warn)}
+.box{background:var(--card);border-radius:12px;padding:4px 16px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px}
+th,td{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:top;color:var(--muted)}
+th{color:var(--fg)}
+</style>
+</head>
+<body>
+<header><a href="../">Throttle Tribe</a></header>
+<main>
+<h1>Throttle Tribe Privacy Policy</h1>
+<p class="draft"><strong>DRAFT. Needs legal review before publishing.</strong> Written in plain English to match how the app and backend are built today. Items in [BRACKETS] are placeholders or open decisions. Do not publish until every bracket is resolved and the statements are re-checked against the release build.</p>
+
+<p><strong>Effective date:</strong> [DATE]<br>
+<strong>Who we are:</strong> [LEGAL ENTITY NAME], [ADDRESS], India ("we", "us"). We make Throttle Tribe, a group ride app.<br>
+<strong>Contact:</strong> [PRIVACY EMAIL, e.g. privacy@yourdomain]</p>
+
+<h2>The short version</h2>
+<div class="box"><ul>
+<li>We show your location to the other riders in your ride, only while the ride is open. Nobody else sees it.</li>
+<li>We do not sell your data. We do not show ads. We do not use third-party advertising or analytics SDKs.</li>
+<li>Your emergency contacts are private to you. Your ride members can see them only while you have an SOS active.</li>
+<li>We do not upload your phone's contact list. Only the contacts you choose to save or invite are used.</li>
+<li>You can delete your account and your data inside the app, or <a href="../delete/">on this page</a>.</li>
+</ul></div>
+
+<h2>What we collect and why</h2>
+
+<h3>1. Your riding name and account</h3>
+<ul>
+<li><strong>Riding name</strong> (1 to 40 characters). Shown to riders in your rides. Needed to use the app.</li>
+<li><strong>Anonymous account ID.</strong> Created when you first open the app. No email or phone is needed.</li>
+<li><strong>Email address or phone number (optional).</strong> Only if you choose to save your account. We use it to send you a one-time code to sign in, and to let you get your rides back on a new phone. [Confirm: stored with our authentication provider, Supabase.]</li>
+</ul>
+
+<h3>2. Your location</h3>
+<ul>
+<li><strong>Precise location</strong> is collected only while a ride you are in is open. It runs in the foreground, and in the background (screen off) during the ride, with a persistent notification on Android.</li>
+<li>It is shared <strong>only with the members of that ride</strong>. It stops when the ride ends or you leave.</li>
+<li>We do not collect your location outside a ride.</li>
+<li><strong>Ride history:</strong> the GPS points of a ride are kept on our servers so your group can see the ride and its summary. They are <strong>deleted 30 days after the ride ends</strong>.</li>
+</ul>
+
+<h3>3. Ride activity</h3>
+<ul>
+<li>Rides you create or join (name, code, who was in it, start and end time).</li>
+<li>SOS alerts, and quick messages (Fuel stop, Puncture, Slow down, Regroup, Break, All good), and when they were sent. Shared with the members of that ride.</li>
+<li>We do not collect free-text messages. The quick messages are a fixed list.</li>
+</ul>
+
+<h3>4. Emergency contacts (optional)</h3>
+<ul>
+<li>You can save up to 5 emergency contacts (name and phone number), for example family, an ambulance number or the police.</li>
+<li>They are <strong>stored on our servers</strong>, tied to your account. They are visible <strong>only to you</strong>.</li>
+<li><strong>When you send an SOS</strong>, the members of your ride are always notified. While that SOS is active, the members of that ride can see your emergency contacts' names and numbers so they can help reach them. When the SOS ends, they no longer can.</li>
+<li><strong>We never call or message your emergency contacts for you.</strong> The Call and "Text my location" buttons open your phone or messages app, filled in. Nothing is sent until you tap send or call. Messages you send this way go through your own SIM and carrier, not through us.</li>
+<li>The app does not contact emergency services and does not detect crashes.</li>
+</ul>
+
+<h3>5. Your phone's contacts</h3>
+<ul>
+<li>If you use "Invite from contacts", the app asks permission to read your contacts so you can pick people.</li>
+<li>We <strong>do not upload your contact list</strong>. Contacts picked from your phone leave your device only in two cases: (a) a contact you save as an emergency contact, and (b) the number you invite, which goes into a text that you send from your own messages app (we do not see it).</li>
+<li>Share links and ride codes you send contain the ride code, not your contacts.</li>
+</ul>
+
+<h3>6. App usage and crash data</h3>
+<ul>
+<li>To fix bugs and improve the app, we record simple events (for example "app opened", "ride created", "SOS sent") and JavaScript crash and error reports. These are stored in our own database. We do not use any third-party analytics or crash-reporting SDK.</li>
+<li>Each record has: a random session ID, your anonymous account ID, platform and OS version, app version, device model, the screen name, the current ride ID, and a timestamp. Error reports include the error text and technical stack trace.</li>
+<li>We do <strong>not</strong> put coordinates, rider names, ride codes, message text, or your contacts into this data, and we do not collect an advertising ID.</li>
+<li>Kept for <strong>90 days</strong>, then deleted.</li>
+<li>Native-level crashes (outside our app code) are not captured.</li>
+</ul>
+
+<h3>7. Notifications</h3>
+<ul>
+<li>If you allow notifications, we send ride alerts (someone stopped, lost signal, SOS, quick messages) using your phone's push service. [Confirm: Expo push / Firebase Cloud Messaging. A push token is stored with your account; Google delivers the notification to your phone.]</li>
+</ul>
+
+<h3>8. This website</h3>
+<ul>
+<li>The invite page shows only the 6-digit code in its link. It shows no ride name or riders. [Confirm: GitHub Pages may keep standard server logs, such as IP address, which we do not control.]</li>
+</ul>
+
+<h2>Who sees your data</h2>
+<div class="tw"><table>
+<tr><th>Data</th><th>Who can see it</th></tr>
+<tr><td>Riding name</td><td>Riders in your rides</td></tr>
+<tr><td>Location and ride status</td><td>Riders in your current ride, only while it is open</td></tr>
+<tr><td>SOS and quick messages</td><td>Riders in that ride</td></tr>
+<tr><td>Emergency contacts</td><td>You. Riders in your ride, only while your SOS is active</td></tr>
+<tr><td>Email or phone (if saved)</td><td>You and our authentication system</td></tr>
+<tr><td>Usage and crash data</td><td>Our team, for maintenance and debugging only</td></tr>
+</table></div>
+<p>We do not sell personal data and we do not share it for advertising.</p>
+<p><strong>Service providers.</strong> We store data with [Supabase, hosted in REGION] and send notifications through [PUSH PROVIDER]. SMS codes for phone sign-in are delivered by [SMS PROVIDER], which sees your phone number and the code. Map tiles are loaded from OpenFreeMap / OpenStreetMap, which may see your IP address when the map loads. We may also disclose data if required by law.</p>
+
+<h2>How long we keep it</h2>
+<div class="tw"><table>
+<tr><th>Data</th><th>Kept</th></tr>
+<tr><td>Ride GPS history</td><td>Deleted 30 days after the ride ends</td></tr>
+<tr><td>Usage and crash data</td><td>90 days</td></tr>
+<tr><td>Account, riding name, emergency contacts, ride records</td><td>Until you delete your account [Confirm: whether inactive accounts are purged, and after how long]</td></tr>
+<tr><td>SOS and quick message records</td><td>[Confirm: retention. Suggest same as ride GPS history, 30 days after ride end]</td></tr>
+</table></div>
+
+<h2>Your choices and rights</h2>
+<ul>
+<li><strong>Delete my account:</strong> in the app, go to Profile and choose "Delete my account". This removes your profile, emergency contacts and ride history [Confirm against the deletion function]. It cannot be undone. If you cannot open the app, see <a href="../delete/">how to delete your account</a>.</li>
+<li><strong>Remove emergency contacts:</strong> any time, on the Emergency contacts screen.</li>
+<li><strong>Location, contacts and notifications:</strong> you can turn each off in your phone's settings. The app will not be able to show you to your group without location.</li>
+<li><strong>Access, correction, and other rights:</strong> write to [PRIVACY EMAIL]. We will reply within [30 DAYS]. [Legal: align with the Digital Personal Data Protection Act, 2023, including consent, grievance officer and withdrawal of consent.]</li>
+</ul>
+
+<h2>Security</h2>
+<p>Data is encrypted in transit (HTTPS/TLS). Access to our database is limited by rules so that, for example, only ride members can read ride data. No system is perfectly secure. [Confirm: encryption at rest provided by the hosting provider.]</p>
+
+<h2>Children</h2>
+<p>Throttle Tribe is <strong>not for children</strong>. [Recommendation, legal to decide: set the minimum age at <strong>18</strong>. India's DPDP Act 2023 treats anyone under 18 as a child and requires verifiable parental consent to process their data, which we are not set up to collect. The default of 13 used for US/COPPA purposes is not enough for India. If the minimum age is lower than 18, parental-consent handling is required.] If you believe a child has given us data, contact [PRIVACY EMAIL] and we will delete it.</p>
+
+<h2>Changes to this policy</h2>
+<p>If we change how we handle data, we will update this page and the date above, and tell you in the app for material changes.</p>
+
+<h2>Contact</h2>
+<p>[LEGAL ENTITY NAME], [ADDRESS]<br>
+Email: [PRIVACY EMAIL]<br>
+[Grievance Officer name and email, if required under Indian law]</p>
+</main>
+</body>
+</html>
