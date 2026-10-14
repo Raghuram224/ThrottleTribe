@@ -150,10 +150,11 @@ export async function signOutLocal(): Promise<void> {
 
 // ---------------------------------------------------------------- ride RPCs
 
-export async function createRide(name: string, stopThresholdS: number): Promise<RideRow> {
+/** `withDest`: telemetry only (a group ride made with a destination, 22 §11); omitted = not said. */
+export async function createRide(name: string, stopThresholdS: number, opts: { withDest?: boolean } = {}): Promise<RideRow> {
   await ensureSignedIn();
   const ride = unwrap(await supabase.rpc('create_ride', { p_name: name, p_stop_threshold_s: stopThresholdS }));
-  track('ride.created');
+  track('ride.created', opts.withDest === undefined ? undefined : { with_dest: opts.withDest });
   return ride;
 }
 

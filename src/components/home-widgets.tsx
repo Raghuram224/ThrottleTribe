@@ -45,7 +45,7 @@ export function StatsStrip({ stats }: { stats: MonthStats }) {
 }
 
 const STEPS = [
-  { title: 'home.step1Title', body: 'home.step1Body' },
+  { title: 'homeMap.step1Title', body: 'homeMap.step1Body' },
   { title: 'home.step2Title', body: 'home.step2Body' },
   { title: 'home.step3Title', body: 'home.step3Body' },
 ] as const;

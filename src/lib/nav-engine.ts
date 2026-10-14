@@ -52,18 +52,24 @@ export const EMPTY_ENGINE: NavEngineState = {
 };
 
 /**
- * Navigation is on: the ride is live, has a stop I have not arrived at, and it is a ride of one. A ride that was
- * navigating when someone joined keeps going for me (`engineRunning`, only ever true for the leader whose
- * session is already running, 21 §10); groups starting navigation are a follow-up (§6).
+ * Navigation is on: the ride is live, has a stop I have not arrived at, and it is my ride of one. Navigation is
+ * only ever *started* for a solo ride whose leader I am: a group ride (one created through the group flow) never
+ * starts it, whether one rider or ten are present when it starts, and a rider left alone in someone else's ride
+ * does not either (22 decision 1: group turn-by-turn waits for hosted routing, D1). A ride that was navigating
+ * when someone joined keeps going for its leader (`engineRunning`, 21 §10).
  */
 export function isNavActive(a: {
   solo: boolean;
+  /** I am the ride's leader. */
+  leader: boolean;
+  /** The ride was created as a group ride on this phone (lib/group-rides). */
+  groupRide: boolean;
   rideLive: boolean;
   hasStop: boolean;
   arrived: boolean;
   engineRunning: boolean;
 }): boolean {
-  return a.rideLive && a.hasStop && !a.arrived && (a.solo || a.engineRunning);
+  return a.rideLive && a.hasStop && !a.arrived && (a.engineRunning || (a.solo && a.leader && !a.groupRide));
 }
 
 export interface PositionLike {

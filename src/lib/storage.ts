@@ -42,4 +42,10 @@ export const STORAGE_KEYS = {
   cachedProfile: 'cache.profile.v1',
   cachedOpenRide: 'cache.openRide.v1',
   cachedRecentRides: 'cache.recentRides.v1',
+  /** Map home: the last browse camera (22 §4.2). Location history: device only, cleared on sign-out. */
+  homeCamera: 'pref.homeCamera',
+  /** Map home: the first-run welcome sheet was dismissed once (22 §3.1.2). Cleared on sign-out. */
+  homeFirstRunSeen: 'pref.homeFirstRunSeen',
+  /** Rides this phone created as group rides: they never start turn-by-turn (22 decision 1). */
+  groupRides: 'nav.groupRides.v1',
 } as const;

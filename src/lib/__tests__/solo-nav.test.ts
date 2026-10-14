@@ -8,6 +8,7 @@ const mockPropose = jest.fn();
 const mockRollback = jest.fn();
 const mockOpen = jest.fn();
 const mockHref = jest.fn();
+const mockLeave = jest.fn();
 
 jest.mock('../ride-api', () => ({
   createRide: (...a: unknown[]) => mockCreate(...a),
@@ -15,6 +16,8 @@ jest.mock('../ride-api', () => ({
   proposeStop: (...a: unknown[]) => mockPropose(...a),
   getMyOpenRide: (...a: unknown[]) => mockOpen(...a),
 }));
+// solo-nav imports leave-ride (which pulls in the native location task); the leave itself is faked here.
+jest.mock('../leave-ride', () => ({ leaveIfMember: (...a: unknown[]) => mockLeave(...a) }));
 jest.mock('../stranded-rides', () => ({ rollbackRide: (...a: unknown[]) => mockRollback(...a) }));
 jest.mock('expo-sqlite/localStorage/install', () => ({}));
 jest.mock('../enter-ride', () => ({ hrefAfterEnter: (...a: unknown[]) => mockHref(...a) }));
@@ -31,6 +34,7 @@ beforeEach(() => {
   mockPropose.mockImplementation(async () => (calls.push('propose'), { applied: true, eventId: 1 }));
   mockRollback.mockImplementation(async () => void calls.push('end'));
   mockOpen.mockResolvedValue(null);
+  mockLeave.mockImplementation(async () => void calls.push('leave'));
   mockHref.mockImplementation(async () => (calls.push('href'), '/ride/r1/live'));
 });
 
@@ -42,6 +46,17 @@ describe('stopKindFor', () => {
 });
 
 describe('startNavigationRide', () => {
+  it('22 §3.5: leaves the ride I confirmed leaving first, then creates (it is no longer "already open")', async () => {
+    await startNavigationRide(place, 180, { leaveRideId: 'old' });
+    expect(mockLeave).toHaveBeenCalledWith('old');
+    expect(calls.slice(0, 2)).toEqual(['leave', 'create']);
+  });
+
+  it('does not leave anything when no leaveRideId is given', async () => {
+    await startNavigationRide(place, 180);
+    expect(mockLeave).not.toHaveBeenCalled();
+  });
+
   it('creates, starts, sets the stop, then resolves the route, in that order', async () => {
     await expect(startNavigationRide(place, 180)).resolves.toEqual({ rideId: 'r1', href: '/ride/r1/live', existing: false });
     expect(calls).toEqual(['create', 'start', 'propose', 'href']);

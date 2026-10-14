@@ -45,3 +45,16 @@ export function deriveSpeed(prev: SpeedFix | null, cur: SpeedFix): number | null
 export function nextAnchor(prev: SpeedFix | null, cur: SpeedFix): SpeedFix {
   return prev && cur.takenAt - prev.takenAt >= 0 && cur.takenAt - prev.takenAt < SPEED_MIN_DT_MS ? prev : cur;
 }
+
+/** Watch only while the screen is focused, location is allowed and the app is in the foreground (22 §4.3). */
+export function planningWatchWanted(a: { focused: boolean; granted: boolean; appActive: boolean }): boolean {
+  return a.focused && a.granted && a.appActive;
+}
+
+/** A fix older than this is no longer "where I am": the home map removes its marker (22 §4.4). */
+export const FIX_MAX_AGE_MS = 120_000;
+
+/** `at` and `now` are ms since epoch; a fix from the future (clock skew) is not stale. */
+export function fixFresh(at: number, now: number): boolean {
+  return now - at <= FIX_MAX_AGE_MS;
+}

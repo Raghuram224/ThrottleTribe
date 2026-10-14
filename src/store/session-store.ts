@@ -8,6 +8,7 @@ import { createRefreshRetrier } from '@/lib/refresh-retrier';
 import { getMyProfile, toRideError, type ProfileRow } from '@/lib/ride-api';
 import { endStrandedRides } from '@/lib/stranded-rides';
 import { supabase } from '@/lib/supabase';
+import { clearHomeDevicePrefs } from '@/store/plan-store';
 import { useRecentsStore } from '@/store/recents-store';
 import { useRideStore } from '@/store/ride-store';
 
@@ -94,6 +95,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       else if (event === 'SIGNED_OUT') {
         // Session expiry signs out without going through clearProfile: recent places are personal (21 §2.2).
         useRecentsStore.getState().clear();
+        clearHomeDevicePrefs();
         set({ session: null, signedIn: false });
       }
       // The token is usable now: this is the moment a failed reload can succeed.
@@ -134,6 +136,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     clearOfflineCache();
     // Recent places are personal to the signed-in rider and live on this phone only (21 §2.2).
     useRecentsStore.getState().clear();
+    clearHomeDevicePrefs();
     set({ profile: null, profileLoaded: false });
   },
 }));

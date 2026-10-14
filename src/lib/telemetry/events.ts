@@ -8,7 +8,7 @@ export const EVENTS = [
   'onboarding.completed',
   'permission.location', // foreground, background
   'permission.notifications',
-  'ride.created',
+  'ride.created', // with_dest: boolean (a group ride made with a destination)
   'ride.joined',
   'ride.join_failed', // code_error
   'ride.started',
@@ -22,8 +22,8 @@ export const EVENTS = [
   'message.sent', // kind
   'alert.shown', // kind
   'map.fit_all',
-  'map.recentre',
-  'nav.started', // from: where_to | in_ride
+  'map.recentre', // screen: home (map home)
+  'nav.started', // from: where_to | in_ride | map_home
   'nav.arrived',
   'nav.rerouted',
   'nav.route_failed', // code: no_route | failed
@@ -32,6 +32,10 @@ export const EVENTS = [
   'nav.voice_muted', // muted: boolean (true = muted)
   'nav.voice_skipped', // reason: session (the audio session could not start)
   'nav.fix_latency', // n, avg_ms, max_ms, max_batch, app_state: fix time vs engine receipt, per minute of navigation
+  'home.search_opened', // from: bar | chip
+  'home.place_opened', // from: search | recent
+  'home.directions',
+  'plan.choice', // choice: solo | group
   'error.shown',
 ] as const;
 

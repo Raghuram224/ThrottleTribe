@@ -1,4 +1,4 @@
-import { typingLocked } from '../typing-lock';
+import { shouldFocusSearch, typingLocked } from '../typing-lock';
 
 describe('typingLocked', () => {
   it('never locks without evidence', () => {
@@ -31,5 +31,22 @@ describe('typingLocked', () => {
       seen.push(locked);
     }
     expect(seen).toEqual([false, false, true, true, true, true, true, true, false, false]);
+  });
+});
+
+describe('shouldFocusSearch (M5: no keyboard flash at speed)', () => {
+  const base = { wantsFocus: true, locked: false, locationKnown: true, settled: true };
+  it('focuses once the lock has been judged against a live fix', () => {
+    expect(shouldFocusSearch(base)).toBe(true);
+  });
+  it('waits while the answer is only the last-known fix (no speed yet)', () => {
+    expect(shouldFocusSearch({ ...base, settled: false })).toBe(false);
+  });
+  it('never focuses while locked, or when the screen did not ask for it', () => {
+    expect(shouldFocusSearch({ ...base, locked: true })).toBe(false);
+    expect(shouldFocusSearch({ ...base, wantsFocus: false })).toBe(false);
+  });
+  it('without location permission there is no speed to wait for', () => {
+    expect(shouldFocusSearch({ ...base, locationKnown: false, settled: false })).toBe(true);
   });
 });

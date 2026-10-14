@@ -19,3 +19,12 @@ export function typingLocked(prev: boolean, speedKmh: number | null, fixAgeMs: n
   if (speedKmh >= LOCK_KMH) return true;
   return prev && speedKmh >= UNLOCK_KMH;
 }
+
+/**
+ * Whether Where to? may focus its input (22 §3.2, 21 §2.2.2). The first answer is the last-known fix, which has
+ * no speed: focusing on it would raise the keyboard and drop it again a moment later for a rider at speed. So
+ * with location on, wait until the lock has been judged against a live fix (`settled`).
+ */
+export function shouldFocusSearch(a: { wantsFocus: boolean; locked: boolean; locationKnown: boolean; settled: boolean }): boolean {
+  return a.wantsFocus && !a.locked && (!a.locationKnown || a.settled);
+}

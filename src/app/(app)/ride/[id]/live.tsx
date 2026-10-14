@@ -41,6 +41,7 @@ import { navSession } from '@/lib/nav-session';
 import { toggleVoice } from '@/lib/voice-toggle';
 import { arrivalState, destKey, isArrived, latchStep } from '@/lib/nav-arrival';
 import { describeBanner, maneuverAnnouncement } from '@/lib/nav-banner-view';
+import { isGroupRide } from '@/lib/group-rides';
 import { EMPTY_ENGINE, isNavActive, maneuverKey, newestPosition, selectBanner } from '@/lib/nav-engine';
 import {
   applyOrder,
@@ -214,8 +215,12 @@ export default function Live() {
   // rerouting; `useNavRoute` keeps its 60 s policy for everyone else (group stop cards). Arrived: no route line and
   // no reroute until the rider picks something (the latch never lets go by itself).
   const rideLive = ride?.status === 'active';
+  // Read from storage once per ride, not on every render of this screen.
+  const groupRide = useMemo(() => isGroupRide(rideId), [rideId]);
   const navActive = isNavActive({
     solo: variant === 'solo',
+    leader: isLeader,
+    groupRide,
     rideLive,
     hasStop,
     arrived: latched,

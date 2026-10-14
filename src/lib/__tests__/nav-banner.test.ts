@@ -202,7 +202,7 @@ describe('maneuver announcements and keys', () => {
 });
 
 describe('isNavActive', () => {
-  const base = { solo: true, rideLive: true, hasStop: true, arrived: false, engineRunning: false };
+  const base = { solo: true, leader: true, groupRide: false, rideLive: true, hasStop: true, arrived: false, engineRunning: false };
   it('solo, live, with a stop that is not arrived at', () => {
     expect(isNavActive(base)).toBe(true);
     expect(isNavActive({ ...base, hasStop: false })).toBe(false);
@@ -213,6 +213,17 @@ describe('isNavActive', () => {
     expect(isNavActive({ ...base, solo: false })).toBe(false);
     expect(isNavActive({ ...base, solo: false, engineRunning: true })).toBe(true);
     expect(isNavActive({ ...base, solo: false, engineRunning: true, arrived: true })).toBe(false);
+  });
+  it('22 decision 1: a group ride never starts navigation, even with only its leader present', () => {
+    // The old quirk: a group started with one rider present counted as solo and navigated.
+    expect(isNavActive({ ...base, groupRide: true })).toBe(false);
+    expect(isNavActive({ ...base, groupRide: true, leader: true, solo: false })).toBe(false);
+  });
+  it('only the leader starts navigation; a rider left alone in someone else\'s ride does not', () => {
+    expect(isNavActive({ ...base, leader: false })).toBe(false);
+  });
+  it('a running session of the leader is not cut by the group flag', () => {
+    expect(isNavActive({ ...base, solo: false, engineRunning: true, groupRide: false })).toBe(true);
   });
 });
 

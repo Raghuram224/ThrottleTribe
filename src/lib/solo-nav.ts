@@ -2,6 +2,7 @@
 // row is created only here, at Go; Where to? and the preview never touch Supabase.
 import { copy } from '@/lib/copy';
 import { hrefAfterEnter } from '@/lib/enter-ride';
+import { leaveIfMember } from '@/lib/leave-ride';
 import type { Place, PlaceCategory } from '@/lib/place-search';
 import { createRide, getMyOpenRide, proposeStop, startRide, type StopKind } from '@/lib/ride-api';
 import { withStartLock } from '@/lib/ride-start';
@@ -16,7 +17,7 @@ export function stopKindFor(category: PlaceCategory): StopKind {
   return category === 'other' ? 'destination' : 'break';
 }
 
-type NavPlace = Pick<Place, 'name' | 'address' | 'lat' | 'lng' | 'category'>;
+export type NavPlace = Pick<Place, 'name' | 'address' | 'lat' | 'lng' | 'category'>;
 
 export interface NavigationStart {
   rideId: string;
@@ -31,10 +32,16 @@ export interface NavigationStart {
  * (`/ride/<id>/live`, or the permissions explainer first). If any step after create fails the ride is
  * ended (retried once, then remembered and ended later, see stranded-rides), so no half-made ride is left;
  * the original error is the one to show. One start at a time (`RideStartBusy`), and an already open ride is
- * opened instead of creating a second one.
+ * opened instead of creating a second one (unless `leaveRideId` says I just left it).
  */
-export function startNavigationRide(place: NavPlace, stopThresholdS: number): Promise<NavigationStart> {
+export function startNavigationRide(
+  place: NavPlace,
+  stopThresholdS: number,
+  opts: { leaveRideId?: string } = {},
+): Promise<NavigationStart> {
   return withStartLock(async () => {
+    // Home's switch sheet confirmed leaving the open ride (22 §3.5): leave it, then it is no longer "already open".
+    if (opts.leaveRideId) await leaveIfMember(opts.leaveRideId);
     const open = await getMyOpenRide();
     if (open) return { rideId: open.ride.id, href: await hrefAfterEnter(open.ride), existing: true };
     const ride = await createRide(copy['solo.rideName'], stopThresholdS);

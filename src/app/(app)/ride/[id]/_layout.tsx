@@ -27,6 +27,7 @@ import { RideActionsContext, type RideActions } from '@/hooks/use-ride-actions';
 import { notifyStopProposal, setupNotifications } from '@/lib/alerts';
 import { copy, errorText, riderCount as riderCountText, t } from '@/lib/copy';
 import { headerSearchVisible, panelVariant } from '@/lib/live-chrome';
+import { isGroupRide, unmarkGroupRide } from '@/lib/group-rides';
 import { isNavActive } from '@/lib/nav-engine';
 import { destKey, isArrived } from '@/lib/nav-arrival';
 import { INVITE_BASE_URL } from '@/lib/flags'; // invite
@@ -179,7 +180,11 @@ export default function RideLayout() {
   }, [status]);
   // An ended ride (or one I left) takes its arrival latch with it.
   useEffect(() => {
-    if (id && (status === 'ended' || left)) useNavStore.getState().clearArrival(id);
+    if (id && (status === 'ended' || left)) {
+      useNavStore.getState().clearArrival(id);
+      // ...and its device-local "group ride" marker (22 decision 1), which is otherwise kept for good.
+      unmarkGroupRide(id);
+    }
   }, [id, status, left]);
   // --- end sos contacts ---
 
@@ -354,8 +359,12 @@ export default function RideLayout() {
   const arrivalLatch = useNavStore((s) => arrivalForRide(s, id ?? ''));
   const engineKey = useNavStore((s) => (s.engine.active ? s.engine.key : ''));
   const engineOffRoute = useNavStore((s) => !!s.engine.progress?.offRoute);
+  // Read from storage once per ride, not on every render of this layout.
+  const groupRide = useMemo(() => isGroupRide(id), [id]);
   const navOn = isNavActive({
     solo,
+    leader: isLeader,
+    groupRide,
     rideLive: status === 'active' && !left,
     hasStop: !!stopLL,
     arrived: isArrived(arrivalLatch, stopLL),

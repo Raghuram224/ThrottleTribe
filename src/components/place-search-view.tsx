@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
 import { AppTextInput } from '@/components/app-text-input';
@@ -8,11 +8,11 @@ import { ErrorText } from '@/components/error-text';
 import { Icon } from '@/components/icon';
 import { Screen } from '@/components/screen';
 import { usePlaceSearch } from '@/hooks/use-place-search';
-import { copy } from '@/lib/copy';
+import { copy, t } from '@/lib/copy';
 import { formatDistance } from '@/lib/format';
 import type { LatLng } from '@/lib/geo';
 import { haptic } from '@/lib/haptics';
-import { placeRowA11y, SEARCH_CHIPS, type Place, type PlaceCategory } from '@/lib/place-search';
+import { placeRowA11y, SEARCH_CHIPS, type Place, type PlaceCategory, type SearchChip } from '@/lib/place-search';
 import { categoryGlyph } from '@/lib/stop-ui';
 import { family, font, fontNumeric, radius, space, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
@@ -32,7 +32,11 @@ interface PlaceSearchViewProps {
   header?: ReactNode;
   /** The body while nothing is typed or chosen (recent places, or an empty state). */
   emptyContent: ReactNode;
-  onPick: (place: Place) => void;
+  /** `text` is what was typed (empty for a chip search). */
+  onPick: (place: Place, text: string) => void;
+  /** Opens with this text / chip already searched (the map home's "search again" and its chips, 22 §3.2). */
+  initialText?: string;
+  initialChip?: SearchChip['key'] | null;
   /** Pinned under the attribution, in the thumb zone. */
   footer?: ReactNode;
   /** Sheets and other overlays that belong to the screen. */
@@ -54,11 +58,20 @@ export function PlaceSearchView({
   header,
   emptyContent,
   onPick,
+  initialText,
+  initialChip,
   footer,
   children,
 }: PlaceSearchViewProps) {
   const { colors } = useTheme();
-  const { text, setText, chip, setChip, state, retry } = usePlaceSearch(me);
+  const { text, setText, chip, setChip, state, retry } = usePlaceSearch(me, { text: initialText, chip: initialChip });
+
+  // `autoFocus` only acts at mount; Where to? decides later (after the typing lock has seen a live fix), so the
+  // input is also focused when the prop turns true.
+  const inputRef = useRef<TextInput>(null);
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
 
   // The keyboard goes away the moment the lock engages.
   useEffect(() => {
@@ -86,6 +99,7 @@ export function PlaceSearchView({
         </Pressable>
         <View style={styles.inputWrap}>
           <AppTextInput
+            ref={inputRef}
             autoFocus={autoFocus}
             autoCorrect={false}
             returnKeyType="search"
@@ -183,7 +197,7 @@ export function PlaceSearchView({
                 category={p.category}
                 onPress={() => {
                   haptic('select');
-                  onPick(p);
+                  onPick(p, text.trim());
                 }}
               />
             ))
@@ -203,17 +217,19 @@ interface PlaceRowProps {
   category?: PlaceCategory;
   /** Replaces the tile content (the Recent rows draw a history icon). */
   leading?: ReactNode;
+  /** Reads "Recent place, ...": for recent rows that have no section label above them (the home sheet's peek). */
+  recentLabel?: boolean;
   onPress: () => void;
 }
 
 /** 64 dp row: 40 tile, name 16 semibold, address 14 muted, distance 14 semibold (tabular). */
-export function PlaceRow({ name, address, distanceM, category = 'other', leading, onPress }: PlaceRowProps) {
+export function PlaceRow({ name, address, distanceM, category = 'other', leading, recentLabel, onPress }: PlaceRowProps) {
   const { colors } = useTheme();
   const distance = distanceM != null ? formatDistance(distanceM) : null;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={placeRowA11y(name, address, distanceM)}
+      accessibilityLabel={recentLabel ? t('homeMap.recentA11y', { row: placeRowA11y(name, address, distanceM) }) : placeRowA11y(name, address, distanceM)}
       onPress={onPress}
       style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.surfacePressed : 'transparent', borderBottomColor: colors.border }]}>
       <View style={[styles.glyphBox, { backgroundColor: colors.surface }]}>

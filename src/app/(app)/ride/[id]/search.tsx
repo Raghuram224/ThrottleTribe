@@ -33,7 +33,7 @@ import { space } from '@/theme/tokens';
  * one button, "Go here". Either way it returns to the live screen. No typing while moving.
  */
 export default function StopSearch() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const rideId = id ?? '';
 
   const ride = useRideStore((s) => s.ride);
@@ -64,6 +64,13 @@ export default function StopSearch() {
     if (router.canGoBack()) router.back();
     else router.replace(href(`/ride/${rideId}/live`));
   }, [rideId]);
+  // Opened from the map home's search bar (22 §3.10): Home is under this screen, so a successful pick goes
+  // to the live screen instead of back to Home (Back without a pick still returns to Home).
+  const fromHome = from === 'home';
+  const afterPick = useCallback(() => {
+    if (fromHome) router.replace(href(`/ride/${rideId}/live`));
+    else goBack();
+  }, [fromHome, rideId, goBack]);
 
   const submit = async (kind: StopKind) => {
     if (!picked || sending) return;
@@ -93,7 +100,7 @@ export default function StopSearch() {
         } else {
           showToast(t('stop.toastSent', { name: firstName(leaderName ?? '') || 'the leader' }));
         }
-        goBack();
+        afterPick();
       });
     } catch (e) {
       showToast(errorText(toRideError(e).code));
@@ -113,7 +120,8 @@ export default function StopSearch() {
       typingLocked={locked}
       onBack={goBack}
       backLabel={copy['search.a11yBack']}
-      emptyContent={<RecentPlacesSection me={me} onPick={setPicked} />}
+      // From the map home the recent places are hidden: they would lead to a second ride (22 §3.10).
+      emptyContent={fromHome ? null : <RecentPlacesSection me={me} onPick={setPicked} />}
       onPick={setPicked}>
       <Sheet visible={picked !== null} onClose={closeSheet} onDismiss={afterSheet.onDismiss} hideClose>
         {picked ? (

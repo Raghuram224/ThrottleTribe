@@ -1,3 +1,4 @@
+import { copy } from '../copy';
 import { defaultRideName, displayRideName, isValidRideName, splitNameTag } from '../names';
 
 describe('ride name', () => {
@@ -30,5 +31,11 @@ describe('ride name', () => {
     expect(splitNameTag('Priya Nair [test]')).toEqual({ base: 'Priya Nair', tag: 'test' });
     expect(splitNameTag('Arun')).toEqual({ base: 'Arun', tag: null });
     expect(splitNameTag('(bot)')).toEqual({ base: '(bot)', tag: null });
+  });
+});
+
+describe('group ride name with a destination (22 decision 3)', () => {
+  it('has no destination-bearing default: the invite text carries the ride name, so the name must not carry the place', () => {
+    expect(Object.keys(copy)).not.toContain('newRide.defaultNameDest');
   });
 });

@@ -506,6 +506,9 @@ export const size = {
   navBanner: 96, // turn banner main row (21 §8)
   navThenRow: 40, // "Then" row under it
   maneuverIcon: 48, // banner arrow
+  searchBar: 56, // map home floating search bar (= touchTarget; named for the camera padding maths, 22 §9)
+  quickTile: 80, // map home sheet tile minimum height
+  sheetHeader: 56, // map home sheet header (grabber + text + chevron)
 } as const;
 
 /** Animation durations in ms (13 §0.1). Easing: Easing.out(Easing.cubic); no spring or bounce on ride screens. */

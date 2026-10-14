@@ -28,6 +28,7 @@ import {
 } from '@/lib/ride-api';
 import { joinLinkDecision, rideHref } from '@/lib/routing';
 import { supabase } from '@/lib/supabase';
+import { usePlanStore } from '@/store/plan-store';
 import { setPendingJoinCode } from '@/store/prefs-store';
 import { space } from '@/theme/tokens';
 
@@ -88,6 +89,7 @@ export default function Join() {
         hrefAfterEnter(ride),
         new Promise<void>((resolve) => setTimeout(resolve, SUCCESS_MS)),
       ]);
+      usePlanStore.getState().reset();
       router.replace(href(target));
     } catch (e) {
       if (toRideError(e).code === 'profile_required') {

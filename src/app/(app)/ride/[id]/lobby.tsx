@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
@@ -22,6 +22,7 @@ import { readiness, sortLobbyMembers } from '@/lib/lobby';
 import { href } from '@/lib/nav';
 import { firstName } from '@/lib/names';
 import { startRide, toRideError } from '@/lib/ride-api';
+import { rideStop } from '@/lib/stop-ui';
 import { NO_INVITEES, useInviteStore } from '@/store/invite-store'; // invite
 import { useRideStore } from '@/store/ride-store';
 import { useSosStore } from '@/store/sos-store';
@@ -51,6 +52,7 @@ export default function Lobby() {
   const [starting, setStarting] = useState(false);
   const startTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const lobbyStop = useMemo(() => rideStop(ride), [ride]);
   const rows = sortLobbyMembers(Object.values(members), myUserId);
   const leader = rows.find((m) => m.role === 'leader');
   const inviteSummary = inviteCounts(invitees, rows); // invite
@@ -135,6 +137,15 @@ export default function Lobby() {
           <AppText variant="caption" muted>
             {t('lobby.threshold', { n: Math.round(ride.stop_threshold_s / 60) })}
           </AppText>
+        ) : null}
+        {lobbyStop ? (
+          // 22 §3.7 (P1): everyone sees where the ride is going. The card with distance and Remove is P2.
+          <View style={styles.destLine} accessible accessibilityLabel={t('lobby.destLine', { place: lobbyStop.name })}>
+            <Icon name={lobbyStop.kind === 'break' ? 'coffee' : 'endRide'} color={colors.textMuted} size={16} />
+            <AppText variant="caption" muted numberOfLines={1} style={styles.destText}>
+              {t('lobby.destLine', { place: lobbyStop.name })}
+            </AppText>
+          </View>
         ) : null}
 
         {setupIncomplete(setup) ? <SetupRow items={setup} onFix={fixSetup} /> : null}
@@ -294,6 +305,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { padding: space.lg, gap: space.lg },
   block: { gap: space.md },
+  destLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  destText: { flex: 1 },
   sectionRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   invitedLine: { minHeight: touchTarget, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, // invite
   invitedText: { flex: 1 }, // invite

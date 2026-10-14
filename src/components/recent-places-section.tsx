@@ -17,29 +17,41 @@ interface RecentPlacesSectionProps {
   onPick: (place: Place) => void;
   /** Shows the "Clear" action (Where to? owns the confirm); the in-ride search has none. */
   onClear?: () => void;
+  /** Rows to show (default: all that Where to? shows, 5). */
+  limit?: number;
+  /** Skip the first rows (the peek already shows them). */
+  skip?: number;
+  /** Section label + Clear on top; false for the label-less peek rows (their a11y label says "Recent place"). */
+  header?: boolean;
+  /** The label text (default `whereTo.recent`). */
+  title?: string;
 }
 
 /** The recent places list (21 §2.2): shared by Where to? and the in-ride stop search. Null when there are none. */
-export function RecentPlacesSection({ me, onPick, onClear }: RecentPlacesSectionProps) {
+export function RecentPlacesSection({ me, onPick, onClear, limit, skip = 0, header = true, title }: RecentPlacesSectionProps) {
   const { colors } = useTheme();
   const recents = useRecentsStore((s) => s.recents);
-  const shown = shownRecents(recents);
-  if (shown.length === 0) return null;
+  const all = shownRecents(recents);
+  if (all.length === 0) return null;
+  const shown = all.slice(skip, limit === undefined ? undefined : skip + limit);
+  if (shown.length === 0 && !header) return null;
   const asPlace = (r: RecentPlace): Place => ({ ...r, distanceM: me ? haversineM(me, r) : null });
   return (
     <View>
-      <View style={styles.sectionRow}>
-        <AppText variant="label" muted accessibilityRole="header" maxFontSizeMultiplier={1.3}>
-          {copy['whereTo.recent']}
-        </AppText>
-        {onClear ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={copy['whereTo.clearTitle']} onPress={onClear} style={styles.clear}>
-            <Text maxFontSizeMultiplier={1.3} style={[styles.clearText, { color: colors.brandOnBg }]}>
-              {copy['whereTo.clear']}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
+      {header ? (
+        <View style={styles.sectionRow}>
+          <AppText variant="label" muted accessibilityRole="header" maxFontSizeMultiplier={1.3}>
+            {title ?? copy['whereTo.recent']}
+          </AppText>
+          {onClear ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={copy['whereTo.clearTitle']} onPress={onClear} style={styles.clear}>
+              <Text maxFontSizeMultiplier={1.3} style={[styles.clearText, { color: colors.brandOnBg }]}>
+                {copy['whereTo.clear']}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       {shown.map((r) => {
         const place = asPlace(r);
         return (
@@ -50,6 +62,7 @@ export function RecentPlacesSection({ me, onPick, onClear }: RecentPlacesSection
             // Recomputed from my fix; without one there is no distance column.
             distanceM={place.distanceM}
             leading={<Icon name="history" color={colors.textMuted} size={20} />}
+            recentLabel={!header}
             onPress={() => onPick(place)}
           />
         );

@@ -1,4 +1,4 @@
-import { deriveSpeed, nextAnchor, type SpeedFix } from '../planning-speed';
+import { deriveSpeed, fixFresh, FIX_MAX_AGE_MS, nextAnchor, planningWatchWanted, type SpeedFix } from '../planning-speed';
 
 const M_PER_DEG_LAT = 111_320;
 const fix = (northM: number, takenAt: number, over: Partial<SpeedFix> = {}): SpeedFix => ({
@@ -64,5 +64,25 @@ describe('nextAnchor', () => {
   it('starts from the first fix', () => {
     const a = fix(0, 0);
     expect(nextAnchor(null, a)).toBe(a);
+  });
+});
+
+describe('planningWatchWanted (M3)', () => {
+  it('watches only while the screen is focused, permitted and the app is in the foreground', () => {
+    expect(planningWatchWanted({ focused: true, granted: true, appActive: true })).toBe(true);
+    expect(planningWatchWanted({ focused: true, granted: true, appActive: false })).toBe(false);
+    expect(planningWatchWanted({ focused: false, granted: true, appActive: true })).toBe(false);
+    expect(planningWatchWanted({ focused: true, granted: false, appActive: true })).toBe(false);
+  });
+});
+
+describe('fixFresh (22 §4.4)', () => {
+  it('a fix counts for 2 minutes, then the marker goes', () => {
+    expect(FIX_MAX_AGE_MS).toBe(120_000);
+    expect(fixFresh(1000, 1000 + 120_000)).toBe(true);
+    expect(fixFresh(1000, 1000 + 120_001)).toBe(false);
+  });
+  it('a fix from the future (clock skew) is fresh, not stale', () => {
+    expect(fixFresh(5000, 1000)).toBe(true);
   });
 });

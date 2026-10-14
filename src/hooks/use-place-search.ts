@@ -15,9 +15,10 @@ export type PlaceSearchState =
  * Debounced place search. Typed text needs 3+ characters and waits 350 ms; a chip searches at once.
  * Every new input aborts the request in flight. `retry()` repeats the last search.
  */
-export function usePlaceSearch(me: LatLng | null) {
-  const [text, setText] = useState('');
-  const [chip, setChip] = useState<SearchChip['key'] | null>(null);
+export function usePlaceSearch(me: LatLng | null, initial: { text?: string; chip?: SearchChip['key'] | null } = {}) {
+  // The map home opens search with a chip or the text of the place being searched again (22 §3.2).
+  const [text, setText] = useState(initial.chip ? '' : (initial.text ?? ''));
+  const [chip, setChip] = useState<SearchChip['key'] | null>(initial.chip ?? null);
   const [state, setState] = useState<PlaceSearchState>({ status: 'idle' });
   const [attempt, setAttempt] = useState(0);
   // The position is read when a search starts; moving must not re-run the search.

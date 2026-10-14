@@ -21,13 +21,15 @@ interface RideProgressCardProps {
   elapsed: string;
   convoy: HomeConvoyState | null;
   onResume: () => void;
+  /** `compact`: no convoy strip (the map home's peek, 22 §3.1.2); `full` is Home's card as it was. */
+  variant?: 'compact' | 'full';
 }
 
 /**
  * Home "ride in progress" card (16 §3): ink in both themes, the live convoy, one exception line and
  * the single primary button. In the lobby (no convoy yet) it shows the name and who is waiting.
  */
-export function RideProgressCard({ name, role, active, elapsed, convoy, onResume }: RideProgressCardProps) {
+export function RideProgressCard({ name, role, active, elapsed, convoy, onResume, variant = 'full' }: RideProgressCardProps) {
   const { colors: outer, scheme, style, traits } = useTheme();
   // Ink card: the dark token set applies inside, in both schemes. Surface card (Maps): current tokens.
   const ink = traits.heroCard === 'ink';
@@ -68,7 +70,7 @@ export function RideProgressCard({ name, role, active, elapsed, convoy, onResume
       <Text maxFontSizeMultiplier={1.3} numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
         {active ? meta : `${role} · ${copy['home.inLobby']}`}
       </Text>
-      {convoy?.model ? (
+      {variant === 'full' && convoy?.model ? (
         <View style={styles.strip}>
           <ConvoyStrip model={convoy.model} tone="ink" />
         </View>
