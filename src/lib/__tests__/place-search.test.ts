@@ -3,6 +3,7 @@ import {
   clearPlaceSearchCache,
   createLruCache,
   parsePhotonResponse,
+  placeRowA11y,
   PlaceSearchError,
   searchPlaces,
   sortByDistance,
@@ -67,7 +68,12 @@ describe('sortByDistance', () => {
 describe('buildPhotonUrl', () => {
   it('sets query, bias, limit, lang and tag', () => {
     const url = buildPhotonUrl({ query: ' cafe ', osmTag: 'amenity:cafe', me });
-    expect(url).toBe('https://photon.komoot.io/api/?q=cafe&limit=8&lang=en&lat=12.97000&lon=77.59000&osm_tag=amenity:cafe');
+    expect(url).toBe('https://photon.komoot.io/api/?q=cafe&limit=8&lang=en&lat=12.97&lon=77.59&osm_tag=amenity:cafe');
+  });
+  it('rounds the bias to 2 decimals (about 1 km) so the exact position is not sent', () => {
+    const url = buildPhotonUrl({ query: 'cafe', me: { lat: 12.971599, lng: 77.594566 } });
+    expect(url).toContain('&lat=12.97&lon=77.59');
+    expect(url).not.toContain('12.9715');
   });
   it('omits bias without a position', () => {
     expect(buildPhotonUrl({ query: 'mysuru' })).toBe('https://photon.komoot.io/api/?q=mysuru&limit=8&lang=en');
@@ -136,5 +142,17 @@ describe('searchPlaces', () => {
     const p = searchPlaces({ query: 'cancel me' }, c.signal);
     c.abort();
     await expect(p).rejects.not.toBeInstanceOf(PlaceSearchError);
+  });
+});
+
+describe('placeRowA11y', () => {
+  it('reads name, address and spoken distance', () => {
+    expect(placeRowA11y('Mysuru Palace', 'Sayyaji Rao Rd', 118_400)).toBe('Mysuru Palace, Sayyaji Rao Rd, 118 kilometres away');
+    expect(placeRowA11y('Cafe', 'MG Road', 350)).toBe('Cafe, MG Road, 350 metres away');
+  });
+  it('leaves out what is missing', () => {
+    expect(placeRowA11y('Cafe', '', 350)).toBe('Cafe, 350 metres away');
+    expect(placeRowA11y('Cafe', 'MG Road', null)).toBe('Cafe, MG Road');
+    expect(placeRowA11y('Cafe', '', null)).toBe('Cafe');
   });
 });

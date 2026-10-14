@@ -4,6 +4,7 @@
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 
+import { navSession } from '@/lib/nav-session';
 import { track } from '@/lib/telemetry';
 import { positionToRow, sampleDue } from '@/lib/web/web-utils';
 
@@ -129,7 +130,12 @@ export async function startRideTracking(rideId: string): Promise<StartResult> {
   return { ok: true, backgroundGranted: false };
 }
 
+/** No background task on web: nothing to re-register. */
+export async function setNavRate(_on: boolean): Promise<void> {}
+
 export async function stopRideTracking(): Promise<void> {
+  // First, so no voice outlives the ride (every end path comes through here).
+  navSession.stop({ hard: true });
   await stopWatching();
   setTrackingFlag(false);
   // Upload what is left while the ride id is still valid for RLS, then forget the ride.
@@ -140,4 +146,9 @@ export async function stopRideTracking(): Promise<void> {
 
 export async function isTracking(): Promise<boolean> {
   return watchId !== null;
+}
+
+/** No native task on the web: nothing to recover. */
+export function startTrackingRecovery(): () => void {
+  return () => {};
 }

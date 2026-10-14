@@ -1,6 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   BackHandler,
   Pressable,
   ScrollView,
@@ -9,30 +10,38 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import Animated, { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppText } from '@/components/app-text';
-import { BigButton } from '@/components/big-button';
+import { ArrivalPanel } from '@/components/arrival-panel';
 import { ConfirmSheet } from '@/components/confirm-sheet';
 import { CONVOY_STRIP_H, ConvoyStrip } from '@/components/convoy-strip';
-import { ErrorText } from '@/components/error-text';
 import { HoldButton } from '@/components/hold-button';
 import { Icon, type IconName } from '@/components/icon';
 import { LiveSheet } from '@/components/live-sheet';
-import { LiveMeRow, LiveRiderRow, NoFixRow, OffRouteLabel } from '@/components/live-rows';
+import { LiveMeRow, LiveRiderRow, LoadErrorRow, NoFixRow, OffRouteLabel, SoloInviteRow } from '@/components/live-rows';
+import { rowEnter, rowExit } from '@/components/motion-presets';
+import { NavBanner } from '@/components/nav-banner';
 import { PressableScale } from '@/components/pressable-scale';
 import { RideMap, type MapRider } from '@/components/ride-map';
-import { SearchPill } from '@/components/search-pill';
 import { Sheet } from '@/components/sheet';
 import { StopCard, StopChip } from '@/components/stop-card';
+import { useNetOffline } from '@/hooks/use-connection';
 import { useNavRoute } from '@/hooks/use-nav-route';
 import { useNow } from '@/hooks/use-now';
 import { useRideActions } from '@/hooks/use-ride-actions';
 import { copy, errorText, t } from '@/lib/copy';
 import { buildConvoy } from '@/lib/convoy';
-import { backAction, shouldDefaultFullMap, shownSpeedKmh, soloSummaryLine } from '@/lib/full-map';
+import { backAction, fullMapDefaultStep, shownSpeedKmh } from '@/lib/full-map';
 import { haptic } from '@/lib/haptics';
+import { href } from '@/lib/nav';
+import { announceArrival } from '@/lib/announce-arrival';
+import { navSession } from '@/lib/nav-session';
+import { toggleVoice } from '@/lib/voice-toggle';
+import { arrivalState, destKey, isArrived, latchStep } from '@/lib/nav-arrival';
+import { describeBanner, maneuverAnnouncement } from '@/lib/nav-banner-view';
+import { EMPTY_ENGINE, isNavActive, maneuverKey, newestPosition, selectBanner } from '@/lib/nav-engine';
 import {
   applyOrder,
   buildLiveList,
@@ -44,16 +53,34 @@ import {
   rowLine1,
   type LiveItem,
 } from '@/lib/live-list';
-import { headerHeight, pinnedAlerts, sheetCounts, snapHeights, summaryLine } from '@/lib/live-sheet';
+import {
+  fullMapTopCardH,
+  fullMapTopInset,
+  mapVisibleHeight,
+  navBannerHeight,
+  navTopInset,
+  panelVariant,
+} from '@/lib/live-chrome';
+import {
+  headerHeight,
+  listContentHeight,
+  pinnedAlerts,
+  resolveSnap,
+  sheetCounts,
+  snapHeights,
+  soloSheet,
+  summaryLine,
+} from '@/lib/live-sheet';
 import { MESSAGE_KINDS, QUICK_MESSAGE_KINDS, type MessageKind } from '@/lib/message-kinds';
 import { cooldownLeft } from '@/lib/quick-message';
-import { href } from '@/lib/nav';
+import { engineRemaining } from '@/lib/nav-progress';
 import { stopCardText } from '@/lib/nav-route';
-import { clearStop, sendMessage, toRideError } from '@/lib/ride-api';
+import { sendMessage, toRideError } from '@/lib/ride-api';
 import { sosIsOn } from '@/lib/sos';
 import { navLineFor, rideStop, suggestedByName } from '@/lib/stop-ui';
 import { readItem, STORAGE_KEYS, writeItem } from '@/lib/storage';
 import { useLiveUiStore } from '@/store/live-ui-store';
+import { arrivalForRide, useNavStore } from '@/store/nav-store';
 import { usePrefsStore } from '@/store/prefs-store';
 import { selectStatuses, useRideStore } from '@/store/ride-store';
 import { useSosStore } from '@/store/sos-store';
@@ -66,9 +93,10 @@ const ACTION_H = 64;
 /** Floating SOS in full map (19 B): 64 dp circle, bottom-left, clear of the attribution pill. */
 const SOS_FLOAT = 64;
 const SOS_FLOAT_BOTTOM = 36;
-/** Speed bubble bottom offset (from the map overlay): above the attribution, or above the floating SOS. */
-const SPEED_BOTTOM = 36;
-const SPEED_BOTTOM_FULL = SOS_FLOAT_BOTTOM + SOS_FLOAT + space.md;
+/** "Me" slot (speed bubble / Re-centre) bottom offset from the map overlay: 8 + 20 attribution + 8. */
+const ATTRIBUTION_CLEAR = 36;
+/** In full map the slot sits above the floating SOS instead. */
+const ME_SLOT_BOTTOM_FULL = SOS_FLOAT_BOTTOM + SOS_FLOAT + space.md;
 
 
 /** Whole km/h for a row; nothing under 3 km/h or when unknown (like the me row). */
@@ -84,7 +112,7 @@ const SCROLL_IDLE_MS = 10_000;
  */
 export default function Live() {
   const { colors, scheme } = useTheme();
-  const { rideId, isLeader, connection, permissions, openInvite, fixPermission } = useRideActions();
+  const { rideId, isLeader, connection, permissions, openInvite, fixPermission, requestEnd, requestLeave } = useRideActions();
 
   const ride = useRideStore((s) => s.ride);
   const members = useRideStore((s) => s.members);
@@ -93,7 +121,7 @@ export default function Live() {
   const myUserId = useRideStore((s) => s.myUserId);
   const loaded = useRideStore((s) => s.loaded);
   const loadError = useRideStore((s) => s.loadError);
-  const snap = usePrefsStore((s) => s.liveSheetSnap);
+  const storedSnap = usePrefsStore((s) => s.liveSheetSnap);
   const setSnap = usePrefsStore((s) => s.setLiveSheetSnap);
   const selectedUserId = useLiveUiStore((s) => s.selectedUserId);
   const selectNonce = useLiveUiStore((s) => s.selectNonce);
@@ -102,9 +130,15 @@ export default function Live() {
   const now = useNow(1000);
   const fullMap = useLiveUiStore((s) => s.fullMap);
   const setFullMap = useLiveUiStore((s) => s.setFullMap);
+  const sosHolding = useLiveUiStore((s) => s.sosHolding);
+  const setSosHolding = useLiveUiStore((s) => s.setSosHolding);
   const topStackH = useLiveUiStore((s) => s.topStackH);
   const focusStopNonce = useLiveUiStore((s) => s.focusStopNonce);
+  const recentreNonce = useLiveUiStore((s) => s.recentreNonce);
+  const mapBearing = useLiveUiStore((s) => s.mapBearing);
+  const setMapBearing = useLiveUiStore((s) => s.setMapBearing);
   const insets = useSafeAreaInsets();
+  const netOffline = useNetOffline();
   // Full map has no sheet: the map controls stay put instead of riding its top edge.
   const noShift = useSharedValue(0);
 
@@ -113,8 +147,6 @@ export default function Live() {
   const [contentH, setContentH] = useState(0);
   const [msgOpen, setMsgOpen] = useState(false);
   const [sosConfirm, setSosConfirm] = useState<'send' | 'cancel' | null>(null);
-  const [clearConfirm, setClearConfirm] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [cooldowns, setCooldowns] = useState<Partial<Record<MessageKind, number>>>({});
   const [frozenKeys, setFrozenKeys] = useState<string[] | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -140,22 +172,99 @@ export default function Live() {
 
   // Next stop (19 A): the ride's shared stop and my own route to it (drawn on this phone only).
   const stop = useMemo(() => rideStop(ride), [ride]);
+  const hasStop = !!stop;
   const stopLL = useMemo(() => (stop ? { lat: stop.lat, lng: stop.lng } : null), [stop]);
   const myPos = myUserId ? positions[myUserId] : undefined;
-  const myLat = myPos?.lat;
-  const myLng = myPos?.lng;
-  const meLL = useMemo(() => (myLat != null && myLng != null ? { lat: myLat, lng: myLng } : null), [myLat, myLng]);
-  const navState = useNavRoute(meLL, stopLL);
-  const navLine = useMemo(
-    () => navLineFor({ route: navState.route, straightLine: navState.straightLine }),
-    [navState.route, navState.straightLine],
+  // My position while navigating is the engine's local 1 Hz fix (21 §3.6); the server echo of my own 5 s sample is
+  // the fallback, and whichever is newer wins. The local fix only counts for the stop it is navigating to.
+  const engineAll = useNavStore((s) => s.engine);
+  const engine = engineAll.key === destKey(stopLL) ? engineAll : EMPTY_ENGINE;
+  const remoteT = myPos ? Date.parse(myPos.recordedAt) : NaN;
+  const localFix = engine.active ? engine.fix : null;
+  const newest = newestPosition(
+    localFix,
+    myPos ? { lat: myPos.lat, lng: myPos.lng, t: Number.isNaN(remoteT) ? 0 : remoteT } : null,
   );
-  const stopText = stop && stopLL ? stopCardText({ name: stop.name, kind: stop.kind, me: meLL, stop: stopLL, route: navState.route }) : null;
+  const usingLocal = !!localFix && newest === localFix;
+  const myLat = newest?.lat;
+  const myLng = newest?.lng;
+  const meLL = useMemo(() => (myLat != null && myLng != null ? { lat: myLat, lng: myLng } : null), [myLat, myLng]);
+  // Solo arrival (21 §2.8): the latch lives in nav-store (and local storage, per ride), so reopening this
+  // ride does not arrive again. The stop always goes in, also in a group ride: riders joining or leaving
+  // must not reset it. Only the solo variant announces it and shows the panel.
+  const activeCount = useMemo(() => Object.values(members).filter((m) => !m.leftAt).length, [members]);
+  const variant = panelVariant(loaded, activeCount);
+  const arrivalLatch = useNavStore((s) => arrivalForRide(s, rideId));
+  const latched = isArrived(arrivalLatch, stopLL);
+  const arrived = variant === 'solo' && latched;
+  const myAccuracyM = (usingLocal ? localFix?.accuracyM : myPos?.accuracyM) ?? null;
+  useEffect(() => {
+    if (!loaded) return;
+    const prev = arrivalForRide(useNavStore.getState(), rideId);
+    const { latch, announce } = latchStep(prev, stopLL, { me: meLL, accuracyM: myAccuracyM }, variant === 'solo');
+    if (latch === prev) return;
+    useNavStore.getState().setArrival(rideId, latch);
+    // Shared claim with the engine: whichever detects the arrival first announces it, the other finds it claimed.
+    if (announce && stopLL) announceArrival(rideId, destKey(stopLL));
+  }, [loaded, rideId, variant, stopLL, meLL, myAccuracyM]);
+  // The expressway choice made on the preview rides along, so reroutes honour it (no preview: the saved preference).
+  const sessionAvoid = useNavStore((s) => s.avoidMotorways);
+  const allowExpressways = usePrefsStore((s) => s.allowExpressways);
+  // Turn-by-turn navigation (21 §2.5): the engine (nav-session, started by the ride layout) owns the route and the
+  // rerouting; `useNavRoute` keeps its 60 s policy for everyone else (group stop cards). Arrived: no route line and
+  // no reroute until the rider picks something (the latch never lets go by itself).
+  const rideLive = ride?.status === 'active';
+  const navActive = isNavActive({
+    solo: variant === 'solo',
+    rideLive,
+    hasStop,
+    arrived: latched,
+    engineRunning: isLeader && engine.active,
+  });
+  const navState = useNavRoute(meLL, navActive || arrived ? null : stopLL, sessionAvoid ?? !allowExpressways);
+  const route = navActive ? (engine.prepared?.route ?? null) : navState.route;
+  const straightLine = useMemo(
+    () => (route || !meLL || !stopLL || arrived ? [] : [meLL, stopLL]),
+    [route, meLL, stopLL, arrived],
+  );
+  const navLine = useMemo(() => navLineFor({ route, straightLine }), [route, straightLine]);
+  // The card never decides arrival itself: solo follows the latch (it stays arrived after riding on), a group
+  // ride uses the latch's own rule (within 150 m, fix no worse than 100 m), so card and panel cannot disagree.
+  const cardArrived =
+    variant === 'solo'
+      ? latched
+      : !!stopLL && arrivalState('navigating', { me: meLL, accuracyM: myAccuracyM, dest: stopLL }) === 'arrived';
+  // While the engine runs, the card says what the banner says: route left and ETA from engine progress (M5).
+  const engineLeft =
+    navActive && engine.prepared && engine.progress?.joined ? engineRemaining(engine.progress, engine.prepared) : null;
+  const stopText =
+    stop && stopLL
+      ? stopCardText({ name: stop.name, kind: stop.kind, me: meLL, stop: stopLL, route, arrived: cardArrived, remaining: engineLeft })
+      : null;
   const suggestedBy = suggestedByName(stop, ride?.leader_id, (id) => members[id]?.name);
 
   // Sheet model: collapsed keeps up to two alert rows in view; the list below skips them meanwhile.
   const pinned = useMemo(() => pinnedAlerts(shown), [shown]);
-  const heights = useMemo(() => snapHeights(areaH, pinned.length, !!stop), [areaH, pinned.length, stop]);
+  // Solo (20 C4) is decided on load (`variant`, above); until then the group sheet shows skeleton rows.
+  // The ScrollView can unmount mid-touch (solo, full map) and never sees the touch end: drop the frozen order
+  // (adjusting state during render, not in an effect).
+  if (frozenKeys && (variant === 'solo' || fullMap)) setFrozenKeys(null);
+  const someoneLeft = memberList.some((m) => m.leftAt);
+  // Content-driven heights (20 C6): rows are fixed-height, so the content height is exact and does not
+  // breathe with the clock or depend on the current snap.
+  const listContentH = useMemo(
+    () => listContentHeight({ items: shown, loaded, loadError: !!loadError }),
+    [shown, loaded, loadError],
+  );
+  const { heights, snaps } = useMemo(
+    () =>
+      variant === 'solo'
+        ? soloSheet(!!stop, !!loadError, arrived)
+        : snapHeights(areaH, pinned.length, !!stop, listContentH),
+    [variant, areaH, pinned.length, stop, listContentH, loadError, arrived],
+  );
+  // A stored `expanded` that is not available shows as `half`; the pref is left alone.
+  const snap = resolveSnap(storedSnap, snaps);
   const collapsed = snap === 'collapsed';
   const visibleListH = Math.max(0, heights[snap] - headerHeight(!!stop));
   const visibleListHRef = useRef(visibleListH);
@@ -172,7 +281,14 @@ export default function Live() {
     const out: MapRider[] = [];
     for (const m of memberList) {
       const p = positions[m.userId];
-      if (m.leftAt || !p) continue;
+      const mine = m.userId === myUserId;
+      const local = mine && usingLocal ? localFix : null;
+      const src = local
+        ? { lat: local.lat, lng: local.lng, heading: local.courseDeg, speedMps: local.speedMps, recordedAtMs: local.t, accuracyM: local.accuracyM }
+        : p
+          ? { lat: p.lat, lng: p.lng, heading: p.heading, speedMps: p.speedMps, recordedAtMs: Date.parse(p.recordedAt) || null, accuracyM: p.accuracyM }
+          : null;
+      if (m.leftAt || !src) continue;
       const st = statuses[m.userId];
       out.push({
         userId: m.userId,
@@ -181,17 +297,12 @@ export default function Live() {
         leader: m.role === 'leader',
         status: st?.status ?? 'offline',
         stale: st?.status === 'offline',
-        lat: p.lat,
-        lng: p.lng,
-        heading: p.heading,
-        speedMps: p.speedMps,
-        recordedAtMs: Date.parse(p.recordedAt) || null,
-        accuracyM: p.accuracyM,
-        isMe: m.userId === myUserId,
+        ...src,
+        isMe: mine,
       });
     }
     return out;
-  }, [memberList, positions, statuses, myUserId]);
+  }, [memberList, positions, statuses, myUserId, usingLocal, localFix]);
 
   // Convoy strip (16 §2.1): same relative positions as the list; hidden with < 2 positioned riders.
   const convoy = useMemo(() => {
@@ -268,16 +379,23 @@ export default function Live() {
 
   // ------------------------------------------------------------ full map
 
-  const activeCount = memberList.filter((m) => !m.leftAt).length;
-
-  // A solo ride opens in full map the first time (per ride id, not global); after that the rider's choice stands.
+  // A free solo ride opens in full map the first time (per ride id, not global); a ride that opens with a
+  // destination opens in sheet mode (21 decision 2). After that the rider's choice stands.
   useEffect(() => {
     if (!loaded || !rideId) return;
     const seen = readItem(STORAGE_KEYS.soloFullMapSeen);
-    if (seen === rideId) return;
+    const step = fullMapDefaultStep({
+      activeMembers: activeCount,
+      rideId,
+      seenRideId: seen,
+      hasStop,
+      holding: sosHolding,
+    });
+    // An SOS hold in progress would be dropped by the button swap: re-run when it ends (sosHolding is a dep).
+    if (step === 'seen' || step === 'wait') return;
     writeItem(STORAGE_KEYS.soloFullMapSeen, rideId);
-    if (shouldDefaultFullMap({ activeMembers: activeCount, rideId, seenRideId: seen })) setFullMap(true);
-  }, [loaded, rideId, activeCount, setFullMap]);
+    if (step === 'enter') setFullMap(true);
+  }, [loaded, rideId, activeCount, hasStop, sosHolding, setFullMap]);
 
   // Android back leaves full map before it leaves the screen.
   useFocusEffect(
@@ -296,20 +414,11 @@ export default function Live() {
     haptic('select');
     useLiveUiStore.getState().focusStop();
   }, []);
-  const openSearch = useCallback(() => {
+
+  const pickNext = useCallback(() => {
+    haptic('select');
     router.push(href(`/ride/${rideId}/search`));
   }, [rideId]);
-  const doClearStop = async () => {
-    setClearing(true);
-    try {
-      await clearStop(rideId);
-    } catch (e) {
-      showToast(errorText(toRideError(e).code));
-    } finally {
-      setClearing(false);
-      setClearConfirm(false);
-    }
-  };
 
   const toggleFullMap = useCallback(() => {
     haptic('select');
@@ -320,19 +429,68 @@ export default function Live() {
 
   const pinnedKeys = useMemo(() => new Set(pinned.map((p) => p.key)), [pinned]);
   const listItems = collapsed ? shown.filter((i) => !pinnedKeys.has(i.key)) : shown;
-  const speedKmh = shownSpeedKmh(myPos?.speedMps);
-  const alone = loaded && activeCount <= 1;
-  // Solo (19 C): "Solo ride · 42 km/h". My own SOS keeps the regular line so the SOS count stays visible.
-  const summary = !loaded
-    ? ''
-    : alone && !sosOn
-      ? soloSummaryLine(speedKmh)
-      : summaryLine(sheetCounts(shown, sosOn));
-  const topInset = convoy ? CONVOY_STRIP_H : 0;
-  // Full map: the map runs under the status bar; overlays clear it and any floating SOS banners.
-  const fullTop = Math.max(topStackH, insets.top);
+  const speedKmh = shownSpeedKmh(usingLocal ? localFix?.speedMps : myPos?.speedMps);
+  const summary = loaded ? summaryLine(sheetCounts(shown, sosOn)) : '';
   const sharing =
     !permissions || (permissions.snapshot.foreground === 'granted' && permissions.servicesEnabled);
+  // The turn banner (21 §2.5-2.7): picked from the engine's state, re-evaluated every second (GPS-lost and dead
+  // reckoning depend on the clock, which is why `now` is in here and not read inside the engine's render path).
+  const banner = useMemo(
+    () =>
+      selectBanner({
+        active: navActive && loaded,
+        engine,
+        locationOk: sharing,
+        netOffline,
+        now,
+        me: meLL,
+        dest: stopLL,
+      }),
+    [navActive, loaded, engine, sharing, netOffline, now, meLL, stopLL],
+  );
+  const bannerView = useMemo(
+    () => (banner ? describeBanner(banner, { place: stop?.name ?? '', mapBearing }) : null),
+    [banner, stop?.name, mapBearing],
+  );
+  const bannerH = navBannerHeight({ bannerShown: !!banner, thenRow: !!banner?.then });
+  // Anything floating over the top of the map must be counted here, or the camera frames me under it
+  // (20 C2): in sheet mode the docked banner (+ Then row) and the convoy strip under it; in full map the status bar /
+  // SOS banners plus the banner (which replaces the stop chip) or, without navigation, the chip.
+  const fullTop = Math.max(topStackH, insets.top);
+  const topInset = fullMap
+    ? fullMapTopInset(fullTop, fullMapTopCardH({ navBannerH: bannerH, stopChip: !!stopText }))
+    : navTopInset({ navBannerH: bannerH, convoyH: convoy ? CONVOY_STRIP_H : 0 });
+  const mapVisH = mapVisibleHeight(areaH, topInset, fullMap ? 0 : heights[snap]);
+
+  // Tap: back to following me, and the current instruction is said again (silent while muted, 21 §2.5).
+  const onBannerPress = useCallback(() => {
+    haptic('select');
+    useLiveUiStore.getState().recentre();
+    navSession.repeat();
+  }, []);
+
+  const voiceOn = useNavStore((s) => s.voiceOn);
+  const onToggleVoice = useCallback(() => {
+    haptic('select');
+    toggleVoice();
+  }, []);
+  const voice = useMemo(() => (navActive ? { on: voiceOn, onToggle: onToggleVoice } : null), [navActive, voiceOn, onToggleVoice]);
+
+  // Screen readers hear the new instruction when the maneuver changes (not on every distance tick), only while voice
+  // is muted: with voice on the app speaks it itself and nothing is said twice.
+  const announceKey = maneuverKey(banner, engine.prepared?.id ?? 0);
+  const announceText = maneuverAnnouncement(banner, stop?.name ?? '');
+  const announceRef = useRef({ key: announceKey, text: announceText });
+  useEffect(() => {
+    const prev = announceRef.current.key;
+    announceRef.current = { key: announceKey, text: announceText };
+    if (voiceOn || !announceKey || !prev || prev === announceKey || !announceText) return;
+    void AccessibilityInfo.isScreenReaderEnabled()
+      .then((on) => {
+        if (on) AccessibilityInfo.announceForAccessibility(announceText);
+      })
+      .catch(() => {});
+  }, [announceKey, announceText, voiceOn]);
 
   // Same hold behaviour and a11y fallback in the bar and in the floating full-map circle.
   const sosButton = (round?: number) =>
@@ -348,6 +506,7 @@ export default function Live() {
         height={round ? undefined : ACTION_H}
         onComplete={() => void useSosStore.getState().cancel(rideId)}
         onEarlyRelease={() => showToast(copy['sos.holdHint'])}
+        onHoldChange={setSosHolding}
         onA11yActivate={() => setSosConfirm('cancel')}
       />
     ) : (
@@ -361,6 +520,7 @@ export default function Live() {
         height={round ? undefined : ACTION_H}
         onComplete={() => useSosStore.getState().trigger(rideId)}
         onEarlyRelease={() => showToast(copy['sos.holdHint'])}
+        onHoldChange={setSosHolding}
         onA11yActivate={() => setSosConfirm('send')}
       />
     );
@@ -429,40 +589,54 @@ export default function Live() {
               focusNonce={selectNonce}
               onSelect={onRowPress}
               onClearSelection={() => useLiveUiStore.getState().clear()}
-              topInset={fullMap ? fullTop : topInset}
+              topInset={topInset}
               // Full map has no sheet; with the full-height area "me" lands in the lower third.
               bottomInset={fullMap ? 0 : areaH > 0 ? heights[snap] : 0}
               overlayShift={fullMap ? noShift : overlayShift}
-              controlsHidden={!fullMap && snap === 'expanded'}
+              // Never hidden by snap: the mapVisH thresholds (20 C1) already hide them when a tall sheet leaves no room.
+              controlsHidden={false}
+              mapVisH={mapVisH}
               fullMap={fullMap}
               onToggleFullMap={toggleFullMap}
               overlayBottomInset={fullMap ? insets.bottom : 0}
               speedKmh={speedKmh}
-              speedBubbleBottom={fullMap ? SPEED_BOTTOM_FULL : SPEED_BOTTOM}
+              meSlotBottom={fullMap ? ME_SLOT_BOTTOM_FULL : ATTRIBUTION_CLEAR}
               stop={stop}
               navLine={navLine}
               focusStopNonce={focusStopNonce}
+              recentreNonce={recentreNonce}
+              onMapBearing={setMapBearing}
+              voice={voice}
             />
           ) : (
             <View style={[styles.mapPlaceholder, { backgroundColor: colors.surface }]} />
           )}
         </View>
 
+        {/* Docked turn banner (sheet mode): full-bleed at the top of the live area, convoy strip under it. */}
+        {banner && bannerView && !fullMap ? (
+          <View style={styles.banner} pointerEvents="box-none">
+            <NavBanner view={bannerView} floating={false} onPress={onBannerPress} />
+          </View>
+        ) : null}
+
         {convoy && !fullMap ? (
-          <View style={styles.convoy} pointerEvents="none">
+          <View style={[styles.convoy, { top: bannerH }]} pointerEvents="none">
             <ConvoyStrip model={convoy} />
           </View>
         ) : null}
 
-        {!fullMap && snap !== 'expanded' ? (
-          <View style={[styles.slot, { top: topInset + space.sm }]} pointerEvents="box-none">
-            <SearchPill onPress={openSearch} hintNoStop={isLeader && !stop} />
+        {/* Full map: the banner replaces the stop chip, floating under the status bar / SOS banners. */}
+        {fullMap && banner && bannerView ? (
+          <View style={[styles.bannerFloat, { top: fullTop + space.sm }]} pointerEvents="box-none">
+            <NavBanner view={bannerView} floating onPress={onBannerPress} />
           </View>
         ) : null}
 
-        {fullMap && stopText ? (
+        {fullMap && !banner && stopText ? (
           <View style={[styles.slot, { top: fullTop + space.sm }]} pointerEvents="box-none">
-            <StopChip line={stopText.text} arrived={stopText.arrived} onPress={focusStop} />
+            {/* Arrived: tapping the chip leaves full map so the arrival panel shows (21 §2.8). */}
+            <StopChip line={stopText.text} arrived={stopText.arrived} onPress={arrived ? toggleFullMap : focusStop} />
           </View>
         ) : null}
 
@@ -477,71 +651,75 @@ export default function Live() {
             snap={snap}
             onSnapChange={setSnap}
             heights={heights}
+            snaps={snaps}
+            variant={variant}
             visible={sheetVisible}
             summary={summary}
             stopCard={
-              stopText ? (
-                <StopCard
-                  line={stopText.text}
-                  arrived={stopText.arrived}
-                  suggestedBy={suggestedBy}
-                  onPress={focusStop}
-                  onClear={isLeader ? () => setClearConfirm(true) : undefined}
-                />
+              stopText && !arrived ? (
+                <StopCard parts={stopText} suggestedBy={suggestedBy} onPress={focusStop} />
               ) : undefined
             }
             pinned={pinned.map((p) => renderItem(p))}>
-            <ScrollView
-              ref={scrollRef}
-              style={styles.list}
-              contentContainerStyle={{ paddingBottom: heights.expanded - heights[snap] + space.lg }}
-              onLayout={(e) => setListH(e.nativeEvent.layout.height)}
-              onContentSizeChange={(_, h) => setContentH(h)}
-              scrollEnabled={!collapsed}
-              onTouchStart={() => {
-                lastTouchAt.current = Date.now();
-                // Rows never jump under a finger: hold the order until it lifts.
-                setFrozenKeys(items.map((i) => i.key));
-              }}
-              onTouchEnd={() => {
-                lastTouchAt.current = Date.now();
-                setFrozenKeys(null);
-              }}
-              onTouchCancel={() => setFrozenKeys(null)}>
-              {loadError ? (
-                <View style={[styles.error, { borderBottomColor: colors.border }]}>
-                  <ErrorText>{copy['errors.loadRide']}</ErrorText>
-                  <BigButton
-                    label={copy['common.tryAgain']}
-                    variant="secondary"
-                    onPress={() => void useRideStore.getState().load(rideId)}
+            {variant === 'solo' ? (
+              <>
+                {loadError ? <LoadErrorRow onRetry={() => void useRideStore.getState().load(rideId)} /> : null}
+                {arrived && stop ? (
+                  <ArrivalPanel
+                    name={stop.name}
+                    onPickNext={pickNext}
+                    onEnd={isLeader ? requestEnd : requestLeave}
+                    leaveInstead={!isLeader}
                   />
-                </View>
-              ) : null}
+                ) : (
+                  <SoloInviteRow left={someoneLeft} onPress={openInvite} />
+                )}
+              </>
+            ) : (
+              <ScrollView
+                ref={scrollRef}
+                style={styles.list}
+                // The sheet is `expanded` tall and slid down; this keeps the last row reachable at every
+                // snap and leaves the 8 dp after it (`snapHeights` fit) at the largest one.
+                contentContainerStyle={{ paddingBottom: heights.expanded - heights[snap] + space.sm }}
+                onLayout={(e) => setListH(e.nativeEvent.layout.height)}
+                onContentSizeChange={(_, h) => setContentH(h)}
+                scrollEnabled={!collapsed}
+                onTouchStart={() => {
+                  lastTouchAt.current = Date.now();
+                  // Rows never jump under a finger: hold the order until it lifts.
+                  setFrozenKeys(items.map((i) => i.key));
+                }}
+                onTouchEnd={() => {
+                  lastTouchAt.current = Date.now();
+                  setFrozenKeys(null);
+                }}
+                onTouchCancel={() => setFrozenKeys(null)}>
+                {loadError ? <LoadErrorRow onRetry={() => void useRideStore.getState().load(rideId)} /> : null}
 
-              {loaded ? (
-                listItems.map(renderItem)
-              ) : (
-                <>
-                  {[0, 1, 2].map((n) => (
-                    <View key={n} style={[styles.skeleton, { backgroundColor: colors.surface }]} />
-                  ))}
-                </>
-              )}
-
-              {alone ? (
-                <View style={styles.alone}>
-                  <BigButton label={copy['invite.cta']} variant="secondary" icon="invite" onPress={openInvite} />
-                </View>
-              ) : null}
-            </ScrollView>
+                {loaded ? (
+                  listItems.map(renderItem)
+                ) : (
+                  <>
+                    {[0, 1, 2].map((n) => (
+                      <View key={n} style={[styles.skeleton, { backgroundColor: colors.surface }]} />
+                    ))}
+                  </>
+                )}
+              </ScrollView>
+            )}
           </LiveSheet>
         ) : null}
       </View>
 
       {fullMap ? null : (
         <View style={[styles.bar, { backgroundColor: colors.surfaceRaised }, elevate('e2', scheme)]}>
-          <ActionButton label={copy['live.msg']} icon="message" onPress={openMsg} />
+          {/* Solo has nobody to message. SOS keeps its place in the tree, so a hold in progress survives the re-layout. */}
+          {variant === 'solo' ? null : (
+            <Animated.View entering={rowEnter} exiting={rowExit}>
+              <ActionButton label={copy['live.msg']} icon="message" onPress={openMsg} />
+            </Animated.View>
+          )}
           {sosButton()}
         </View>
       )}
@@ -549,16 +727,6 @@ export default function Live() {
       <Sheet visible={msgOpen} onClose={() => setMsgOpen(false)}>
         <QuickMessages cooldowns={cooldowns} onPick={(k) => void send(k)} />
       </Sheet>
-
-      <ConfirmSheet
-        visible={clearConfirm}
-        title={copy['stop.clearTitle']}
-        confirmLabel={copy['stop.clearConfirm']}
-        cancelLabel={copy['stop.clearCancel']}
-        loading={clearing}
-        onCancel={() => !clearing && setClearConfirm(false)}
-        onConfirm={() => void doClearStop()}
-      />
 
       <ConfirmSheet
         visible={sosConfirm !== null}
@@ -652,14 +820,14 @@ function QuickMessages({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   area: { flex: 1, overflow: 'hidden' },
+  banner: { position: 'absolute', top: 0, left: 0, right: 0 },
+  bannerFloat: { position: 'absolute', left: space.sm, right: space.sm },
   convoy: { position: 'absolute', top: 0, left: 0, right: 0 },
   slot: { position: 'absolute', left: space.lg, right: space.lg },
   floatSos: { position: 'absolute', left: space.lg },
   list: { flex: 1 },
   mapPlaceholder: { flex: 1 },
-  error: { padding: space.lg, gap: space.md, borderBottomWidth: 1 },
   skeleton: { height: ROW_HEIGHTS.rider, marginHorizontal: space.lg, marginTop: space.sm, borderRadius: radius.md },
-  alone: { padding: space.lg, gap: space.md },
   bar: {
     flexDirection: 'row',
     gap: space.md,

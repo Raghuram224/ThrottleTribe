@@ -93,6 +93,13 @@ export interface Tokens {
   /** Route to the shared next stop (drawn on my phone only) and the destination pin; casing like the trail. */
   navRoute: string;
   navRouteCasing: string;
+  /** Glyph on `navRoute` (stop pin, stop-card tile): >= 4.5:1 in all four palettes. */
+  onNavRoute: string;
+  /** Turn banner (21 §8): dark blue in both schemes; blue is no status colour, so it never reads as moving, stopped, offline or SOS. */
+  navBannerBg: string;
+  navBannerThenBg: string;
+  onNavBanner: string;
+  onNavBannerMuted: string;
   // Controls
   segThumb: string;
   trackLine: string; // convoy track, step rail
@@ -168,6 +175,11 @@ const tribeLight: Tokens = {
   trailPassed: '#6B7280',
   navRoute: '#2563EB',
   navRouteCasing: '#1E3A8A',
+  onNavRoute: '#FFFFFF',
+  navBannerBg: '#1E3A8A',
+  navBannerThenBg: '#172554',
+  onNavBanner: '#FFFFFF',
+  onNavBannerMuted: '#DBEAFE',
   segThumb: '#FFFFFF',
   trackLine: '#D5D9DF',
   fabBg: '#FFFFFF',
@@ -232,6 +244,11 @@ const tribeDark: Tokens = {
   trailPassed: '#9CA3AF',
   navRoute: '#60A5FA',
   navRouteCasing: '#0B0F14',
+  onNavRoute: '#0B0F14',
+  navBannerBg: '#1E3A8A',
+  navBannerThenBg: '#172554',
+  onNavBanner: '#FFFFFF',
+  onNavBannerMuted: '#DBEAFE',
   segThumb: '#343D49',
   trackLine: '#3A424D',
   fabBg: '#1F2630',
@@ -291,6 +308,11 @@ const mapsLight: Tokens = {
   trailPassed: '#5F6368',
   navRoute: '#1A73E8',
   navRouteCasing: '#174EA6',
+  onNavRoute: '#FFFFFF',
+  navBannerBg: '#174EA6',
+  navBannerThenBg: '#0D3A85',
+  onNavBanner: '#FFFFFF',
+  onNavBannerMuted: '#DBEAFE',
   segThumb: '#D2E3FC',
   trackLine: '#DADCE0',
   fabBg: '#FFFFFF',
@@ -340,6 +362,11 @@ const mapsDark: Tokens = {
   trailPassed: '#9AA0A6',
   navRoute: '#8AB4F8',
   navRouteCasing: '#1B3A6B',
+  onNavRoute: '#0B0F14',
+  navBannerBg: '#174EA6',
+  navBannerThenBg: '#0D3A85',
+  onNavBanner: '#FFFFFF',
+  onNavBannerMuted: '#DBEAFE',
   segThumb: '#2D4A77',
   trackLine: '#44474C',
   fabBg: '#2F3135',
@@ -464,6 +491,8 @@ export const size = {
   statusRing: 4,
   rowLive: 72, // live rider row
   rowMe: 56, // me reference row
+  mapControl: 56, // map circles and the Re-centre pill (20 C1)
+  sheetInfoRow: 64, // stop card, solo invite row, load-error row (20 C6)
   actionCard: 72, // ActionCard (13 §0.1)
   settingsRow: 64,
   contactRow: 72,
@@ -474,6 +503,9 @@ export const size = {
   actionBar: 72, // bottom ride controls
   header: 64, // ride header
   codeBox: { w: 48, h: 64 },
+  navBanner: 96, // turn banner main row (21 §8)
+  navThenRow: 40, // "Then" row under it
+  maneuverIcon: 48, // banner arrow
 } as const;
 
 /** Animation durations in ms (13 §0.1). Easing: Easing.out(Easing.cubic); no spring or bounce on ride screens. */

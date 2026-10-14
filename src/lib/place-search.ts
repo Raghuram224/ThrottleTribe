@@ -1,5 +1,7 @@
 // Photon (OpenStreetMap, free, keyless) place search for the shared next stop (docs/design/19).
 // Pure parsing/sorting/cache helpers plus one fetch wrapper; no React.
+import { fill, copy, spokenDistance } from '@/lib/copy';
+import { formatDistance } from '@/lib/format';
 import { haversineM, type LatLng } from '@/lib/geo';
 
 export type PlaceCategory = 'cafe' | 'fuel' | 'restaurant' | 'parking' | 'toilets' | 'other';
@@ -151,8 +153,9 @@ export interface SearchRequest {
 export function buildPhotonUrl(req: SearchRequest): string {
   const params = new URLSearchParams({ q: req.query.trim(), limit: String(SEARCH_LIMIT), lang: 'en' });
   if (req.me) {
-    params.set('lat', req.me.lat.toFixed(5));
-    params.set('lon', req.me.lng.toFixed(5));
+    // Rounded to 2 decimals (about 1 km): enough to bias results, not a precise location (21 §5.6).
+    params.set('lat', req.me.lat.toFixed(2));
+    params.set('lon', req.me.lng.toFixed(2));
   }
   // URLSearchParams would encode the colon of the tag; Photon accepts both but keep it readable.
   if (req.osmTag) params.set('osm_tag', req.osmTag);
@@ -212,4 +215,15 @@ export async function searchPlaces(req: SearchRequest, signal?: AbortSignal): Pr
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
   }
+}
+
+/**
+ * Screen-reader label for a place row: "Mysuru Palace, Sayyaji Rao Rd, 118 kilometres away". Parts that are
+ * missing (no address, no position) are left out.
+ */
+export function placeRowA11y(name: string, address: string, distanceM: number | null): string {
+  if (distanceM == null) return address ? `${name}, ${address}` : name;
+  const away = spokenDistance(formatDistance(distanceM));
+  if (!address) return `${name}, ${away} away`;
+  return fill(copy['whereTo.a11yRow'], { name, address, distance: away });
 }

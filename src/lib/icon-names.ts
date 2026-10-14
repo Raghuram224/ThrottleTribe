@@ -87,8 +87,30 @@ export const ICON_GLYPHS = {
   // --- end full map ---
   // --- next stop (19 A) ---
   search: 'magnify',
+  alertCircle: 'alert-circle-outline',
   coffee: 'coffee',
   // --- end next stop ---
+  // --- solo navigation (21) ---
+  mapSearch: 'map-search-outline',
+  // Turn banner maneuvers (§3.4) and states (§2.7).
+  turnLeft: 'arrow-left-top-bold',
+  turnRight: 'arrow-right-top-bold',
+  slightLeft: 'arrow-top-left-thick',
+  slightRight: 'arrow-top-right-thick',
+  sharpLeft: 'arrow-left-bottom-bold',
+  sharpRight: 'arrow-right-bottom-bold',
+  straight: 'arrow-up-bold',
+  uturnLeft: 'arrow-u-left-top-bold',
+  uturnRight: 'arrow-u-right-top-bold',
+  merge: 'call-merge',
+  roundaboutCw: 'rotate-right',
+  roundaboutCcw: 'rotate-left',
+  reroute: 'refresh',
+  noGps: 'crosshairs-off',
+  voiceOn: 'volume-high',
+  voiceOff: 'volume-off',
+  navigation: 'navigation',
+  // --- end solo navigation ---
 } as const;
 
 export type IconName = keyof typeof ICON_GLYPHS;

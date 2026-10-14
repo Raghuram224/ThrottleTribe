@@ -9,9 +9,11 @@ import {
   type MemberRow,
   type PositionRow,
   type RideRow,
+  type StopInput,
 } from '@/lib/ride-api';
 import { syncCachedRide } from '@/lib/offline-cache';
 import { applyEventToProposals, derivePendingProposals, noticeForEvent, type PendingProposal, type StopNotice } from '@/lib/stop-proposals';
+import { withStop } from '@/lib/stop-ui';
 import { deriveRiderStatus, type RiderStatusResult } from '@/lib/rider-status';
 
 export type ChannelStatus = 'idle' | 'connecting' | 'subscribed' | 'closed' | 'error';
@@ -95,6 +97,8 @@ interface RideState {
   applyMember: (row: MemberRow) => void;
   applyRide: (row: RideRow) => void;
   applyEvent: (row: EventRow) => void;
+  /** The leader's own stop just applied (propose_stop): show it now instead of waiting for realtime. */
+  applyOwnStop: (rideId: string, stop: StopInput) => void;
   setChannelStatus: (status: ChannelStatus) => void;
   setConnected: (userIds: Iterable<string>) => void;
   reset: () => void;
@@ -205,6 +209,12 @@ export const useRideStore = create<RideState>((set, get) => ({
       if (notice) patch.stopNotice = notice;
     }
     set(patch);
+  },
+
+  applyOwnStop: (rideId, stop) => {
+    const { ride, myUserId } = get();
+    if (!ride || ride.id !== rideId) return;
+    set({ ride: withStop(ride, stop, myUserId, new Date().toISOString()) });
   },
 
   setChannelStatus: (channelStatus) => set({ channelStatus }),

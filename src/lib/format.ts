@@ -53,3 +53,8 @@ export function formatElapsed(ms: number): string {
   const mm = totalMin % 60;
   return mm === 0 ? t('live.elapsedH', { h: totalH }) : t('live.elapsedHm', { h: totalH, mm });
 }
+
+/** Local clock time for "Arrive about 11:42": the device's own 12 / 24 hour style. */
+export function formatClockTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}

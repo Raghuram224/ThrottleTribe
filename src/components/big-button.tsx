@@ -24,6 +24,8 @@ interface BigButtonProps {
   trailingIcon?: IconName;
   /** Ignore the style's pill shape (SOS surfaces look identical in every style, 17 §0.2). */
   fixedShape?: boolean;
+  /** Screen-reader label when it should say more than the visible label ("Start riding to Mysuru Palace"). */
+  accessibilityLabel?: string;
 }
 
 export function BigButton({
@@ -37,6 +39,7 @@ export function BigButton({
   leading,
   trailingIcon,
   fixedShape,
+  accessibilityLabel,
 }: BigButtonProps) {
   const { colors, scheme, traits } = useTheme();
   const inactive = disabled || loading;
@@ -62,7 +65,7 @@ export function BigButton({
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={() => {

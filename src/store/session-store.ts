@@ -6,7 +6,9 @@ import { hasStoredSession, isDefinitiveAuthError } from '@/lib/auth-state';
 import { clearOfflineCache, readCachedProfile } from '@/lib/offline-cache';
 import { createRefreshRetrier } from '@/lib/refresh-retrier';
 import { getMyProfile, toRideError, type ProfileRow } from '@/lib/ride-api';
+import { endStrandedRides } from '@/lib/stranded-rides';
 import { supabase } from '@/lib/supabase';
+import { useRecentsStore } from '@/store/recents-store';
 import { useRideStore } from '@/store/ride-store';
 
 interface SessionState {
@@ -63,6 +65,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // the retrier backs off; it runs again on the next trigger (online, TOKEN_REFRESHED, SIGNED_IN).
     const retrier = createRefreshRetrier({
       run: async () => {
+        // Rides whose set-up failed while offline are ended now (never throws; see stranded-rides).
+        await endStrandedRides();
         await get().refreshProfile();
         const rideId = useRideStore.getState().rideId;
         if (rideId) await useRideStore.getState().load(rideId);
@@ -87,7 +91,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) set({ session, signedIn: true, authRejected: false });
       // A null session without SIGNED_OUT is just a failed refresh: stay signed in.
-      else if (event === 'SIGNED_OUT') set({ session: null, signedIn: false });
+      else if (event === 'SIGNED_OUT') {
+        // Session expiry signs out without going through clearProfile: recent places are personal (21 §2.2).
+        useRecentsStore.getState().clear();
+        set({ session: null, signedIn: false });
+      }
       // The token is usable now: this is the moment a failed reload can succeed.
       if (session && (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN')) kick();
     });
@@ -124,6 +132,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
   clearProfile: () => {
     clearOfflineCache();
+    // Recent places are personal to the signed-in rider and live on this phone only (21 §2.2).
+    useRecentsStore.getState().clear();
     set({ profile: null, profileLoaded: false });
   },
 }));

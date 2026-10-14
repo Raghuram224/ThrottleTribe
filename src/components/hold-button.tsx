@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, type Insets, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
 import { copy } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
-import { family, radius, size, space, timing } from '@/theme/tokens';
+import { family, font, radius, size, space, timing } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
 interface HoldButtonProps {
@@ -31,6 +31,18 @@ interface HoldButtonProps {
   /** Circle of this diameter (floating SOS in full map): icon over `shortLabel`, same hold behaviour. */
   round?: number;
   shortLabel?: string;
+  /** Finger down / up (also on completion and unmount), so the screen can hold off layout changes mid-hold. */
+  onHoldChange?: (holding: boolean) => void;
+}
+
+/**
+ * How far (dp) a held finger may drift outside the button before the hold counts as a slide-off and rewinds.
+ * RN Pressability measures the press rect once, at press-in, so a bar re-layout under a held finger (a rider joins,
+ * Message fades in) never cancels the hold by itself. This only governs deliberate or accidental finger drift.
+ */
+function retentionFor(tone: 'send' | 'cancel', round: number | undefined): Insets {
+  // TODO(human): choose the drift allowance per case. Placeholder below is the engineer's draft for every case.
+  return { top: 40, bottom: 40, left: 120, right: 40 };
 }
 
 /**
@@ -52,6 +64,7 @@ export function HoldButton({
   height,
   round,
   shortLabel,
+  onHoldChange,
 }: HoldButtonProps) {
   const { colors } = useTheme();
   const [progress] = useState(() => new Animated.Value(0));
@@ -66,7 +79,18 @@ export function HoldButton({
     if (midHaptic.current) clearTimeout(midHaptic.current);
     midHaptic.current = null;
   };
-  useEffect(() => clearTimer, []);
+  const holdChange = useRef(onHoldChange);
+  useEffect(() => {
+    holdChange.current = onHoldChange;
+  });
+  useEffect(
+    () => () => {
+      clearTimer();
+      // Unmounted mid-hold: the release will never reach us, so clear the flag here.
+      if (holdingRef.current) holdChange.current?.(false);
+    },
+    [],
+  );
 
   const send = tone === 'send';
   // The cancel tone sits on bg: red text and border use sosOnBg so they pass contrast in dark (13 §11).
@@ -78,6 +102,7 @@ export function HoldButton({
     if (disabled) return;
     holdingRef.current = true;
     setHolding(true);
+    holdChange.current?.(true);
     haptic('light', { safety: true });
     midHaptic.current = setTimeout(() => {
       haptic('medium', { safety: true });
@@ -94,6 +119,7 @@ export function HoldButton({
       holdingRef.current = false;
       clearTimer();
       setHolding(false);
+      holdChange.current?.(false);
       haptic('error', { safety: true });
       onComplete();
       progress.setValue(0);
@@ -105,6 +131,7 @@ export function HoldButton({
     holdingRef.current = false;
     clearTimer();
     setHolding(false);
+    holdChange.current?.(false);
     // stop() makes the running animation's callback report finished=false.
     progress.stopAnimation();
     Animated.timing(progress, { toValue: 0, duration: 200, useNativeDriver: false }).start();
@@ -121,6 +148,7 @@ export function HoldButton({
       disabled={disabled}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
+      pressRetentionOffset={retentionFor(tone, round)}
       style={[
         styles.button,
         { backgroundColor: bg, borderColor: send ? 'transparent' : colors.sosOnBg },
@@ -175,7 +203,7 @@ const styles = StyleSheet.create({
   clip: { overflow: 'hidden', borderRadius: radius.lg },
   fill: { height: '100%' },
   content: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  label: { fontSize: 19, fontFamily: family.bold },
+  label: { fontSize: font.lg, fontFamily: family.bold },
   roundContent: { alignItems: 'center', justifyContent: 'center' },
   shortLabel: { fontSize: 11, lineHeight: 13, fontFamily: family.bold },
 });

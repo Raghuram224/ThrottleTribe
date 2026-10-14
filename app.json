@@ -8,7 +8,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.throttletribe.app"
+      "bundleIdentifier": "com.throttletribe.app",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "audio"
+        ]
+      }
     },
     "android": {
       "package": "com.throttletribe.app",
@@ -27,9 +33,11 @@
         "android.permission.WRITE_CONTACTS",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.RECORD_AUDIO"
       ],
-      "versionCode": 1
+      "versionCode": 1,
+      "allowBackup": false
     },
     "plugins": [
       "expo-router",
@@ -74,7 +82,16 @@
           "contactsPermission": "Throttle Tribe uses contacts only when you choose someone to invite or add as an emergency contact."
         }
       ],
-      "./plugins/with-release-signing"
+      "./plugins/with-release-signing",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ]
     ],
     "scheme": "throttletribe",
     "experiments": {

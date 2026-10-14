@@ -18,17 +18,15 @@ import { useContactCount } from '@/hooks/use-contact-count';
 import { useHomeConvoy } from '@/hooks/use-home-convoy';
 import { useNetOffline } from '@/hooks/use-connection';
 import { useNow } from '@/hooks/use-now';
-import { copy, errorText, t } from '@/lib/copy';
+import { copy, t } from '@/lib/copy';
 import { formatElapsed } from '@/lib/format';
 import { greetingCopyKey, isGuest, pickNudge, profilePill, profileTodoCount } from '@/lib/home';
 import { href } from '@/lib/nav';
 import { displayRideName, firstName } from '@/lib/names';
 import { monthStats } from '@/lib/recent-rides';
 import { readRideStats } from '@/lib/ride-stats';
-import { getMyOpenRide, toRideError, type OpenRide } from '@/lib/ride-api';
+import { getMyOpenRide, type OpenRide } from '@/lib/ride-api';
 import { rideHref } from '@/lib/routing';
-import { startSoloRide } from '@/lib/solo-ride';
-import { usePrefsStore } from '@/store/prefs-store';
 import { useNudgeStore } from '@/store/nudge-store';
 import { useSessionStore } from '@/store/session-store';
 import { showToast } from '@/store/toast-store';
@@ -92,21 +90,6 @@ export default function Home() {
   const onStart = () => {
     if (!open) return router.push(href('/new-ride'));
     setSheet(open.member.role === 'leader' ? 'leaderBusy' : 'switch');
-  };
-
-  // Solo (19 C): create + start in one go, then straight to live (or the permissions explainer first).
-  const thresholdS = usePrefsStore((s) => s.stopThresholdS);
-  const [soloBusy, setSoloBusy] = useState(false);
-  const onSolo = async () => {
-    if (soloBusy) return;
-    setSoloBusy(true);
-    try {
-      router.push(href(await startSoloRide(thresholdS)));
-    } catch (e) {
-      showToast(errorText(toRideError(e).code));
-    } finally {
-      setSoloBusy(false);
-    }
   };
 
   const goToOpenRide = () => {
@@ -226,12 +209,12 @@ export default function Home() {
       )}
 
       {hasRide ? null : (
+        // Solo starts at Where to? (21 §2.1): pick a place, or "Just ride" from there.
         <ActionCard
-          icon="bike"
-          title={copy['home.soloTitle']}
-          sub={copy['home.soloSub']}
-          disabled={soloBusy}
-          onPress={() => void onSolo()}
+          icon="mapSearch"
+          title={copy['home.whereToTitle']}
+          sub={copy['home.whereToSub']}
+          onPress={() => router.push(href('/where-to'))}
         />
       )}
 

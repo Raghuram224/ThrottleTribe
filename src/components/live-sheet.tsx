@@ -15,8 +15,10 @@ import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
 import {
+  isLastSnap,
   nextSnap,
   settleSnap,
+  SOLO_TOP,
   SHEET_HEADER_H,
   stepSnap,
   type SheetSnap,
@@ -34,9 +36,13 @@ interface LiveSheetProps {
    * follow it; this component animates it.
    */
   visible: SharedValue<number>;
+  /** The snaps the sheet can rest at (`snapHeights`); the chevron and the gestures walk only these. */
+  snaps: readonly SheetSnap[];
+  /** `solo`: a fixed panel (stop card + children), no grabber, summary, chevron or drag (20 C4). */
+  variant?: 'group' | 'solo';
   /** "5 riders · 1 SOS · 1 stopped" */
   summary: string;
-  /** Next-stop card (56 dp, `STOP_CARD_H`) above the summary line; `heights` must account for it. */
+  /** Next-stop card (64 dp, `STOP_CARD_H`) above the summary line; `heights` must account for it. */
   stopCard?: ReactNode;
   /** Alert rows kept in view while collapsed (SOS / stopped / offline, max 2). */
   pinned: ReactNode;
@@ -51,12 +57,23 @@ const VALUE_KEY = {
 } as const;
 
 /**
- * Draggable rider panel over the full-screen map (18 §B). The sheet is `heights.expanded` tall and is
+ * Draggable rider panel over the full-screen map (18 §B, 20 C6). The sheet is at least `heights.expanded` tall (content-driven, capped at 85 %; it follows `visible` while that shrinks) and is
  * translated down so only `visible` dp show. Only the header (grabber, summary, pinned alerts) takes the
  * drag, so the rider list keeps its own scrolling. Snap by dragging, flinging, tapping the header or the
  * chevron, or with the screen-reader increment / decrement actions. Reduce motion snaps without animation.
  */
-export function LiveSheet({ snap, onSnapChange, heights, visible, summary, stopCard, pinned, children }: LiveSheetProps) {
+export function LiveSheet({
+  snap,
+  onSnapChange,
+  heights,
+  visible,
+  snaps,
+  variant = 'group',
+  summary,
+  stopCard,
+  pinned,
+  children,
+}: LiveSheetProps) {
   const { colors, scheme } = useTheme();
   const reduceMotion = useReduceMotion();
   const startH = useSharedValue(0);
@@ -78,7 +95,7 @@ export function LiveSheet({ snap, onSnapChange, heights, visible, summary, stopC
 
   const commit = useCallback(
     (h: number, velocityY: number) => {
-      const next = settleSnap({ visibleH: h, velocityY, heights, from: snap });
+      const next = settleSnap({ visibleH: h, velocityY, heights, from: snap, snaps });
       if (next === snap) {
         animateTo(heights[snap]);
         return;
@@ -86,7 +103,7 @@ export function LiveSheet({ snap, onSnapChange, heights, visible, summary, stopC
       haptic('select');
       onSnapChange(next);
     },
-    [heights, snap, animateTo, onSnapChange],
+    [heights, snap, snaps, animateTo, onSnapChange],
   );
 
   const pan = useMemo(
@@ -106,25 +123,46 @@ export function LiveSheet({ snap, onSnapChange, heights, visible, summary, stopC
     [startH, visible, minH, maxH, commit],
   );
 
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: maxH - visible.get() }] }));
+  // Height and offset come from one worklet: `maxH` jumps in a frame while `visible` eases over `motion.layout`,
+  // so a static height would let the sheet lift off the action bar (translateY < 0) when content shrinks.
+  const sheetStyle = useAnimatedStyle(() => {
+    const v = visible.get();
+    const h = Math.max(maxH, v);
+    return { height: h, transform: [{ translateY: h - v }] };
+  });
 
   const cycle = () => {
     haptic('select');
-    onSnapChange(nextSnap(snap));
+    onSnapChange(nextSnap(snap, snaps));
   };
   const onA11yAction = (e: AccessibilityActionEvent) => {
-    if (e.nativeEvent.actionName === 'increment') onSnapChange(stepSnap(snap, 1));
-    else if (e.nativeEvent.actionName === 'decrement') onSnapChange(stepSnap(snap, -1));
+    if (e.nativeEvent.actionName === 'increment') onSnapChange(stepSnap(snap, 1, snaps));
+    else if (e.nativeEvent.actionName === 'decrement') onSnapChange(stepSnap(snap, -1, snaps));
   };
 
   const collapsed = snap === 'collapsed';
-  const expanded = snap === 'expanded';
+  const atLast = isLastSnap(snap, snaps);
+
+  if (variant === 'solo') {
+    return (
+      <Reanimated.View
+        style={[
+          styles.sheet,
+          { backgroundColor: colors.surfaceRaised, paddingTop: SOLO_TOP },
+          elevate('e3', scheme),
+          sheetStyle,
+        ]}>
+        {stopCard}
+        {children}
+      </Reanimated.View>
+    );
+  }
 
   return (
     <Reanimated.View
       style={[
         styles.sheet,
-        { height: maxH, backgroundColor: colors.surfaceRaised },
+        { backgroundColor: colors.surfaceRaised },
         elevate('e3', scheme),
         sheetStyle,
       ]}>
@@ -153,10 +191,10 @@ export function LiveSheet({ snap, onSnapChange, heights, visible, summary, stopC
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={expanded ? copy['live.sheetCollapseA11y'] : copy['live.sheetExpandA11y']}
+              accessibilityLabel={atLast ? copy['live.sheetCollapseA11y'] : copy['live.sheetExpandA11y']}
               onPress={cycle}
               style={styles.chevron}>
-              <Icon name={expanded ? 'chevronDown' : 'chevronUp'} color={colors.text} size={28} />
+              <Icon name={atLast ? 'chevronDown' : 'chevronUp'} color={colors.text} size={28} />
             </Pressable>
           </View>
           {collapsed ? pinned : null}

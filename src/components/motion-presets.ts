@@ -45,3 +45,14 @@ export const notifEnter = enabled
       .delay(500)
       .reduceMotion(ReduceMotion.System)
   : undefined;
+
+/** Turn banner (21 §2.5): 150 ms fade plus an 8 dp slide down on entry, fade out on exit; instant under Reduce Motion. */
+export const bannerEnter = enabled
+  ? new Keyframe({
+      0: { opacity: 0, transform: [{ translateY: -8 }] },
+      100: { opacity: 1, transform: [{ translateY: 0 }] },
+    })
+      .duration(motion.fast)
+      .reduceMotion(ReduceMotion.System)
+  : undefined;
+export const bannerExit = enabled ? FadeOut.duration(motion.fast).reduceMotion(ReduceMotion.System) : undefined;

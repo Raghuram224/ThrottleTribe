@@ -1,5 +1,5 @@
 import type { PendingProposal } from '../stop-proposals';
-import { approvalCardModel, categoryGlyph, navLineFor, rideStop, suggestedByName } from '../stop-ui';
+import { approvalCardModel, categoryGlyph, navLineFor, rideStop, suggestedByName, withStop } from '../stop-ui';
 
 const prop = (id: number, userId: string, name = 'Cafe', kind: 'break' | 'destination' = 'break'): PendingProposal => ({
   id,
@@ -89,5 +89,20 @@ describe('navLineFor', () => {
   });
   it('is null with nothing to draw', () => {
     expect(navLineFor({ route: null, straightLine: [] })).toBeNull();
+  });
+});
+
+describe('withStop', () => {
+  const ride = { id: 'r', stop_name: null, stop_address: null, stop_lat: null, stop_lng: null, stop_kind: null, stop_set_by: null, stop_set_at: null };
+  it('sets every stop column together and reads back through rideStop, leaving the input alone', () => {
+    const next = withStop(ride, { name: 'Palace', address: 'Mysuru', lat: 12.3, lng: 76.6, kind: 'destination' }, 'me', '2026-10-14T10:00:00Z');
+    expect(rideStop(next)).toEqual({ name: 'Palace', address: 'Mysuru', lat: 12.3, lng: 76.6, kind: 'destination', setBy: 'me' });
+    expect(next.stop_set_at).toBe('2026-10-14T10:00:00Z');
+    expect(next.id).toBe('r');
+    expect(ride.stop_name).toBeNull();
+  });
+  it('replaces an earlier stop', () => {
+    const first = withStop(ride, { name: 'A', lat: 1, lng: 2, kind: 'break' }, 'me', 't1');
+    expect(rideStop(withStop(first, { name: 'B', lat: 3, lng: 4, kind: 'break' }, 'me', 't2'))?.name).toBe('B');
   });
 });

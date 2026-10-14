@@ -23,6 +23,15 @@ export const EVENTS = [
   'alert.shown', // kind
   'map.fit_all',
   'map.recentre',
+  'nav.started', // from: where_to | in_ride
+  'nav.arrived',
+  'nav.rerouted',
+  'nav.route_failed', // code: no_route | failed
+  'nav.expressways_toggled', // allowed: boolean
+  'nav.exclude_rejected', // the router refused exclude=motorway; no props
+  'nav.voice_muted', // muted: boolean (true = muted)
+  'nav.voice_skipped', // reason: session (the audio session could not start)
+  'nav.fix_latency', // n, avg_ms, max_ms, max_batch, app_state: fix time vs engine receipt, per minute of navigation
   'error.shown',
 ] as const;
 

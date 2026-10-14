@@ -1,7 +1,8 @@
-// Pure model for the live rider bottom sheet: snap heights, fling settling, the collapsed summary line
+// Pure model for the live rider bottom sheet: content-driven snap heights, fling settling, the collapsed summary line
 // and which riders stay pinned while it is collapsed. No React.
 import { copy, plural, t } from '@/lib/copy';
-import type { LiveItem, RiderItem } from '@/lib/live-list';
+import { itemHeight, ROW_HEIGHTS, type LiveItem, type RiderItem } from '@/lib/live-list';
+import { size, space, touchTarget } from '@/theme/tokens';
 
 export type SheetSnap = 'collapsed' | 'half' | 'expanded';
 export const SNAP_ORDER: readonly SheetSnap[] = ['collapsed', 'half', 'expanded'];
@@ -12,9 +13,12 @@ export function parseSnap(value: unknown): SheetSnap {
 
 /** Grabber zone (16) + summary row (56). */
 export const SHEET_HEADER_H = 72;
-/** Next-stop card (19 A): a 56 dp row above the summary line, in every snap, only while a stop is set. */
-export const STOP_CARD_H = 56;
+/** Next-stop card (20 C5): a 64 dp info row above the summary line, in every snap, only while a stop is set. */
+export const STOP_CARD_H = size.sheetInfoRow;
+/** Solo panel (20 C4): 8 dp under the radius-24 corners, then the optional stop card, then the 64 invite row. */
+export const SOLO_TOP = space.sm;
 const PINNED_ROW_H = 72;
+const SUMMARY_ROW_H = 56;
 /** At most this many alert rows stay visible while collapsed; the summary line counts the rest. */
 export const MAX_PINNED = 2;
 const HALF_FRACTION = 0.45;
@@ -30,28 +34,87 @@ export function peekHeight(pinnedCount: number, hasStopCard = false): number {
   return headerHeight(hasStopCard) + Math.min(MAX_PINNED, Math.max(0, pinnedCount)) * PINNED_ROW_H;
 }
 
-/** Visible sheet height at each snap, in dp. Strictly increasing so every snap is distinct. */
-export function snapHeights(areaH: number, pinnedCount: number, hasStopCard = false): Record<SheetSnap, number> {
-  const collapsed = peekHeight(pinnedCount, hasStopCard);
-  const half = Math.max(Math.round(areaH * HALF_FRACTION), collapsed + PINNED_ROW_H);
-  const expanded = Math.max(Math.round(areaH * EXPANDED_FRACTION), half + PINNED_ROW_H);
-  return { collapsed, half, expanded };
+export interface SheetModel {
+  /** Visible height at each snap, in dp. `expanded` equals `half` when it is not an available snap. */
+  heights: Record<SheetSnap, number>;
+  /** The snaps the sheet can rest at, smallest first. */
+  snaps: SheetSnap[];
 }
 
-/** Handle tap / chevron: collapsed -> half -> expanded -> collapsed. */
-export function nextSnap(current: SheetSnap): SheetSnap {
-  return SNAP_ORDER[(SNAP_ORDER.indexOf(current) + 1) % SNAP_ORDER.length];
+/**
+ * Content-driven snap heights (20 C6). `listContentH` is the height of every list row (pinned alerts
+ * included) without any bottom spacer. Half is 45 % of the area but never taller than the content;
+ * expanded is the content, capped at 85 %. When expanded is less than a rider row (72) above half there is no third snap.
+ */
+export function snapHeights(areaH: number, pinnedCount: number, hasStopCard: boolean, listContentH: number): SheetModel {
+  const fit = headerHeight(hasStopCard) + Math.max(0, listContentH) + space.sm;
+  const collapsed = peekHeight(pinnedCount, hasStopCard);
+  const half = Math.max(collapsed + SUMMARY_ROW_H, Math.min(Math.round(HALF_FRACTION * areaH), fit));
+  const expanded = Math.min(Math.round(EXPANDED_FRACTION * areaH), fit);
+  // A third snap less than one rider row above half is a stop nobody can tell apart: two snaps, at the taller height.
+  if (expanded - half >= ROW_HEIGHTS.rider) {
+    return { heights: { collapsed, half, expanded }, snaps: ['collapsed', 'half', 'expanded'] };
+  }
+  const only = Math.max(half, expanded);
+  return { heights: { collapsed, half: only, expanded: only }, snaps: ['collapsed', 'half'] };
+}
+
+/**
+ * Arrival panel body under the arrived card (21 §2.8): 12 + Pick next destination 56 + 12 + End ride 56 + 8.
+ * With the card (64) and the 8 dp top that is 216.
+ */
+export const ARRIVAL_ACTIONS_H = space.md + touchTarget + space.md + touchTarget + space.sm;
+export const ARRIVAL_PANEL_H = SOLO_TOP + STOP_CARD_H + ARRIVAL_ACTIONS_H;
+
+/**
+ * Solo panel: one fixed height at every snap, so overlay shift and camera insets need no special case.
+ * A failed reload adds the 64 dp load-error row above the invite row. `arrived` swaps the invite row for
+ * the two arrival buttons (216 dp, the arrived card included).
+ */
+export function soloSheet(hasStopCard: boolean, hasError = false, arrived = false): SheetModel {
+  const err = hasError ? size.sheetInfoRow : 0;
+  const h = arrived
+    ? ARRIVAL_PANEL_H + err
+    : SOLO_TOP + (hasStopCard ? STOP_CARD_H : 0) + err + size.sheetInfoRow;
+  return { heights: { collapsed: h, half: h, expanded: h }, snaps: ['half'] };
+}
+
+/** A stored snap that is not available (a persisted `expanded` on a short list) shows as `half`; the pref is left alone. */
+export function resolveSnap(snap: SheetSnap, snaps: readonly SheetSnap[]): SheetSnap {
+  return snaps.includes(snap) ? snap : snaps.includes('half') ? 'half' : snaps[snaps.length - 1];
+}
+
+/** True at the largest available snap (the chevron then points down and a tap collapses). */
+export function isLastSnap(snap: SheetSnap, snaps: readonly SheetSnap[]): boolean {
+  return snap === snaps[snaps.length - 1];
+}
+
+/** Height of the list rows (no spacer): rows, the load-error row, or three skeleton rows while loading. */
+export const SKELETON_ROW_H = ROW_HEIGHTS.rider + space.sm;
+export function listContentHeight(args: {
+  items: LiveItem[];
+  loaded: boolean;
+  loadError: boolean;
+}): number {
+  const err = args.loadError ? size.sheetInfoRow : 0;
+  if (!args.loaded) return err + 3 * SKELETON_ROW_H;
+  return err + args.items.reduce((sum, i) => sum + itemHeight(i), 0);
+}
+
+/** Handle tap / chevron: walks the available snaps and wraps to the first. */
+export function nextSnap(current: SheetSnap, snaps: readonly SheetSnap[] = SNAP_ORDER): SheetSnap {
+  return snaps[(snaps.indexOf(current) + 1) % snaps.length];
 }
 
 /** Screen-reader step: -1 = smaller, +1 = larger. Stays put at the ends. */
-export function stepSnap(current: SheetSnap, direction: 1 | -1): SheetSnap {
-  const i = SNAP_ORDER.indexOf(current) + direction;
-  return SNAP_ORDER[Math.min(SNAP_ORDER.length - 1, Math.max(0, i))];
+export function stepSnap(current: SheetSnap, direction: 1 | -1, snaps: readonly SheetSnap[] = SNAP_ORDER): SheetSnap {
+  const i = snaps.indexOf(current) + direction;
+  return snaps[Math.min(snaps.length - 1, Math.max(0, i))];
 }
 
-function nearestSnap(visibleH: number, heights: Record<SheetSnap, number>): SheetSnap {
-  let best: SheetSnap = 'collapsed';
-  for (const s of SNAP_ORDER) {
+function nearestSnap(visibleH: number, heights: Record<SheetSnap, number>, snaps: readonly SheetSnap[]): SheetSnap {
+  let best: SheetSnap = snaps[0];
+  for (const s of snaps) {
     if (Math.abs(heights[s] - visibleH) < Math.abs(heights[best] - visibleH)) best = s;
   }
   return best;
@@ -72,17 +135,19 @@ export function settleSnap(args: {
   velocityY: number;
   heights: Record<SheetSnap, number>;
   from: SheetSnap;
+  /** Available snaps; defaults to all three. */
+  snaps?: readonly SheetSnap[];
 }): SheetSnap {
-  const { visibleH, velocityY, heights, from } = args;
+  const { visibleH, velocityY, heights, from, snaps = SNAP_ORDER } = args;
   const projected = visibleH - velocityY * PROJECT_S;
-  let target = nearestSnap(projected, heights);
+  let target = nearestSnap(projected, heights, snaps);
   if (Math.abs(velocityY) >= FLING_VELOCITY) {
     const dir = velocityY < 0 ? 1 : -1;
-    const fromIdx = SNAP_ORDER.indexOf(from);
-    const targetIdx = SNAP_ORDER.indexOf(target);
+    const fromIdx = snaps.indexOf(from);
+    const targetIdx = snaps.indexOf(target);
     // A fling must not end up further back than where the drag started.
     if ((dir === 1 && targetIdx <= fromIdx) || (dir === -1 && targetIdx >= fromIdx)) {
-      target = stepSnap(from, dir);
+      target = stepSnap(from, dir, snaps);
     }
   }
   return target;

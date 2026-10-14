@@ -1,57 +1,61 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 import { AppText } from '@/components/app-text';
-import { AppTextInput } from '@/components/app-text-input';
 import { BigButton } from '@/components/big-button';
-import { ErrorText } from '@/components/error-text';
-import { Icon } from '@/components/icon';
-import { Screen } from '@/components/screen';
+import { PlaceSearchView } from '@/components/place-search-view';
+import { RecentPlacesSection } from '@/components/recent-places-section';
 import { Sheet } from '@/components/sheet';
 import { useAfterModalClose } from '@/hooks/use-after-modal';
-import { usePlaceSearch } from '@/hooks/use-place-search';
+import { useTypingLock } from '@/hooks/use-typing-lock';
 import { copy, errorText, t } from '@/lib/copy';
 import { formatDistance } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { panelVariant } from '@/lib/live-chrome';
 import { href } from '@/lib/nav';
 import { firstName } from '@/lib/names';
-import { SEARCH_CHIPS, type Place } from '@/lib/place-search';
+import type { Place } from '@/lib/place-search';
 import { proposeStop, toRideError, type StopKind } from '@/lib/ride-api';
-import { categoryGlyph } from '@/lib/stop-ui';
+import { STOP_ADDRESS_MAX, STOP_NAME_MAX, stopKindFor } from '@/lib/solo-nav';
+import { rideStop } from '@/lib/stop-ui';
+import { track } from '@/lib/telemetry';
 import { useLiveUiStore } from '@/store/live-ui-store';
+import { useRecentsStore } from '@/store/recents-store';
 import { useRideStore } from '@/store/ride-store';
 import { showToast } from '@/store/toast-store';
-import { family, font, radius, space, touchTarget } from '@/theme/tokens';
-import { useTheme } from '@/theme/use-theme';
-
-/** The RPC limits (19 A): name 1-80 characters, address up to 160. */
-const NAME_MAX = 80;
-const ADDRESS_MAX = 160;
+import { space } from '@/theme/tokens';
 
 /**
- * Stop search (19 A): full-screen route pushed from the live search pill. Typed text or a category
- * chip searches Photon; picking a result opens a sheet. The leader sets the stop at once, a rider
- * sends the leader a proposal. Either way it returns to the live screen.
+ * Stop search (19 A, 21 §2.10): full-screen route pushed from the live header search icon or from the
+ * arrival panel. Typed text or a category chip searches Photon; picking a result opens a sheet. In a group
+ * ride the leader sets the stop at once and a rider sends the leader a proposal; in a solo ride there is
+ * one button, "Go here". Either way it returns to the live screen. No typing while moving.
  */
 export default function StopSearch() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const rideId = id ?? '';
-  const { colors } = useTheme();
 
   const ride = useRideStore((s) => s.ride);
+  const loaded = useRideStore((s) => s.loaded);
   const members = useRideStore((s) => s.members);
   const positions = useRideStore((s) => s.positions);
   const myUserId = useRideStore((s) => s.myUserId);
   const isLeader = !!ride && !!myUserId && ride.leader_id === myUserId;
   const leaderName = ride ? members[ride.leader_id]?.name : undefined;
+  const activeCount = useMemo(() => Object.values(members).filter((m) => !m.leftAt).length, [members]);
+  // Solo "Go here" sets my own stop, so it needs me to be the leader. Alone but not the leader (the leader is
+  // gone): the group sheet, where I can only send the leader a proposal, instead of a button that proposes to nobody.
+  const solo = panelVariant(loaded, activeCount) === 'solo' && isLeader;
+  const currentStop = useMemo(() => rideStop(ride), [ride]);
 
   const myPos = myUserId ? positions[myUserId] : undefined;
   const myLat = myPos?.lat;
   const myLng = myPos?.lng;
   const me = useMemo(() => (myLat != null && myLng != null ? { lat: myLat, lng: myLng } : null), [myLat, myLng]);
+  const fixAt = myPos ? Date.parse(myPos.recordedAt) : NaN;
+  const locked = useTypingLock(myPos?.speedMps ?? null, Number.isNaN(fixAt) ? null : fixAt);
 
-  const { text, setText, chip, setChip, state, retry } = usePlaceSearch(me);
   const [picked, setPicked] = useState<Place | null>(null);
   const [sending, setSending] = useState<StopKind | null>(null);
   const afterSheet = useAfterModalClose();
@@ -65,19 +69,30 @@ export default function StopSearch() {
     if (!picked || sending) return;
     setSending(kind);
     try {
-      const result = await proposeStop(rideId, {
-        name: picked.name.slice(0, NAME_MAX),
-        address: picked.address.slice(0, ADDRESS_MAX),
+      const stop = {
+        name: picked.name.slice(0, STOP_NAME_MAX),
+        address: picked.address.slice(0, STOP_ADDRESS_MAX),
         lat: picked.lat,
         lng: picked.lng,
         kind,
-      });
+      };
+      const result = await proposeStop(rideId, stop);
       haptic('success');
+      // The new destination shows on the live screen at once; realtime later says the same.
+      if (result.applied) useRideStore.getState().applyOwnStop(rideId, stop);
+      if (solo && result.applied) {
+        useRecentsStore.getState().add(picked);
+        track('nav.started', { from: 'in_ride' });
+      }
       setPicked(null);
       // Android drops a screen change while the sheet is still closing: leave once it has gone.
       afterSheet.schedule(() => {
-        if (result.applied) useLiveUiStore.getState().focusStop();
-        else showToast(t('stop.toastSent', { name: firstName(leaderName ?? '') || 'the leader' }));
+        // A solo rider keeps following the road: the camera is not framed on the stop (21 decision 4).
+        if (result.applied) {
+          if (!solo) useLiveUiStore.getState().focusStop();
+        } else {
+          showToast(t('stop.toastSent', { name: firstName(leaderName ?? '') || 'the leader' }));
+        }
         goBack();
       });
     } catch (e) {
@@ -91,103 +106,15 @@ export default function StopSearch() {
     if (!sending) setPicked(null);
   };
 
-  const showClear = text.length > 0;
-  const typedTooShort = state.status === 'idle' && text.trim().length > 0;
-
   return (
-    <Screen padded={false} keyboardAvoiding footer={<Attribution />}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={copy['search.a11yBack']}
-          onPress={goBack}
-          style={styles.back}>
-          <Icon name="back" color={colors.text} size={28} />
-        </Pressable>
-        <View style={styles.inputWrap}>
-          <AppTextInput
-            autoFocus
-            autoCorrect={false}
-            returnKeyType="search"
-            value={text}
-            onChangeText={setText}
-            placeholder={copy['search.placeholder']}
-            accessibilityLabel={copy['search.placeholder']}
-            style={styles.input}
-          />
-          {showClear ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={copy['search.a11yClear']}
-              onPress={() => setText('')}
-              style={styles.clear}>
-              <Icon name="close" color={colors.textMuted} size={22} />
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chips} keyboardShouldPersistTaps="handled">
-        {SEARCH_CHIPS.map((c) => {
-          const on = chip === c.key;
-          return (
-            <Pressable
-              key={c.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              hitSlop={{ top: 4, bottom: 4 }}
-              onPress={() => {
-                haptic('select');
-                setChip(on ? null : c.key);
-              }}
-              style={[
-                styles.chip,
-                { backgroundColor: on ? colors.brandTint : colors.surface, borderColor: on ? colors.brandOnBg : 'transparent' },
-              ]}>
-              <Text allowFontScaling={false} style={styles.chipGlyph}>
-                {c.glyph}
-              </Text>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.chipLabel, { color: on ? colors.brandOnBg : colors.text }]}>
-                {copy[c.labelKey]}
-              </Text>
-              {on ? <Icon name="ready" color={colors.brandOnBg} size={16} /> : null}
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      <ScrollView style={styles.flex} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.results}>
-        {typedTooShort ? (
-          <AppText muted style={styles.note}>
-            {copy['search.hintMin']}
-          </AppText>
-        ) : null}
-        {state.status === 'loading' ? <ActivityIndicator color={colors.brandOnBg} style={styles.note} /> : null}
-        {state.status === 'error' ? (
-          <View style={styles.note}>
-            <ErrorText>{copy['search.error']}</ErrorText>
-            <BigButton label={copy['search.retry']} variant="secondary" onPress={retry} />
-          </View>
-        ) : null}
-        {state.status === 'results' && state.places.length === 0 ? (
-          <AppText muted style={styles.note}>
-            {copy['search.empty']}
-          </AppText>
-        ) : null}
-        {state.status === 'results'
-          ? state.places.map((p) => (
-              <PlaceRow
-                key={p.id}
-                place={p}
-                onPress={() => {
-                  haptic('select');
-                  setPicked(p);
-                }}
-              />
-            ))
-          : null}
-      </ScrollView>
-
+    <PlaceSearchView
+      me={me}
+      autoFocus
+      typingLocked={locked}
+      onBack={goBack}
+      backLabel={copy['search.a11yBack']}
+      emptyContent={<RecentPlacesSection me={me} onPick={setPicked} />}
+      onPick={setPicked}>
       <Sheet visible={picked !== null} onClose={closeSheet} onDismiss={afterSheet.onDismiss} hideClose>
         {picked ? (
           <>
@@ -200,106 +127,46 @@ export default function StopSearch() {
                 {t('search.away', { km: formatDistance(picked.distanceM) })}
               </AppText>
             ) : null}
-            <BigButton
-              label={isLeader ? copy['stop.leaderBreak'] : copy['stop.riderBreak']}
-              icon="coffee"
-              loading={sending === 'break'}
-              disabled={sending === 'destination'}
-              onPress={() => void submit('break')}
-            />
-            <BigButton
-              label={isLeader ? copy['stop.leaderDestination'] : copy['stop.riderDestination']}
-              icon="endRide"
-              variant="secondary"
-              loading={sending === 'destination'}
-              disabled={sending === 'break'}
-              onPress={() => void submit('destination')}
-            />
+            {solo ? (
+              <>
+                {currentStop ? (
+                  <AppText variant="caption" muted numberOfLines={2} style={styles.replaces}>
+                    {t('nav.replaces', { place: currentStop.name })}
+                  </AppText>
+                ) : null}
+                <BigButton
+                  label={copy['nav.goHere']}
+                  icon="navigate"
+                  loading={sending !== null}
+                  onPress={() => void submit(stopKindFor(picked.category))}
+                />
+              </>
+            ) : (
+              <>
+                <BigButton
+                  label={isLeader ? copy['stop.leaderBreak'] : copy['stop.riderBreak']}
+                  icon="coffee"
+                  loading={sending === 'break'}
+                  disabled={sending === 'destination'}
+                  onPress={() => void submit('break')}
+                />
+                <BigButton
+                  label={isLeader ? copy['stop.leaderDestination'] : copy['stop.riderDestination']}
+                  icon="endRide"
+                  variant="secondary"
+                  loading={sending === 'destination'}
+                  disabled={sending === 'break'}
+                  onPress={() => void submit('destination')}
+                />
+              </>
+            )}
           </>
         ) : null}
       </Sheet>
-    </Screen>
-  );
-}
-
-function PlaceRow({ place, onPress }: { place: Place; onPress: () => void }) {
-  const { colors } = useTheme();
-  const distance = place.distanceM != null ? formatDistance(place.distanceM) : null;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={[place.name, place.address, distance].filter(Boolean).join(', ')}
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? colors.surfacePressed : 'transparent', borderBottomColor: colors.border }]}>
-      <View style={[styles.glyphBox, { backgroundColor: colors.surface }]}>
-        <Text allowFontScaling={false} style={styles.glyph}>
-          {categoryGlyph(place.category)}
-        </Text>
-      </View>
-      <View style={styles.rowText}>
-        <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.name, { color: colors.text }]}>
-          {place.name}
-        </Text>
-        {place.address ? (
-          <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.address, { color: colors.textMuted }]}>
-            {place.address}
-          </Text>
-        ) : null}
-      </View>
-      {distance ? (
-        <Text maxFontSizeMultiplier={1.3} style={[styles.distance, { color: colors.textMuted }]}>
-          {distance}
-        </Text>
-      ) : null}
-    </Pressable>
-  );
-}
-
-function Attribution() {
-  const { colors } = useTheme();
-  return (
-    <Text maxFontSizeMultiplier={1.3} style={[styles.attribution, { color: colors.textSubtle }]}>
-      {copy['search.attribution']}
-    </Text>
+    </PlaceSearchView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingRight: space.lg },
-  back: { width: touchTarget, height: touchTarget, alignItems: 'center', justifyContent: 'center' },
-  inputWrap: { flex: 1, justifyContent: 'center' },
-  input: { paddingRight: touchTarget },
-  clear: { position: 'absolute', right: 0, width: touchTarget, height: touchTarget, alignItems: 'center', justifyContent: 'center' },
-  chipsScroll: { flexGrow: 0 },
-  chips: { gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md },
-  chip: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.md,
-    borderRadius: radius.pill,
-    borderWidth: 2,
-  },
-  chipGlyph: { fontSize: font.lg },
-  chipLabel: { fontSize: font.md, fontFamily: family.semibold },
-  results: { paddingBottom: space.lg },
-  note: { padding: space.lg, gap: space.md },
-  row: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  glyphBox: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  glyph: { fontSize: font.lg },
-  rowText: { flex: 1 },
-  name: { fontSize: font.md, lineHeight: 22, fontFamily: family.bold },
-  address: { fontSize: font.sm, lineHeight: 18, fontFamily: family.regular },
-  distance: { fontSize: font.sm, fontFamily: family.semibold },
-  attribution: { textAlign: 'center', fontSize: font.xs, fontFamily: family.regular, paddingVertical: space.sm },
+  replaces: { marginBottom: space.xs },
 });

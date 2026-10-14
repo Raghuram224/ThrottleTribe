@@ -1,9 +1,11 @@
 import {
   appendToTrail,
   bearingDeg,
+  buildPlainTrail,
   buildTrail,
   haversineM,
   projectOntoTrail,
+  projectOntoTrailWindow,
   relativePosition,
   type LatLng,
 } from '../geo';
@@ -205,5 +207,57 @@ describe('GPS jumps in the leader trail (ride 2 regression)', () => {
     const loop = buildTrail([pt(0), pt(500), pt(1000), pt(1000, 30), pt(500, 30), pt(60, 30)]);
     const p = projectOntoTrail(loop, pt(50, 10));
     expect(p.alongM).toBeGreaterThan(loop.totalM - 50);
+  });
+});
+
+describe('buildPlainTrail', () => {
+  it('keeps every point, including ones closer than 20 m and long legs', () => {
+    const t = buildPlainTrail([pt(0), pt(5), pt(10), pt(5000)]);
+    expect(t.points).toHaveLength(4);
+    expect(t.totalM).toBeCloseTo(5000, 0);
+    expect(t.cumulativeM[1]).toBeCloseTo(5, 1);
+  });
+  it('skips consecutive duplicates', () => {
+    expect(buildPlainTrail([pt(0), pt(0), pt(100)]).points).toHaveLength(2);
+  });
+  it('handles an empty or one-point route', () => {
+    expect(buildPlainTrail([]).totalM).toBe(0);
+    expect(buildPlainTrail([pt(1)]).points).toHaveLength(1);
+  });
+});
+
+describe('projectOntoTrailWindow', () => {
+  it('matches projectOntoTrail inside the window', () => {
+    const trail = buildPlainTrail(line);
+    const p = pt(900, 12);
+    const w = projectOntoTrailWindow(trail, p, 800, 1000);
+    const full = projectOntoTrail(trail, p);
+    expect(w.alongM).toBeCloseTo(full.alongM, 3);
+    expect(w.offTrailM).toBeCloseTo(full.offTrailM, 3);
+  });
+
+  it('ignores a closer stretch outside the window (a return carriageway)', () => {
+    // 2 km out, 30 m across, 2 km back: the point is 5 m from the return leg but 25 m from the outbound one.
+    const out = Array.from({ length: 41 }, (_, i) => pt(i * 50, 0));
+    const back = Array.from({ length: 41 }, (_, i) => pt(2000 - i * 50, 30));
+    const trail = buildPlainTrail([...out, ...back]);
+    const p = pt(1000, 25);
+    expect(projectOntoTrail(trail, p).alongM).toBeGreaterThan(2000);
+    const w = projectOntoTrailWindow(trail, p, 800, 1200);
+    expect(w.alongM).toBeCloseTo(1000, 0);
+    expect(w.offTrailM).toBeCloseTo(25, 0);
+  });
+
+  it('clamps to the window edge for a point beyond it, and is Infinity for an empty window', () => {
+    const trail = buildPlainTrail(line);
+    expect(projectOntoTrailWindow(trail, pt(1500), 0, 500).alongM).toBeCloseTo(500, 0);
+    expect(projectOntoTrailWindow(trail, pt(10), 5000, 6000).offTrailM).toBe(Infinity);
+  });
+
+  it('extends past the end of the trail only when the window reaches it', () => {
+    const trail = buildPlainTrail(line);
+    const p = projectOntoTrailWindow(trail, pt(2100, 3), 1800, 2500);
+    expect(p.alongM).toBeCloseTo(2100, 0);
+    expect(p.offTrailM).toBeCloseTo(3, 0);
   });
 });

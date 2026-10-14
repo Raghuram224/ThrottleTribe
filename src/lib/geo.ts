@@ -212,6 +212,142 @@ export function projectOntoTrail(trail: Trail, point: LatLng): TrailProjection {
   return best;
 }
 
+/**
+ * A trail through every point as given: no spacing filter and no jump rejection. Those exist for GPS
+ * breadcrumbs; a planned route's geometry is trusted (a long straight expressway leg must not be dropped).
+ * Consecutive duplicates are skipped.
+ */
+export function buildPlainTrail(points: readonly LatLng[]): Trail {
+  const out: LatLng[] = [];
+  const cumulativeM: number[] = [];
+  let total = 0;
+  for (const p of points) {
+    const last = out[out.length - 1];
+    if (last) {
+      const d = haversineM(last, p);
+      if (d <= 0) continue;
+      total += d;
+    }
+    out.push({ lat: p.lat, lng: p.lng });
+    cumulativeM.push(total);
+  }
+  return { points: out, cumulativeM, totalM: total };
+}
+
+/**
+ * `projectOntoTrail` restricted to the segments that overlap [fromM, toM] along the trail (21 §3.7). It stops a
+ * route that doubles back, or a flyover above a service road, from snapping me to the wrong stretch. No head
+ * heuristics: within a window there is no far-back segment to be confused with. `offTrailM` is Infinity when the
+ * window holds no segment.
+ */
+export function projectOntoTrailWindow(trail: Trail, point: LatLng, fromM: number, toM: number): TrailProjection {
+  const n = trail.points.length;
+  let best: TrailProjection = { alongM: 0, offTrailM: Infinity };
+  if (n === 0) return best;
+  if (n === 1) return { alongM: 0, offTrailM: haversineM(trail.points[0], point) };
+  let bestClampedDist = Infinity;
+  const mPerDegLat = (EARTH_RADIUS_M * Math.PI) / 180;
+  for (let i = 0; i < n - 1; i++) {
+    if (trail.cumulativeM[i + 1] < fromM) continue;
+    if (trail.cumulativeM[i] > toM) break;
+    const a = trail.points[i];
+    const b = trail.points[i + 1];
+    const mPerDegLng = mPerDegLat * Math.cos(toRad(a.lat));
+    const bx = (b.lng - a.lng) * mPerDegLng;
+    const by = (b.lat - a.lat) * mPerDegLat;
+    const px = (point.lng - a.lng) * mPerDegLng;
+    const py = (point.lat - a.lat) * mPerDegLat;
+    const segLen = Math.hypot(bx, by);
+    if (segLen === 0) continue;
+    const rawT = (px * bx + py * by) / (segLen * segLen);
+    const isLast = i === n - 2;
+    const t = Math.min(isLast ? Infinity : 1, Math.max(0, rawT));
+    const clampedT = Math.min(1, Math.max(0, rawT));
+    const clampedDist = Math.hypot(px - clampedT * bx, py - clampedT * by);
+    if (clampedDist < bestClampedDist) {
+      bestClampedDist = clampedDist;
+      best = {
+        alongM: trail.cumulativeM[i] + t * segLen,
+        offTrailM: t > 1 ? Math.abs(px * by - py * bx) / segLen : clampedDist,
+      };
+    }
+  }
+  return best;
+}
+
+export interface TrailMatch {
+  alongM: number;
+  offTrailM: number;
+  /** Direction of travel along the matched segment (0..360, clockwise from north). */
+  headingDeg: number;
+}
+
+/**
+ * Every distinct stretch of the trail near `point`, for the segments overlapping [fromM, toM] (21 §3.7): the best
+ * match and any other stretch that is no more than `marginM` further away, one entry per stretch (consecutive
+ * segments are one stretch, represented by its closest segment). A divided road gives two entries, one per
+ * carriageway, so the caller can choose by continuity and heading instead of by a few metres of GPS jitter.
+ * Empty when no segment is in range.
+ */
+export function trailMatches(
+  trail: Trail,
+  point: LatLng,
+  fromM = -Infinity,
+  toM = Infinity,
+  marginM = 20,
+): TrailMatch[] {
+  const n = trail.points.length;
+  if (n === 0) return [];
+  if (n === 1) return [{ alongM: 0, offTrailM: haversineM(trail.points[0], point), headingDeg: 0 }];
+  const mPerDegLat = (EARTH_RADIUS_M * Math.PI) / 180;
+  const kept: { i: number; sel: number; m: TrailMatch }[] = [];
+  let bestSel = Infinity;
+  for (let i = 0; i < n - 1; i++) {
+    if (trail.cumulativeM[i + 1] < fromM) continue;
+    if (trail.cumulativeM[i] > toM) break;
+    const a = trail.points[i];
+    const b = trail.points[i + 1];
+    const mPerDegLng = mPerDegLat * Math.cos(toRad(a.lat));
+    const bx = (b.lng - a.lng) * mPerDegLng;
+    const by = (b.lat - a.lat) * mPerDegLat;
+    const px = (point.lng - a.lng) * mPerDegLng;
+    const py = (point.lat - a.lat) * mPerDegLat;
+    const segLen = Math.hypot(bx, by);
+    if (segLen === 0) continue;
+    const rawT = (px * bx + py * by) / (segLen * segLen);
+    const isLast = i === n - 2;
+    const t = Math.min(isLast ? Infinity : 1, Math.max(0, rawT));
+    const clampedT = Math.min(1, Math.max(0, rawT));
+    const sel = Math.hypot(px - clampedT * bx, py - clampedT * by);
+    if (sel > bestSel + marginM) continue;
+    bestSel = Math.min(bestSel, sel);
+    kept.push({
+      i,
+      sel,
+      m: {
+        alongM: trail.cumulativeM[i] + t * segLen,
+        offTrailM: t > 1 ? Math.abs(px * by - py * bx) / segLen : sel,
+        headingDeg: bearingDeg(a, b),
+      },
+    });
+  }
+  const out: TrailMatch[] = [];
+  let cluster: (typeof kept)[number] | null = null;
+  let prevI = -2;
+  for (const k of kept) {
+    if (k.sel > bestSel + marginM) continue;
+    if (cluster && k.i === prevI + 1) {
+      if (k.sel < cluster.sel) cluster = k;
+    } else {
+      if (cluster) out.push(cluster.m);
+      cluster = k;
+    }
+    prevI = k.i;
+  }
+  if (cluster) out.push(cluster.m);
+  return out;
+}
+
 /** Where `them` is relative to `me`, measured along the leader's trail. */
 export function relativePosition(
   trail: Trail | null,

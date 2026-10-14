@@ -12,3 +12,18 @@ export const PHONE_AUTH_ENABLED = process.env.EXPO_PUBLIC_PHONE_AUTH === '1';
  * carry the 6-digit code only (never a broken link).
  */
 export const INVITE_BASE_URL: string | null = process.env.EXPO_PUBLIC_INVITE_BASE_URL?.trim() || null;
+
+/**
+ * Base of the OSRM `route` service, without a trailing slash (21 §3.1). Not a secret: it only lets the
+ * team swap the public demo for a self-hosted router without touching the logic.
+ */
+export const ROUTING_URL: string =
+  process.env.EXPO_PUBLIC_ROUTING_URL?.trim().replace(/\/+$/, '') || 'https://router.project-osrm.org/route/v1/driving';
+
+/**
+ * Whether the router honours OSRM's `exclude=motorway` (21 D2a). The public demo does not (HTTP 400
+ * InvalidValue "Exclude flag combination is not supported."), so this is off unless EXPO_PUBLIC_ROUTING_EXCLUDE=1,
+ * which is for a self-hosted router whose profile has motorways to exclude. Off: the app never sends `exclude`
+ * and hides the "Allow expressways" switch, since it could not do anything.
+ */
+export const ROUTING_SUPPORTS_EXCLUDE = process.env.EXPO_PUBLIC_ROUTING_EXCLUDE === '1';

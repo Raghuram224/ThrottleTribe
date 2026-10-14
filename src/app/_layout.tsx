@@ -17,7 +17,9 @@ import { ToastHost } from '@/components/toast-host';
 import { useAppFonts } from '@/hooks/use-app-fonts';
 import { copy } from '@/lib/copy';
 import { setLastAppState } from '@/lib/location/ride-config';
+import { startTrackingRecovery } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
+import { setExcludeRejectedListener } from '@/lib/nav-route';
 import { initTelemetry, reportError, setScreen, track } from '@/lib/telemetry';
 import { useSessionStore } from '@/store/session-store';
 
@@ -26,6 +28,8 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Telemetry: install crash handlers once at bundle load, not in render.
 initTelemetry();
+// The router refusing exclude=motorway is worth knowing about (no props: nothing about where the rider is).
+setExcludeRejectedListener(() => track('nav.exclude_rejected'));
 
 // Telemetry: Expo Router renders this when a screen throws while rendering.
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
@@ -62,6 +66,9 @@ export default function RootLayout() {
     const subscription = AppState.addEventListener('change', setLastAppState);
     return () => subscription.remove();
   }, []);
+
+  // Back in front during a ride: a lost location task is started again, a deferred rate change is applied.
+  useEffect(() => startTrackingRecovery(), []);
 
   // Tapping a ride notification opens that ride (the ride layout redirects to the right child).
   useEffect(() => {

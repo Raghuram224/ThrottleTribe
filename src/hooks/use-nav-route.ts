@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { haversineM, type LatLng } from '@/lib/geo';
+import { destKey } from '@/lib/nav-arrival';
 import {
   ARRIVED_WITHIN_M,
   fetchNavRoute,
@@ -8,6 +9,7 @@ import {
   shouldReroute,
   type NavRoute,
 } from '@/lib/nav-route';
+import { useNavStore } from '@/store/nav-store';
 
 export interface NavRouteState {
   /** The road route, or null while loading / when routing failed. */
@@ -27,10 +29,22 @@ export interface NavRouteState {
  * than 150 m off the line (at most once per 60 s). Never blocks the UI; a failed fetch just means
  * the straight-line fallback until the next allowed try.
  */
-export function useNavRoute(me: LatLng | null, stop: LatLng | null): NavRouteState {
-  const stopKey = stop ? `${stop.lat},${stop.lng}` : '';
+export function useNavRoute(
+  me: LatLng | null,
+  stop: LatLng | null,
+  /** Expressway avoidance for every fetch (the choice made on the route preview, 21). */
+  avoidMotorways = false,
+): NavRouteState {
+  const stopKey = destKey(stop);
+  // The preview's route for this stop (21 §2.3): used as-is, so starting a ride costs no second request.
+  const seeded = useNavStore((s) => s.seeded);
+  const seededRoute = seeded && seeded.key === stopKey ? seeded.route : null;
   const [fetched, setFetched] = useState<{ key: string; route: NavRoute | null }>({ key: '', route: null });
-  const route = fetched.key === stopKey ? fetched.route : null;
+  const route = fetched.key === stopKey ? fetched.route : seededRoute;
+  const avoidRef = useRef(avoidMotorways);
+  useEffect(() => {
+    avoidRef.current = avoidMotorways;
+  }, [avoidMotorways]);
 
   const routeRef = useRef<NavRoute | null>(null);
   const lastFetchAt = useRef(0);
@@ -59,8 +73,11 @@ export function useNavRoute(me: LatLng | null, stop: LatLng | null): NavRouteSta
       inFlight.current?.abort();
       inFlight.current = null;
       lastKey.current = key;
-      lastFetchAt.current = 0;
-      routeRef.current = null;
+      // A seeded route counts as just fetched (no request until I am off it); otherwise fetch at once.
+      const seed = useNavStore.getState().seeded;
+      const fresh = seed && seed.key === key ? seed.route : null;
+      lastFetchAt.current = fresh ? Date.now() : 0;
+      routeRef.current = fresh;
     }
     if (inFlight.current) return;
     const now = Date.now();
@@ -68,11 +85,15 @@ export function useNavRoute(me: LatLng | null, stop: LatLng | null): NavRouteSta
     const controller = new AbortController();
     inFlight.current = controller;
     lastFetchAt.current = now;
-    fetchNavRoute({ lat: meLat, lng: meLng }, { lat: stopLat, lng: stopLng }, controller.signal).then((r) => {
+    const from = { lat: meLat, lng: meLng };
+    const to = { lat: stopLat, lng: stopLng };
+    fetchNavRoute(from, to, { avoidMotorways: avoidRef.current }, controller.signal).then((r) => {
       if (controller.signal.aborted) return;
       inFlight.current = null;
-      // A failed re-route keeps the old line: it is still better than a straight one.
-      setFetched((prev) => ({ key, route: r ?? (prev.key === key ? prev.route : null) }));
+      // A failed re-route keeps the old line (the seeded one included): better than a straight one.
+      const seed = useNavStore.getState().seeded;
+      const old = seed && seed.key === key ? seed.route : null;
+      setFetched((prev) => ({ key, route: r ?? (prev.key === key ? prev.route : old) }));
     });
   }, [meLat, meLng, stopLat, stopLng]);
 

@@ -20,6 +20,15 @@ interface LiveUiState {
   /** Bumps to frame me + the next stop once (19 A); Re-centre then resumes follow. */
   focusStopNonce: number;
   focusStop: () => void;
+  /** Bumps to put the camera back in follow mode (a tap on the turn banner, 21 §2.5). */
+  recentreNonce: number;
+  recentre: () => void;
+  /** The live map's bearing in whole degrees (the banner's compass arrow turns with it). */
+  mapBearing: number;
+  setMapBearing: (deg: number) => void;
+  /** An SOS hold is in progress; layout changes that would swap the SOS button wait for it (20 C4). */
+  sosHolding: boolean;
+  setSosHolding: (on: boolean) => void;
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -50,4 +59,10 @@ export const useLiveUiStore = create<LiveUiState>((set, get) => ({
   setTopStackH: (h) => set({ topStackH: h }),
   focusStopNonce: 0,
   focusStop: () => set({ focusStopNonce: get().focusStopNonce + 1 }),
+  recentreNonce: 0,
+  recentre: () => set({ recentreNonce: get().recentreNonce + 1 }),
+  mapBearing: 0,
+  setMapBearing: (deg) => set({ mapBearing: deg }),
+  sosHolding: false,
+  setSosHolding: (on) => set({ sosHolding: on }),
 }));

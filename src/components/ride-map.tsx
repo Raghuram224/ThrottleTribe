@@ -13,7 +13,6 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -25,10 +24,12 @@ import { Icon } from '@/components/icon';
 import { MeMarker } from '@/components/me-marker';
 import { RiderAvatar } from '@/components/rider-avatar';
 import { StopPin } from '@/components/stop-pin';
-import { SpeedBubble } from '@/components/speed-bubble';
+import { MapControls } from '@/components/map-controls';
+import { navRouteLayerProps } from '@/components/route-layers';
 import { useNavCamera, type CameraAdapter } from '@/hooks/use-nav-camera';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy } from '@/lib/copy';
+import { mapControlVisibility, meSlotKind } from '@/lib/live-chrome';
 import type { Trail } from '@/lib/geo';
 import { fitBoundsFor } from '@/lib/map-fit';
 import { CLUSTER_DP, drawOrder, meCoversCluster, spreadDp } from '@/lib/marker-cluster';
@@ -40,10 +41,7 @@ import type { RideStop, NavLine } from '@/lib/stop-ui';
 import {
   CASING_WIDTH,
   lineData,
-  NAV_CASING_WIDTH,
-  NAV_DASH,
   NAV_ROUTE_SOURCE_ID,
-  NAV_ROUTE_WIDTH,
   PASSED_LAYER_ID,
   PASSED_OPACITY,
   PASSED_SOURCE_ID,
@@ -92,21 +90,29 @@ interface RideMapProps {
   overlayShift: SharedValue<number>;
   /** The expanded sheet leaves no map to control. */
   controlsHidden: boolean;
+  /** Map left visible above the sheet (and under `topInset`): small values hide the controls (20 C1). */
+  mapVisH: number;
   /** Full map (19 B): the toggle control swaps its icon; the parent hides its chrome. */
   fullMap: boolean;
   onToggleFullMap: () => void;
   /** Dp of system navigation bar under the map in full map; attribution and controls clear it. */
   overlayBottomInset: number;
-  /** My speed in whole km/h (null when unknown or < 3): the bubble shows in follow mode only. */
+  /** My speed in whole km/h (null when unknown or < 3): the bubble shows in follow mode only, in the "me" slot. */
   speedKmh: number | null;
-  /** Bubble offset from the overlay bottom (above the attribution, or above the floating SOS). */
-  speedBubbleBottom: number;
+  /** "Me" slot offset from the overlay bottom (above the attribution, or above the floating SOS). */
+  meSlotBottom: number;
   /** The ride's next stop: draws the destination pin. */
   stop: Pick<RideStop, 'lat' | 'lng' | 'kind'> | null;
   /** My route to the stop (drawn under the markers, over the leader trail); null = nothing to draw. */
   navLine: NavLine | null;
   /** Bumps to frame me + the stop once (card tap, or after picking a stop). */
   focusStopNonce: number;
+  /** Bumps to go back to following me (a tap on the turn banner, 21 §2.5). */
+  recentreNonce: number;
+  /** Tells the screen the map's bearing (whole degrees), so the banner's compass arrow can be turned with it. */
+  onMapBearing: (deg: number) => void;
+  /** Voice toggle state while navigating (null = not navigating: no toggle); shown in solo only (C1). */
+  voice: { on: boolean; onToggle: () => void } | null;
 }
 
 const CLUSTER_MAX_ZOOM = 18;
@@ -115,8 +121,6 @@ const FIT_MS = 400;
 /** A marker press can also reach Map.onPress on Android (maplibre-react-native #1618). */
 const MARKER_PRESS_GUARD_MS = 400;
 const MARKER_BOX = 56;
-const FAB = 52;
-const TOGGLE = 48;
 const SOS_BOX = 112;
 
 /**
@@ -136,14 +140,18 @@ export function RideMap({
   bottomInset,
   overlayShift,
   controlsHidden,
+  mapVisH,
   fullMap,
   onToggleFullMap,
   overlayBottomInset,
   speedKmh,
-  speedBubbleBottom,
+  meSlotBottom,
   stop,
   navLine,
   focusStopNonce,
+  recentreNonce,
+  onMapBearing,
+  voice,
 }: RideMapProps) {
   const { colors, scheme, style } = useTheme();
   const cameraRef = useRef<CameraRef>(null);
@@ -202,6 +210,18 @@ export function RideMap({
     stopFocusNonce: focusStopNonce,
   });
 
+  // A banner tap asks for follow mode again; the map reports its bearing for the banner's compass arrow.
+  const { recentre: recentreCamera, mapBearing } = nav;
+  const seenRecentre = useRef(recentreNonce);
+  useEffect(() => {
+    if (recentreNonce === seenRecentre.current) return;
+    seenRecentre.current = recentreNonce;
+    recentreCamera();
+  }, [recentreNonce, recentreCamera]);
+  useEffect(() => {
+    onMapBearing(Math.round(mapBearing));
+  }, [mapBearing, onMapBearing]);
+
   const onRegionChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
     // Programmatic eases report userInteraction false; only the rider's own touch ends follow/overview.
     if (e.nativeEvent.userInteraction) nav.userGesture();
@@ -246,6 +266,9 @@ export function RideMap({
     [navLine, meLat, meLng],
   );
   const stopLngLat = useMemo<[number, number] | null>(() => (stop ? [stop.lng, stop.lat] : null), [stop]);
+  const navLayers = navRouteLayerProps(colors, navLine?.dashed ?? false);
+  // OSRM must be credited wherever a road route is drawn (21 §5.1); the dashed fallback is no OSRM data.
+  const attribution = navLine && !navLine.dashed ? copy['live.attributionRoute'] : copy['live.attribution'];
 
   // Screen-space clusters (< 44 dp apart); riders near an SOS marker are nudged clear of it. Draw
   // order: riders and clusters, my dot, then SOS on top of everything.
@@ -281,8 +304,8 @@ export function RideMap({
   const [stableClusterPress] = useState(() => (members: MapRider[]) => clusterPressRef.current(members));
 
   const hasRiders = riders.length > 0;
-  const following = nav.mode === 'follow';
   const overview = nav.mode === 'overview';
+  const vis = mapControlVisibility({ controlsHidden, mapVisH, positionedRiders: riders.length, navActive: !!voice });
   const controlsStyle = useAnimatedStyle(() => ({ transform: [{ translateY: overlayShift.value }] }));
 
   return (
@@ -335,26 +358,14 @@ export function RideMap({
           {/* My route to the shared stop: strongest line. Straight-line fallback is dashed, no casing. */}
           <GeoJSONSource key={`nav-${style}-${scheme}`} id={NAV_ROUTE_SOURCE_ID} data={navGeoJson}>
             {navLine && !navLine.dashed ? (
-              <Layer
-                id="nav-route-casing"
-                type="line"
-                beforeId={colors.routeBeforeId}
-                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                paint={{ 'line-width': NAV_CASING_WIDTH, 'line-color': colors.navRouteCasing, 'line-opacity': 1 }}
-              />
+              <Layer id="nav-route-casing" type="line" beforeId={colors.routeBeforeId} {...navLayers.casing} />
             ) : null}
             <Layer
               key={navLine?.dashed ? 'dashed' : 'solid'}
               id="nav-route-line"
               type="line"
               beforeId={colors.routeBeforeId}
-              layout={{ 'line-cap': navLine?.dashed ? 'butt' : 'round', 'line-join': 'round' }}
-              paint={{
-                'line-width': NAV_ROUTE_WIDTH,
-                'line-color': colors.navRoute,
-                'line-opacity': 1,
-                ...(navLine?.dashed ? { 'line-dasharray': NAV_DASH } : {}),
-              }}
+              {...navLayers.line}
             />
           </GeoJSONSource>
           {stopLngLat && stop ? (
@@ -437,69 +448,30 @@ export function RideMap({
         style={[styles.overlay, { bottom: overlayBottomInset }, controlsStyle]}>
         <View pointerEvents="none" style={[styles.attribution, { backgroundColor: colors.surfaceRaised }]}>
           <Text maxFontSizeMultiplier={1.3} style={[styles.attributionText, { color: colors.text }]}>
-            {copy['live.attribution']}
+            {attribution}
           </Text>
         </View>
-        {following && speedKmh != null ? (
-          <View style={[styles.speed, { bottom: speedBubbleBottom }]} pointerEvents="none">
-            <SpeedBubble kmh={speedKmh} />
-          </View>
-        ) : null}
-        {controlsHidden ? null : (
-          <View style={styles.fabs} pointerEvents="box-none">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={fullMap ? copy['live.exitFullMapA11y'] : copy['live.fullMapA11y']}
-              onPress={onToggleFullMap}
-              style={[styles.toggle, { backgroundColor: colors.fabBg }, elevate('e2', scheme)]}>
-              <Icon name={fullMap ? 'collapse' : 'expand'} color={colors.text} size={24} />
-            </Pressable>
-            {following ? (
-              <View
-                accessible
-                accessibilityRole="image"
-                accessibilityLabel={copy['live.followingA11y']}
-                style={[styles.fab, { backgroundColor: colors.fabBg }, elevate('e2', scheme)]}>
-                <Icon name="navigate" color={colors.brandOnBg} size={24} />
-              </View>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={copy['live.recentreA11y']}
-                disabled={!meRider}
-                onPress={() => {
-                  track('map.recentre');
-                  nav.recentre();
-                }}
-                style={[
-                  styles.pill,
-                  { backgroundColor: colors.fabBg, borderColor: colors.brandOnBg, opacity: meRider ? 1 : 0.5 },
-                  elevate('e2', scheme),
-                ]}>
-                <Icon name="centerMe" color={colors.brandOnBg} size={24} />
-                <Text maxFontSizeMultiplier={1.3} style={[styles.pillText, { color: colors.brandOnBg }]}>
-                  {copy['live.recentre']}
-                </Text>
-              </Pressable>
-            )}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={copy['live.fitAllA11y']}
-              accessibilityState={{ selected: overview }}
-              onPress={() => {
-                track('map.fit_all');
-                nav.showAll();
-              }}
-              style={[
-                styles.fab,
-                { backgroundColor: colors.fabBg, borderColor: colors.brandOnBg },
-                elevate('e2', scheme),
-                overview && styles.fabHint,
-              ]}>
-              <Icon name="fitPage" color={overview ? colors.brandOnBg : colors.text} size={24} />
-            </Pressable>
-          </View>
-        )}
+        <MapControls
+          vis={vis}
+          meSlot={meSlotKind(nav.mode, speedKmh)}
+          speedKmh={speedKmh}
+          meSlotBottom={meSlotBottom}
+          fullMap={fullMap}
+          overview={overview}
+          canRecentre={!!meRider}
+          onToggleFullMap={onToggleFullMap}
+          onRecentre={() => {
+            track('map.recentre');
+            nav.recentre();
+          }}
+          onFitAll={() => {
+            track('map.fit_all');
+            nav.showAll();
+          }}
+          voiceOn={voice ? voice.on : null}
+          onToggleVoice={voice?.onToggle}
+          reduceMotion={reduceMotion}
+        />
       </Reanimated.View>
     </View>
   );
@@ -765,29 +737,5 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   attributionText: { fontSize: font.xs, fontFamily: family.regular },
-  fabs: { position: 'absolute', right: space.md, bottom: space.md, gap: space.md, alignItems: 'flex-end' },
-  fab: { width: FAB, height: FAB, borderRadius: FAB / 2, alignItems: 'center', justifyContent: 'center' },
-  // 48 dp round control, centred over the 52 dp column below it.
-  toggle: {
-    width: TOGGLE,
-    height: TOGGLE,
-    borderRadius: TOGGLE / 2,
-    marginRight: (FAB - TOGGLE) / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  speed: { position: 'absolute', left: space.md },
-  pill: {
-    height: FAB,
-    paddingHorizontal: space.lg,
-    borderRadius: FAB / 2,
-    borderWidth: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  pillText: { fontSize: font.md, fontFamily: family.semibold },
-  // Overview is active: the circle gets a brand ring.
-  fabHint: { borderWidth: 2 },
   startDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 3 },
 });

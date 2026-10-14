@@ -18,6 +18,7 @@ import { SosPinnedBanner, SosTakeover, useReceiverSos } from '@/components/sos-t
 import { MODAL_CLOSE_MS, useAfterModalClose } from '@/hooks/use-after-modal'; // invite
 import { useConnection, useNetOffline } from '@/hooks/use-connection';
 import { useInviteMatching } from '@/hooks/use-invite-matching'; // invite
+import { useNavigation } from '@/hooks/use-navigation';
 import { useNow } from '@/hooks/use-now';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useRideAlerts } from '@/hooks/use-ride-alerts';
@@ -25,11 +26,15 @@ import { useRideChannel } from '@/hooks/use-ride-channel';
 import { RideActionsContext, type RideActions } from '@/hooks/use-ride-actions';
 import { notifyStopProposal, setupNotifications } from '@/lib/alerts';
 import { copy, errorText, riderCount as riderCountText, t } from '@/lib/copy';
+import { headerSearchVisible, panelVariant } from '@/lib/live-chrome';
+import { isNavActive } from '@/lib/nav-engine';
+import { destKey, isArrived } from '@/lib/nav-arrival';
 import { INVITE_BASE_URL } from '@/lib/flags'; // invite
 import { formatElapsed } from '@/lib/format';
 import { displayRideName, firstName } from '@/lib/names';
 import { inviteLink, inviteShareMessage } from '@/lib/invite'; // invite
 import { haptic } from '@/lib/haptics';
+import { toggleVoice } from '@/lib/voice-toggle';
 import { shareText } from '@/lib/share-text';
 import { phraseFor } from '@/lib/live-list';
 import { showLobbyContactsBanner } from '@/lib/home';
@@ -37,20 +42,21 @@ import { getRideId } from '@/lib/location/ride-config';
 import { isTracking, startRideTracking, stopRideTracking } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
 import { fixPermission as fixPermissionAction } from '@/lib/permissions';
-import { decideStop, endRide, leaveRide, setSos, toRideError } from '@/lib/ride-api';
+import { clearStop, decideStop, endRide, leaveRide, setSos, toRideError } from '@/lib/ride-api';
 import { rideRedirect, type RideChild } from '@/lib/routing';
 import { setTelemetryRideId } from '@/lib/telemetry';
 import { sosIsOn } from '@/lib/sos';
-import { approvalCardModel } from '@/lib/stop-ui';
+import { approvalCardModel, rideStop } from '@/lib/stop-ui';
 import { useAlertStore } from '@/store/alert-store';
 import { useLiveUiStore } from '@/store/live-ui-store';
+import { arrivalForRide, useNavStore } from '@/store/nav-store';
 import { useNudgeStore } from '@/store/nudge-store';
 import { selectPendingProposals, useRideStore } from '@/store/ride-store';
 import { useSosStore } from '@/store/sos-store';
 import { showToast } from '@/store/toast-store';
 import { useTheme } from '@/theme/use-theme';
 
-type ConfirmKind = 'leave' | 'end' | null;
+type ConfirmKind = 'leave' | 'end' | 'clearStop' | null;
 type Dismissable = 'bgOff' | 'notifOff';
 
 function childOf(segments: string[]): RideChild | null {
@@ -108,6 +114,8 @@ export default function RideLayout() {
   const status = storeRideId === id ? ride?.status : undefined;
   const left = !!me?.leftAt;
   const riderCount = Object.values(members).filter((m) => !m.leftAt).length;
+  // A ride of one (20 C4): its copy must not talk about "everyone" (21 decision 5).
+  const solo = panelVariant(loaded && storeRideId === id, riderCount) === 'solo';
 
   const [menuOpen, setMenuOpen] = useState(false);
   const afterMenu = useAfterModalClose(); // invite: menu -> confirm sheet hand-off
@@ -135,6 +143,10 @@ export default function RideLayout() {
       useSosStore.getState().reset();
       useAlertStore.getState().reset();
       useLiveUiStore.getState().clear();
+      // The preview route and expressway choice go with the ride screens, but only this ride's own (a newer
+      // ride may already have started its session). The arrival latch stays: reopening the ride must not
+      // re-arrive; it is cleared when the ride ends.
+      useNavStore.getState().resetSession(id ?? '');
     };
   }, [id]);
 
@@ -165,6 +177,10 @@ export default function RideLayout() {
   useEffect(() => {
     if (status === 'ended') useNudgeStore.getState().reset();
   }, [status]);
+  // An ended ride (or one I left) takes its arrival latch with it.
+  useEffect(() => {
+    if (id && (status === 'ended' || left)) useNavStore.getState().clearArrival(id);
+  }, [id, status, left]);
   // --- end sos contacts ---
 
   // No SOS retries once the ride is over or I have left.
@@ -298,12 +314,63 @@ export default function RideLayout() {
     }
   };
 
+  // Leader-only "Remove next stop" (20 C5): moved here from the stop card's ✕; confirms like Leave / End.
+  // In a solo ride it is "Stop directions" (21 §2.10): the ride goes on.
+  const stopInfo = useMemo(() => rideStop(ride), [ride]);
+  const hasStop = !!stopInfo;
+  const doClearStop = async () => {
+    if (!id) return;
+    setWorking(true);
+    try {
+      await clearStop(id);
+    } catch (e) {
+      showToast(errorText(toRideError(e).code));
+    } finally {
+      setWorking(false);
+      setConfirm(null);
+    }
+  };
+
+  const openSearch = useCallback(() => {
+    if (id) router.push(href(`/ride/${id}/search`));
+  }, [id]);
+
   // --- leader approval of stop proposals (19 A) ---
   const myPos = myUserId ? positions[myUserId] : undefined;
   const myLat = myPos?.lat;
   const myLng = myPos?.lng;
   const meLL = useMemo(() => (myLat != null && myLng != null ? { lat: myLat, lng: myLng } : null), [myLat, myLng]);
+  // The echo with its fix time, so the engine can tell a fresh position from a stale one (21 L4).
+  const myT = myPos ? Date.parse(myPos.recordedAt) : NaN;
+  const originFix = useMemo(
+    () => (myLat != null && myLng != null && !Number.isNaN(myT) ? { lat: myLat, lng: myLng, t: myT } : null),
+    [myLat, myLng, myT],
+  );
   const approvalActive = isLeader && status === 'active' && !left;
+
+  // Turn-by-turn navigation (21 §3 intro): the engine (lib/nav-session.ts, no React) is started and stopped from
+  // here, not from the live screen, so it keeps running while a ride child such as the search screen is on top.
+  const stopLL = useMemo(() => (stopInfo ? { lat: stopInfo.lat, lng: stopInfo.lng } : null), [stopInfo]);
+  const arrivalLatch = useNavStore((s) => arrivalForRide(s, id ?? ''));
+  const engineKey = useNavStore((s) => (s.engine.active ? s.engine.key : ''));
+  const engineOffRoute = useNavStore((s) => !!s.engine.progress?.offRoute);
+  const navOn = isNavActive({
+    solo,
+    rideLive: status === 'active' && !left,
+    hasStop: !!stopLL,
+    arrived: isArrived(arrivalLatch, stopLL),
+    engineRunning: isLeader && engineKey !== '' && engineKey === destKey(stopLL),
+  });
+  const voiceOn = useNavStore((s) => s.voiceOn);
+  useNavigation({
+    rideId: id,
+    active: navOn && storeRideId === id,
+    dest: stopLL,
+    place: stopInfo?.name ?? '',
+    origin: originFix,
+    netOffline,
+    locationPermitted: foreground === 'granted' && (permissions?.servicesEnabled ?? true),
+  });
   const approval = approvalActive
     ? approvalCardModel({
         proposals: pendingProposals.filter((p) => !decidedIds.includes(p.id)),
@@ -422,7 +489,13 @@ export default function RideLayout() {
   if (connection === 'offline') {
     banners.push(
       netOffline ? (
-        <Banner key="offline" tone="offline" icon="offline" text={copy['banner.offline']} />
+        <Banner
+          key="offline"
+          tone="offline"
+          icon="offline"
+          // A ride of one that is navigating on its steps keeps working offline (21 §2.7); off route it does not.
+          text={solo && navOn && !engineOffRoute ? copy['banner.offlineSolo'] : copy['banner.offline']}
+        />
       ) : (
         <Banner key="reconnecting" tone="warning" icon="connecting" text={copy['banner.reconnecting']} />
       ),
@@ -542,7 +615,7 @@ export default function RideLayout() {
   const startedMs = ride?.started_at ? Date.parse(ride.started_at) : NaN;
   const meta =
     status === 'active' && !Number.isNaN(startedMs)
-      ? t('live.headerMeta', { time: formatElapsed(now - startedMs), riders: riderCountText(riderCount) })
+      ? formatElapsed(now - startedMs) // the sheet summary owns the rider count (20 C3)
       : t('lobby.headerMeta', { riders: riderCountText(riderCount) });
   // The invite screen has its own top bar (10 §2); the stop search has its own back + input row.
   const showHeader = child !== 'summary' && child !== 'invite' && child !== 'search' && status !== 'ended';
@@ -553,8 +626,8 @@ export default function RideLayout() {
   const sosWarning = me?.sos ? ` ${copy['sos.leaveWarning']}` : '';
   const leaveTitle = inLobby ? copy['lobby.leaveTitle'] : copy['live.leaveTitle'];
   const leaveBody = (inLobby ? copy['lobby.leaveBody'] : copy['live.leaveBody']) + sosWarning;
-  const endTitle = inLobby ? copy['lobby.cancelTitle'] : copy['live.endTitle'];
-  const endBody = (inLobby ? copy['lobby.cancelBody'] : copy['live.endBody']) + sosWarning;
+  const endTitle = inLobby ? copy['lobby.cancelTitle'] : solo ? copy['nav.endTitleSolo'] : copy['live.endTitle'];
+  const endBody = (inLobby ? copy['lobby.cancelBody'] : solo ? copy['nav.endBodySolo'] : copy['live.endBody']) + sosWarning;
   const endConfirm = inLobby ? copy['lobby.cancelConfirm'] : copy['live.endConfirm'];
   const endMenuLabel = inLobby ? copy['lobby.cancelRide'] : copy['live.menuEnd'];
   const leaveMenuLabel = inLobby ? copy['lobby.leave'] : copy['live.menuLeave'];
@@ -575,6 +648,7 @@ export default function RideLayout() {
                 // Back leaves the ride screens, not the ride: tracking continues, Home shows the resume card.
                 onBack={() => (router.canGoBack() ? router.back() : router.replace(href('/home')))}
                 onMenu={() => setMenuOpen(true)}
+                onSearch={headerSearchVisible({ child, rideLive, connection }) ? openSearch : undefined}
               />
             ) : null}
             {fullMapOn ? null : visibleBanners}
@@ -620,6 +694,28 @@ export default function RideLayout() {
             shareCode();
           }}
         />
+        {navOn ? (
+          // Voice toggle (21 §2.10): always reachable here, also when the map's right column is hidden.
+          <SheetAction
+            icon={voiceOn ? 'voiceOff' : 'voiceOn'}
+            label={voiceOn ? copy['nav.menuVoiceOff'] : copy['nav.menuVoiceOn']}
+            onPress={() => {
+              setMenuOpen(false);
+              toggleVoice();
+            }}
+          />
+        ) : null}
+        {isLeader && hasStop ? (
+          <SheetAction
+            icon="close"
+            label={solo ? copy['nav.menuStop'] : copy['stop.menuRemove']}
+            destructive={!solo}
+            onPress={() => {
+              setMenuOpen(false);
+              afterMenu.schedule(() => setConfirm('clearStop'));
+            }}
+          />
+        ) : null}
         <SheetAction
           icon={isLeader ? 'endRide' : 'leave'}
           label={isLeader ? endMenuLabel : leaveMenuLabel}
@@ -633,6 +729,17 @@ export default function RideLayout() {
         />
       </Sheet>
 
+      <ConfirmSheet
+        visible={confirm === 'clearStop'}
+        title={solo ? t('nav.stopTitle', { place: stopInfo?.name ?? '' }) : copy['stop.clearTitle']}
+        body={solo ? copy['nav.stopBody'] : undefined}
+        confirmLabel={solo ? copy['nav.stopConfirm'] : copy['stop.clearConfirm']}
+        cancelLabel={solo ? copy['nav.stopCancel'] : copy['stop.clearCancel']}
+        tone={solo ? 'primary' : 'danger'}
+        loading={working}
+        onCancel={() => !working && setConfirm(null)}
+        onConfirm={() => void doClearStop()}
+      />
       <ConfirmSheet
         visible={confirm === 'leave'}
         title={leaveTitle}

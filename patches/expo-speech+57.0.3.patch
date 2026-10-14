@@ -1,0 +1,21 @@
+diff --git a/node_modules/expo-speech/android/src/main/java/expo/modules/speech/SpeechModule.kt b/node_modules/expo-speech/android/src/main/java/expo/modules/speech/SpeechModule.kt
+index ed8d2a7..e516947 100644
+--- a/node_modules/expo-speech/android/src/main/java/expo/modules/speech/SpeechModule.kt
++++ b/node_modules/expo-speech/android/src/main/java/expo/modules/speech/SpeechModule.kt
+@@ -37,8 +37,14 @@ class SpeechModule : Module() {
+       TextToSpeech.getMaxSpeechInputLength()
+     }
+ 
+-    OnActivityDestroys {
+-      textToSpeech.shutdown()
++    // Throttle Tribe patch: shut the engine down with the module, not with the activity. The `textToSpeech` holder is
++    // a `lazy` that cannot be reset, so after an activity destroy (swipe-away from Recents, the OS reclaiming the
++    // activity) a kept-alive process (our location foreground service) would speak into a dead engine, `ttsState`
++    // still READY, with no callbacks. The engine uses the application-scoped react context, so it does not leak the
++    // activity; OnDestroy (the module's own lifecycle, e.g. a JS reload) still releases it.
++    OnDestroy {
++      // Not `textToSpeech`: that would create an engine just to shut it down when speech was never used.
++      _textToSpeech?.shutdown()
+     }
+ 
+     AsyncFunction<Boolean>("isSpeaking") {

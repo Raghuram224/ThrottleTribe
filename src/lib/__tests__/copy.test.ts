@@ -61,7 +61,6 @@ describe('copy helpers', () => {
     expect(riderCount(5)).toBe('5 riders');
     expect(plural(1, 'stop', 'stops')).toBe('1 stop');
     expect(t('lobby.headerMeta', { riders: riderCount(1) })).toBe('Lobby · 1 rider');
-    expect(t('live.headerMeta', { time: '5 min', riders: riderCount(3) })).toBe('5 min · 3 riders');
   });
 
   it('designer max lengths hold for the glance strings with a 12-char name', () => {

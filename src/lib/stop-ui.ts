@@ -37,6 +37,29 @@ export function rideStop(ride: StopColumns | null | undefined): RideStop | null 
 }
 
 /**
+ * The ride with this stop set, as the server's `propose_stop` leaves it when the leader proposes. Applied to the
+ * local store at once (the realtime update later carries the same values), so the live screen does not wait
+ * for the broadcast to show the new destination. Never mutates `ride`.
+ */
+export function withStop<R extends StopColumns & { stop_set_at: string | null }>(
+  ride: R,
+  stop: { name: string; address?: string | null; lat: number; lng: number; kind: StopKind },
+  byUserId: string | null,
+  nowIso: string,
+): R {
+  return {
+    ...ride,
+    stop_name: stop.name,
+    stop_address: stop.address ?? '',
+    stop_lat: stop.lat,
+    stop_lng: stop.lng,
+    stop_kind: stop.kind,
+    stop_set_by: byUserId,
+    stop_set_at: nowIso,
+  };
+}
+
+/**
  * First name for the muted "Suggested by X" line: only when the stop came from someone other than
  * the leader (a leader's own pick is not a suggestion) and that rider is known.
  */

@@ -44,6 +44,12 @@ interface PrefsState {
   /** Vibration feedback (13 §0.3), default on. SOS haptics ignore it. */
   haptics: boolean;
   setHaptics: (on: boolean) => void;
+  /**
+   * Route preview "Allow expressways" (21 decision): default off, so routes avoid expressways (two-wheeler
+   * bans). The last choice is remembered on this phone.
+   */
+  allowExpressways: boolean;
+  setAllowExpressways: (on: boolean) => void;
   setThemePref: (pref: ThemePref) => void;
   setStopThresholdS: (seconds: number) => void;
 }
@@ -77,6 +83,11 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   setMapTilt: (on) => {
     writeItem(STORAGE_KEYS.mapTilt, on ? '1' : '0');
     set({ mapTilt: on });
+  },
+  allowExpressways: readItem(STORAGE_KEYS.allowExpressways) === '1',
+  setAllowExpressways: (on) => {
+    writeItem(STORAGE_KEYS.allowExpressways, on ? '1' : '0');
+    set({ allowExpressways: on });
   },
   setThemePref: (pref) => {
     writeItem(STORAGE_KEYS.themePref, pref);

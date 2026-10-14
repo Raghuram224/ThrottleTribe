@@ -12,8 +12,8 @@ export const STOP_PIN_H = 44;
 const lift = markerLiftStyle();
 
 /**
- * Destination pin for the shared next stop (19 A): 36 dp teardrop in the route colour with a white
- * glyph (cup for a break, flag for the destination). Anchor the marker at 'bottom': the tip is the place.
+ * Destination pin for the shared next stop (19 A): 36 dp teardrop in the route colour with an
+ * `onNavRoute` glyph (cup for a break, flag for the destination). Anchor the marker at 'bottom': the tip is the place.
  */
 export function StopPin({ kind }: { kind: StopKind }) {
   const { colors } = useTheme();
@@ -21,7 +21,7 @@ export function StopPin({ kind }: { kind: StopKind }) {
     <View pointerEvents="none" style={styles.box}>
       <View style={[styles.drop, lift, { backgroundColor: colors.navRoute }]}>
         <View style={styles.glyph}>
-          <Icon name={kind === 'destination' ? 'endRide' : 'coffee'} color="#FFFFFF" size={20} />
+          <Icon name={kind === 'destination' ? 'endRide' : 'coffee'} color={colors.onNavRoute} size={20} />
         </View>
       </View>
     </View>
