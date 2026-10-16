@@ -1,4 +1,4 @@
-# 22 — Map home ("Where to?" first, then solo or group)
+# 22 — Map home ("Where to?" first, then Start)
 
 Source: user request, 2026-10-14: *"I don't want to see this page as home screen, I want the map page as home
 screen like Google Maps. When the user enters a location, ask the user is it an individual or group ride. Based on
@@ -11,12 +11,15 @@ contacts nudge, footer "Start a ride".
 | # | Decision | Effect on this spec |
 |---|---|---|
 | 1 | **Group navigation: everyone gets turn-by-turn later, once hosted routing exists (D1).** Until then a group ride with a destination gives **every** rider the route line + stop card, and **no turn banner or voice for anyone in a group ride, the leader included.** | §3.8 option A (leader-only banner + voice), §0.1 row 9, the P2 `leaderNav` / `GROUP_LEADER_NAV` work and the P2 acceptance item are **not approved** and are dropped. Option C stays the plan after D1. `isNavActive` is fixed (§3.8.1): navigation is never *started* for a group ride; a ride that starts solo and gains riders keeps navigating for its leader (21 §10, unchanged). |
-| 2 | **Route preview primary: Ride solo is the filled primary; Ride with a group is secondary.** | Confirms the §3.4 layout and closes open question 2. Positions stay fixed. |
+| 2 | **Route preview primary: Ride solo is the filled primary; Ride with a group is secondary.** | Closed open question 2. **Superseded by D5:** there is one primary, Start ride. |
 | 3 | **The destination is not in the WhatsApp / invite text.** | Closes open question 3; the P3 "destination in the invite text" item is dropped. `lib/invite.ts` is not touched. |
+| **D5** (2026-10-15) | **One kind of ride; a ride becomes a group when its code is shared.** User: *"Instead of creating a separate menu for the group ride, the user will create a ride like Google Maps; then if the user wants a group ride he can share the code with others and it will be a group ride. We don't have to show a separate button from the start. It will happen in the flow."* **Also: the location permission is asked when Home opens** (once per app run, while still undetermined), replacing "no prompt on launch" (§3.1.5, rule 8 of the constraints). | **Overrides the solo / group choice everywhere in this spec.** Route preview has one primary, **Start ride** (= the old Ride solo: create + start + propose stop, turn-by-turn, voice, arrival). "How are you riding?", **Ride with a group**, the **Start a group ride** tile, the group setup screen (`/new-ride`, `createGroupRide`), the lobby "Riding to {place}" caption and the `plan.choice` event are **removed**. The Home tiles are **Join with a code** and **Just ride** (no destination; neutral name). Every ride started from Home gets the normal `defaultRideName(first)` ("Raghu's ride"), never "Solo ride". The group happens inside the ride: live panel **Invite riders** row (or ⋯ → Invite riders) → invite screen (6-digit code + WhatsApp). Joiners join the active ride by code or link and get the route line + stop card; the leader who was navigating keeps turn-by-turn + voice (decision 1 stands: group turn-by-turn for everyone waits for D1). The device-local "group ride" marker (`nav.groupRides.v1`) is replaced by a "this phone navigates this ride" marker (`nav.navRides.v1`, §3.8.1). The stop-alert time (1 / 3 / 5 min) moved from the removed form to **Profile → Safety**. P2 items that are obsolete: §3.7 lobby destination card / caption and the lobby "Remove destination" copy fix, the group-leader-nav flag work (already dropped by decision 1), and the §13 P2 acceptance list. P3 "Make it the destination of {ride}" for a lobby leader and "change destination in the lobby" are obsolete too (no new lobby rides carry a destination). |
+| **D6** (2026-10-15) | **Invite riders on the route preview, Just ride in the normal view, review fixes.** User decisions: (1) the route preview gets **Invite riders** (secondary) under **Start ride** (primary): it creates the ride in the **lobby** with the destination, opens the invite screen (code + WhatsApp), then the lobby (who has joined, "Riding to {place}"), and the leader taps **Start** → live with turn-by-turn + voice; riders can join while it waits. (2) The stop-alert time stays in Profile → Safety, with a note that it applies to new rides. (3) A leader **Rename ride** in the ⋯ menu: built in the app, with migration 0010 (applied 2026-10-15, §3.6). (4) **Just ride opens in the normal (sheet) view**, never full map by itself, so Invite riders is visible. | **Partly reverses D5:** the lobby "Riding to {place}" caption (§3.7) and the invite screen's `?first=1` "Continue to lobby" mode (§3.5.1) are back, for rides made by Invite riders; the route preview has two actions (§3.4); the full-map first-open default is gone (§3.9; 19 §B, 21 decision 2). `isNavActive`'s `navRide` now carries the **destination** (§3.8.1): the leader's turn-by-turn is decided by `marker === destKey(stop)`, read live, not by whether a screen remounted. Review fixes and the launch prompt: §3.1.5, §3.8.1, §11. |
 
 Open questions 1-3 in §15 are answered by the table above.
 
 ### P1 review fixes (2026-10-14) — behaviour that differs from, or adds to, the text below
+*(D5 withdrew the group form, so the items below about `createGroupRide`, the group form, Ride with a group and the group-ride marker are history; the rest stands.)*
 - **Default group ride name (decision 3):** the normal `defaultRideName(first)`, also with a destination (§3.6). The
   destination is not in the invite text, so it is not in the default name either.
 - **No second open ride from the group form (§3.6):** `createGroupRide` returns `{ existing: false, ride }` or
@@ -62,14 +65,16 @@ If the href is not found, it will instead replace the current screen"; params on
 this spec never relies on them).
 
 **Constraints kept:** no Google name, logo, fonts, tiles or APIs (19, 17 §0). OpenFreeMap tiles, Photon search, OSRM
-routing, all attributed. No secret in the app. Location is never requested at launch and never without an explainer
-(04, rule 8). Status = colour + icon + text. Every target ≥ 56 dp (chips 48 visual with a 56 hit, as 21).
+routing, all attributed. No secret in the app. **Location is asked when Home opens (D5, replaces "never at launch")**,
+once per app run and only while the permission is undetermined; the "Show my location" explainer stays the way back after
+"Don't allow" (04, rule 8 is relaxed for this one prompt). Status = colour + icon + text. Every target ≥ 56 dp (chips 48 visual with a 56 hit, as 21).
 
 ---
 
 ## 0. Summary
 
-**Purpose:** open the app on a map centred on me, pick where to ride, then choose **solo** or **group** and go.
+**Purpose:** open the app on a map centred on me, pick where to ride and **Start**. The ride is one kind; it becomes a
+group when the rider shares its code from inside the ride (D5).
 
 **One-second glance (at rest, phone in hand or on the mount before setting off):**
 1. Am I offline / is a ride already running? (offline banner at the top; "Back to ride" card at the bottom)
@@ -77,20 +82,23 @@ routing, all attributed. No secret in the app. Location is never requested at la
 3. Where to? (the search bar, and my recent places one thumb-tap away in the sheet)
 
 **The flow in one line (Google Maps pattern, our branding):**
-Map home → search → place sheet → **Directions** → route preview → **"How are you riding?" Ride solo / Ride with a
-group** → solo: today's 21 navigation · group: ride setup with the destination attached → lobby → live.
+Map home → search → place sheet → **Directions** → route preview → **Start ride** → live with turn-by-turn (21).
+To ride with others (D6): route preview → **Invite riders** → share the 6-digit code / WhatsApp link → **Continue to lobby**
+→ riders join, the lobby shows who is in and "Riding to {place}" → **Start** → live with turn-by-turn + voice for the leader.
+Or from a running ride: live → **Invite riders** → share the code → they join the running ride.
 
 **How it is built:** Home becomes one screen with **one MapLibre map** and three modes (`browse` → `place` →
 `route`) held in a small store. The search screen stays a separate route (`/where-to`, full screen, no map). The
 route preview stops being a separate route and becomes Home's `route` mode, so the map never reloads between steps.
-Solo uses `startNavigationRide` unchanged. Group uses `new-ride` with the place pre-filled and attaches it with
-`propose_stop` right after `create_ride` (the leader's stop applies at once, in the lobby). **No migration.**
+Start uses `startNavigationRide` (21 §2.4, with the default ride name). **D5:** there is no separate group start;
+the earlier design that attached the destination in a group setup screen (`new-ride`, `createGroupRide`) is removed.
+**No migration.**
 
 | Phase | Ships | New dependency |
 |---|---|---|
-| **P1** Map home + choice | Map home (browse), sheet with all old Home content, search bar + chips → `/where-to`, place sheet, route mode with **Ride solo / Ride with a group**, solo wired to 21, group wired to `new-ride` **with the destination attached** at create, lobby caption "Riding to …", open-ride states, first-run, no-permission and offline states, web parity | none |
-| **P2** Group with destination | Lobby destination card (≈ distance per rider, set by, leader Remove), **leader-only turn banner + voice in a group ride** (pending Q1), lobby menu copy fix | none |
-| **P3** Polish | Chip results as pins on the home map, long-press to drop a pin, "Make it the destination" for a lobby leader, change destination from the lobby, "Stay" chip, destination in the invite text (pending Q3) | none |
+| **P1** Map home + Start | Map home (browse), sheet with all old Home content, search bar + chips → `/where-to`, place sheet, route mode with one **Start ride**, wired to 21, open-ride states, first-run, no-permission and offline states, web parity. *(D5: the solo / group choice, the group form and the lobby caption that P1 first shipped are removed.)* | none |
+| **P2** ~~Group with destination~~ | **Obsolete (D5).** Lobby destination card, leader-only banner + voice (already dropped by decision 1), lobby menu copy fix | — |
+| **P3** Polish | Chip results as pins on the home map, long-press to drop a pin, "Stay" chip. *(Obsolete: "Make it the destination" for a lobby leader, change destination from the lobby, destination in the invite text.)* | none |
 
 ### 0.1 Prior decisions this spec changes
 | # | Was | Now | Why |
@@ -99,14 +107,14 @@ Solo uses `startNavigationRide` unchanged. Group uses `new-ride` with the place 
 | 2 | 17 §2: "No floating search pill, no bottom-sheet drag handle" | **Map home only:** a floating search bar + chip row, and a draggable sheet with a grabber (it really drags, like the live group sheet, and has a tap/chevron alternative). Live keeps 20 C2 (search in the header) | 17 §2 protected the live map's glance and camera framing. Home is used at rest; the bar is counted in the camera padding (the 20 C2 camera rule) |
 | 3 | 21 §2.1: Home card "Where to?" | The search bar **is** Where to? (placeholder "Where to?") | Same entry, Google position |
 | 4 | 21 §2.2: Where to? is never auto-focused | Auto-focused **when opened from the bar** (the rider asked to type). Not focused when opened from a chip, and never while the typing lock is on (21 §2.2.2 unchanged) | Tapping a search field means "type". With no footer on the search screen any more, the keyboard leaves 5 recent rows visible at 360×780 |
-| 5 | 21 §2.2: Where to? footer "Just ride, no destination" (2 taps from Home) | Home sheet tile **"Just ride solo"** (1 tap). The search screen has no footer | Free rides live on the map home (§3.9) |
+| 5 | 21 §2.2: Where to? footer "Just ride, no destination" (2 taps from Home) | Home sheet tile **"Just ride"** (1 tap; was "Just ride solo", renamed by D5). The search screen has no footer | Free rides live on the map home (§3.9) |
 | 6 | 21 §2.2: picking any row pushes `/route-preview` | **New place** (search result) → Home `place` mode (place sheet). **Recent place** (from the search screen or the home sheet) → straight to Home `route` mode. `/route-preview` becomes a redirect into Home (§5) | Google: a new place shows its card first; a place you already went to goes straight to directions. Keeps the fast path (§1) |
-| 7 | 21 §2.3: one primary **Go** on the preview | Two stacked actions under "How are you riding?": **Ride with a group** (secondary, above) and **Ride solo** (primary, lowest) | User decision: ask solo or group after the place is chosen. Two actions on the preview, not a sheet after Start (§3.4.1) |
-| 8 | 21 §1: 3 taps Home → recent → Go | **2 taps** from a recent place in the home sheet (recent → Ride solo); 3 from the search screen's recents; 4 for a searched place (bar, result, Directions, Ride solo) | Recents are in the thumb zone; the place sheet costs one tap only for new places |
-| 9 | 21 §6 / `isNavActive`: a group never starts navigation | **P2, pending Q1:** the **leader** of a group ride with a stop gets the turn banner + voice; other riders get the route line + stop card (19 A, unchanged) | Same request budget as one solo rider; the group follows the leader; removes today's quirk where a group ride started with only the leader present navigates and one started with two does not (§3.8) |
+| 7 | 21 §2.3: one primary **Go** on the preview | One primary, **Start ride** (D5), and since D6 a secondary **Invite riders** under it (create in the lobby with the destination, invite, start from the lobby). *(Superseded design: two stacked actions under "How are you riding?", Ride with a group + Ride solo.)* | User, 2026-10-15: no separate group menu (D5), but a group start from the preview is wanted (D6) |
+| 8 | 21 §1: 3 taps Home → recent → Go | **2 taps** from a recent place in the home sheet (recent → Start ride); 3 from the search screen's recents; 4 for a searched place (bar, result, Directions, Start ride) | Recents are in the thumb zone; the place sheet costs one tap only for new places |
+| 9 | 21 §6 / `isNavActive`: a group never starts navigation | **Not approved (decision 1), and no longer needed (D5):** navigation is started for a ride of one led by me; riders who join later get the route line + stop card, the leader keeps turn-by-turn (§3.8.1) | There is no group-creation path any more, so "a ride created as a group" no longer exists |
 | 10 | 13 §3 greeting as the page title ("Good evening, Raghu", 28) | Greeting moves to the sheet header (16 semibold). First run keeps "Welcome, {name}" there | Nothing big floats over the map; the greeting is warmth, not a glance fact |
-| 11 | 02: with a lobby ride open, "Start a ride" stays as a secondary (switch / leader-busy sheets) | With any open ride the three tiles are hidden. Starting another ride is still possible from a place's route mode, which runs the same switch / leader-busy sheets | One open-ride state, one primary ("Back to ride") |
-| 12 | 05: the lobby has no destination | Lobby shows the ride's destination (P1 caption, P2 card) | Group rides can now be created with one |
+| 11 | 02: with a lobby ride open, "Start a ride" stays as a secondary (switch / leader-busy sheets) | With any open ride the tiles are hidden. Starting another ride is still possible from a place's route mode, which runs the same switch / leader-busy sheets | One open-ride state, one primary ("Back to ride") |
+| 12 | 05: the lobby has no destination | **Withdrawn (D5), then partly restored (D6):** a ride made by **Invite riders** sits in the lobby with its destination and the lobby shows "Riding to {place}" (§3.7). Start ride and Just ride still start at once | Only Invite riders makes a lobby ride with a destination |
 | 13 | 21 §2.2 Where to? is entered from Home's card and closes back to Home | Where to? returns its pick to Home through `plan-store` and `router.back()`; it never pushes a preview | One map instance (§2) |
 
 ### 0.2 What happens to today's Home content
@@ -121,11 +129,11 @@ Solo uses `startNavigationRide` unchanged. Group uses `new-ride` with the place 
 | Emergency contacts nudge (one nudge max, contacts > save account) | Expanded sheet, after recent places / the location row (order in §3.1.2) | Not a ride-blocking item; the to-do dot, the lobby setup row and the lobby nudge banner (11 §4) still carry it |
 | Stats strip (month) | Expanded sheet | Rest-time information |
 | Recent rides (5 + See all) | Expanded sheet | Rest-time information |
-| Footer "Start a ride" (primary) | Sheet tile **"Start a group ride"** (no destination), and **Ride with a group** on any place's route preview | Group rides now usually start from a destination; a destination-less group ride is still one tap |
+| Footer "Start a ride" (primary) | Search bar → place → **Start ride** on the route preview; sheet tile **"Just ride"** (no destination) | D5: there is no group start; a ride becomes a group when its code is shared from the live screen |
 | Ride in progress card (convoy, exception line, Back to ride) | Peek: compact card with **Back to ride** (the primary). Expanded: the full card with the convoy strip | Unchanged data (`useHomeConvoy`) |
 | Offline banner `home.offlineSaved` | Full-bleed at the top, above the search bar, new text `homeMap.offline` | Viewer offline is said first (rule 2) |
 | Welcome toast after onboarding | Unchanged | — |
-| Switch / leader-busy confirm sheets | Unchanged copy; now opened from route mode's two actions | — |
+| Switch / leader-busy confirm sheets | Unchanged copy; now opened from route mode's Start ride | — |
 
 ---
 
@@ -137,29 +145,32 @@ launch → gate ──none──►  │ browse ──[place picked]──► pl
             │            │   ▲  ▲          (Android back / ‹ / ✕) ◄──┘   ◄──(‹ / back)┘ │
             │            │   │  └─────[recent place: home sheet or search recents]────┘ │
             │            └───┼────────────────────────────────────────────────────────┘
-            │                │ bar / chip                       route ─[Ride solo]──► startNavigationRide (21 §2.4)
+            │                │ bar / chip                       route ─[Start ride]──► startNavigationRide (21 §2.4)
             │                ▼                                    │                    → [permissions] → live (nav)
-            │           /where-to (search, full screen)           └─[Ride with a group]─► /new-ride?dest=1 (modal)
-            │                                                          → create_ride + propose_stop
-            ├─active ride──► /ride/<id>/live  (unchanged)              → invite?first=1 → [permissions] → lobby → live
-            └─lobby ride───► /ride/<id>/lobby (unchanged)
-Home sheet tiles: Start a group ride → /new-ride · Join with a code → /join · Just ride solo → startSoloRide → live
+            │           /where-to (search, full screen)           │
+            ├─active ride──► /ride/<id>/live  ◄── joiners (code / link) enter here, with the route line + stop card
+            └─lobby ride───► /ride/<id>/lobby (a ride made by Invite riders, or one an older build left in the lobby)
+Home sheet tiles: Join with a code → /join · Just ride → startSoloRide → live (normal sheet view)
+Group (D6): route ─[Invite riders]─► startInviteRide (lobby ride + stop) → /ride/<id>/invite?first=1 ─[Continue to lobby]─► lobby ─[Start]─► live (the leader navigates)
+Group from a running ride (D5): live → "Invite riders" row (or ⋯ → Invite riders) → /ride/<id>/invite (6-digit code + WhatsApp) → riders join the running ride
 Open ride on Home: peek = Back to ride (primary) · search bar (active ride) → /ride/<id>/search?from=home
 ```
 
 **Tap counts (from the map home, no ride open):**
 | Goal | Taps |
 |---|---|
-| Solo to a recent place | recent row in the sheet (1) → **Ride solo** (2) |
-| Solo via search recents | bar (1) → recent (2) → Ride solo (3) |
-| Solo to a new place | bar (1) → result (2) → Directions (3) → Ride solo (4). Chip: chip, result, Directions, Ride solo |
-| Group to a recent place | recent (1) → Ride with a group (2) → Create ride (3) → invite Continue (4) → lobby Start (5) |
-| Just ride solo / Start a group ride / Join | 1 tile tap |
+| Ride to a recent place | recent row in the sheet (1) → **Start ride** (2) |
+| Via search recents | bar (1) → recent (2) → Start ride (3) |
+| Ride to a new place | bar (1) → result (2) → Directions (3) → Start ride (4). Chip: chip, result, Directions, Start ride |
+| Start a ride with riders (D6) | route preview: **Invite riders** (1) → share the code / WhatsApp (optional) → **Continue to lobby** (2) → **Start** (3). From a recent place in the sheet: 2 + 3 = 5 taps |
+| Make the running ride a group (D5) | live: **Invite riders** row (1) → share the code / WhatsApp (2). Or ⋯ (1) → Invite riders (2) → share (3) |
+| Just ride / Join | 1 tile tap |
 
 The first ride ever adds the permissions explainer (04), as every ride does today.
 
-**When rows are created:** solo at **Ride solo** (21 §2.4, unchanged); group at **Create ride**. Browsing the map,
-searching, opening a place or a route creates nothing on the server.
+**When rows are created:** at **Start ride** (21 §2.4, unchanged), **Invite riders** (D6: a lobby ride with the stop) or
+**Just ride**. Browsing the map, searching, opening a place or a route creates nothing on the server. Sharing the
+code later changes no row: joiners add `ride_members` rows to the ride.
 
 ---
 
@@ -290,17 +301,19 @@ Peek block (always visible) / expanded-only blocks, in order:
   (150 ms) when found (02 rule: never block the tiles on this fetch). Recent rides: 2 skeleton rows (exists).
 - Errors fetching recent rides: the section hides (13 §3, unchanged).
 
-#### 3.1.3 Tiles (`QuickTiles`, new)
-Three equal tiles in one row, gap 8, padding-x 16: width `(windowW − 32 − 16) / 3` = **104** at 360.
+#### 3.1.3 Tiles (`QuickTiles`, new; D5: two tiles)
+Two equal tiles in one row, gap 8, padding-x 16: width `(windowW − 32 − 8) / 2` = **160** at 360 (`homeTiles()`, tested).
 `minHeight` `size.quickTile` 80 (grows with text), radius `radius.lg` 16, bg `surface`, pressed `surfacePressed`
 (+ the `PressableScale` press motion), padding 8, centred column: icon circle 32 `brandTint` with icon 20
 `brandOnBg`, gap 8, label 14 `family.semibold` `text`, centred, up to 2 lines (3 at 1.3×).
 
 | Tile | Icon | Label | a11y label | Action |
 |---|---|---|---|---|
-| 1 | `riders` | `homeMap.tileGroup` "Start a group ride" | `homeMap.tileGroupA11y` | `push('/new-ride')` (today's form, no destination) |
-| 2 | `dialpad` | `homeMap.tileJoin` "Join with a code" | `homeMap.tileJoinA11y` | `push('/join')` |
-| 3 | `bike` | `homeMap.tileSolo` "Just ride solo" | `homeMap.tileSoloA11y` | `startSoloRide(thresholdS)` → `resetToRide` (today's Just ride, unchanged; full map the first time). Tile shows a spinner in the icon circle and ignores taps while it runs; error → toast `errorText(code)` |
+| 1 | `dialpad` | `homeMap.tileJoin` "Join with a code" | `homeMap.tileJoinA11y` | `push('/join')` (one tap, unchanged) |
+| 2 | `bike` | `homeMap.tileRide` "Just ride" | `homeMap.tileRideA11y` | `startSoloRide(thresholdS, defaultRideName(first))` → `resetToRide` (a ride with no destination; **normal sheet view since D6**, not full map). Tile shows a spinner in the icon circle and ignores taps while it runs; error → toast `errorText(code)` |
+
+~~Tile 1 "Start a group ride"~~ is removed (D5): any ride becomes a group from the live screen. "Just ride" is named
+neutrally for the same reason (it was "Just ride solo").
 
 Tiles are tonal on purpose: the screen's primary is the search bar; the tiles are equal alternatives. Hidden while a
 ride is open (§3.10).
@@ -313,14 +326,20 @@ ride is open (§3.10).
 - Expanded: `SectionLabel` `homeMap.recentPlaces` + text button `whereTo.clear` (56 hit) → the existing
   `whereTo.clear*` ConfirmSheet.
 
-#### 3.1.5 Location (rule 8, 04: explain before asking, never at launch)
-- Home **never** calls `requestForegroundPermissionsAsync` on its own. Position: `usePlanningPosition()` (permission
-  read, last-known ≤ 2 min, Balanced watch every 10 m while Home is focused). It already writes `nav-store.origin`.
-  Add `servicesEnabled` (`Location.hasServicesEnabledAsync()`, re-read on `AppState` active).
+#### 3.1.5 Location (D5: asked when Home opens; the explainer stays as the way back)
+- **Launch prompt (user decision, 2026-10-15, replaces "no prompt on launch"):** Home asks for foreground location as
+  soon as it opens while the permission is `undetermined` and can still be asked (`launchPromptWanted` in
+  `plan-flow.ts`, with a **module-level** flag in `home.tsx`: once per app **process**, not per Home mount, so coming
+  back from a ride never asks again; **never on web**, where the browser prompt stays on the explainer button). If it is granted the camera eases to me (`recentre`). After "Don't allow" the OS does not show
+  the dialog again, so **Show my location** (below) is the way back and it explains first.
+- Position: `usePlanningPosition()` (permission read, last-known ≤ 2 min, Balanced watch every 10 m while Home is
+  focused; AppState `unknown` at cold start counts as in front, `lib/app-state.ts`). It already writes
+  `nav-store.origin`. `servicesEnabled` is `Location.hasServicesEnabledAsync()`, re-read on `AppState` active.
 - `LocationRow` (moved from `where-to.tsx` to `src/components/location-row.tsx`, props `title`, `body`): on Home it
   uses `homeMap.locTitle` / `homeMap.locBody`; services off: `homeMap.locServicesTitle` / `homeMap.locServicesBody`
   with `perm.openSettings`. Blocked (`canAskAgain === false`): `perm.openSettings` → `Linking.openSettings()`.
-- **Show my location** (me slot) opens a `Sheet` with the same LocationRow content and its button. After a grant the
+- **Show my location** (me slot) opens a `Sheet` with the same LocationRow content and its button. It explains first; the
+  OS prompt comes from the launch prompt (once per run) and, after a refusal the OS lets us ask again, from this button. After a grant the
   sheet closes, haptic `success`, camera intent `me`.
 - Without location the map shows the saved camera, else `HOME_FALLBACK_CAMERA` (India, zoom 4, §4.2). Search,
   places and routes still work (no bias, no distances; the route needs a start point, §3.4).
@@ -335,22 +354,20 @@ ride is open (§3.10).
 │ (Fuel) (Coffee) (Food) (Parking) (To…  │ chips 48 (56 hit); hidden while expanded, shown on peek
 ├──────────────────── ── ────────────────┤ sheet expanded, top 8 under the bar, radius 24
 │ Welcome, Raghu                     (˅) │ header 56: 16 semibold · chevron 56
-│ Your first group ride is three steps   │ 14 muted
-│ away.                                  │
-│ ┌────────┐ ┌────────┐ ┌────────┐       │ tiles 104×80, gap 8
-│ │ (grp)  │ │ (dial) │ │ (bike) │       │   icon 32 brandTint / 20 brandOnBg
-│ │Start a │ │Join    │ │Just    │       │   14 semibold, 2 lines
-│ │group   │ │with a  │ │ride    │       │
-│ │ride    │ │code    │ │solo    │       │
-│ └────────┘ └────────┘ └────────┘       │
+│ Your first ride is three steps away.   │ 14 muted (home.firstSub)
+│ ┌──────────────┐ ┌──────────────┐      │ tiles 160×80, gap 8 (D5: two)
+│ │    (dial)    │ │    (bike)    │      │   icon 32 brandTint / 20 brandOnBg
+│ │ Join with a  │ │  Just ride   │      │   14 semibold, 2 lines
+│ │    code      │ │              │      │
+│ └──────────────┘ └──────────────┘      │
 │ [pin]  See where you are               │ LocationRow: tile 40 brandTint · 16 semibold
 │  40    Shows you on the map and finds  │   14 muted, up to 3 lines
 │        places near you. …              │
 │ (          Allow location            ) │ BigButton secondary 56
-│ (1)─ Pick where you're riding          │ FirstRunSteps (step 1 new copy)
-│  │   Search a place, then choose solo… │
-│ (2)─ Share the 6-digit code            │
-│ (3)─ Ride. Nobody gets lost.           │
+│ (1)─ Pick where you're riding          │ FirstRunSteps (D5 copy)
+│  │   Search a place, check the route,  │   tap Start.
+│ (2)─ Share the code to ride together   │   Invite riders from your ride. They join from WhatsApp or the code.
+│ (3)─ Ride. Nobody gets lost.           │   Everyone sees who is ahead, behind or stopped.
 │ [shield] Add emergency contacts  Add ✕ │ NudgeCard (unchanged)
 └────────────────────────────────────────┘
 Collapsed (peek): header + sub + tiles; map above shows India at zoom 4, me slot "Show my location".
@@ -367,8 +384,7 @@ Collapsed (peek): header + sub + tiles; map above shows India at zoom 4, me slot
 │ © OpenFreeMap © OpenStreetMap          │ attribution (me slot empty: centred)
 ├──────────────────── ── ────────────────┤ peek = 56 + 80 + 12 + 128 + 8 + inset
 │ Good evening, Raghu                (˄) │
-│ [ Start a  ] [ Join with ] [ Just ride]│ tiles
-│ [group ride] [  a code   ] [   solo   ]│
+│ [ Join with a code ] [   Just ride   ] │ tiles (D5)
 │ [hist] Mysuru Palace            118 km │ PlaceRow 64 → route mode (2 taps to ride)
 │  40    Sayyaji Rao Rd, Mysuru          │
 │ [hist] Nandi Hills               61 km │
@@ -468,12 +484,12 @@ Expanded adds the convoy strip inside the card (today's full card), the nudge an
 - On enter: `AccessibilityInfo.setAccessibilityFocus` on the name; the panel is one group labelled
   `place.a11ySummary`.
 
-### 3.4 Route preview with the choice — Home `route` mode
-**Purpose:** see the trip, then say how you are riding. **Glance:** `1 h 34 min · 119 km`, then the two choices.
+### 3.4 Route preview with Start — Home `route` mode
+**Purpose:** see the trip, then start (alone, or with riders: D6). **Glance:** `1 h 34 min · 119 km`, then **Start ride**.
 The 21 §2.3 preview, moved into Home: `RoutePanel` (new, the body of today's `Preview` component), the same
 `usePreviewRoute`, the same states table (21 §2.3), the same car note / D2a flag, the same `previewPadding` for the
 fit and the same floating back circle (`fabBg`, 56, `top: insets.top + bannerH + 8`, `left: 12`,
-label `preview.a11yBack` now "Back"). Only the bottom changes:
+label `preview.a11yBack` now "Back"). **D5, amended by D6:** the bottom has one primary (Start ride) and one secondary under it (Invite riders):
 
 ```
 ┌────────────────────────────────────────┐
@@ -489,155 +505,167 @@ label `preview.a11yBack` now "Back"). Only the bottom changes:
 │ (i) Route for cars — may use express-  │ 14 muted, alertCircle 16 (preview.carNoteMayUse, D2a)
 │     ways that ban two-wheelers.        │
 │ [Allow expressways        Off  (o==)]  │ only when flags.ROUTING_SUPPORTS_EXCLUDE (D2a)
-│────────────────────────────────────────│ hairline border, margin 12
-│ How are you riding?                    │ 14 semibold textMuted, accessibilityRole header
-│ ( [grp]       Ride with a group      ) │ BigButton secondary 56, icon riders
-│ [ >              Ride solo           ] │ BigButton primary prominent 56, icon navigate (lowest = thumb)
-└────────────────────────────────────────┘ ≈ 358 dp; clear map ≈ 334 at 360×780
+│ [ >            Start ride            ] │ BigButton primary prominent 56, icon navigate (`routeActions().start`)
+│ [ +        Invite riders             ] │ BigButton secondary 56, icon invite (D6, `routeActions().invite`)
+└────────────────────────────────────────┘ ≈ 354 dp at 360 (290 with Start only); clear map ≈ 340
 ```
 
-#### 3.4.1 Why two actions on the preview (and not a sheet after one Start)
-- **Fewer taps:** the choice costs zero extra taps; a sheet after Start costs one (21's 3-tap target becomes 2 from
-  the home sheet, §1).
-- **It still asks:** the label "How are you riding?" plus two labelled buttons is the question the user asked for,
-  shown at the moment it matters, without a modal over the route.
-- **Different weights are honest:** Ride solo commits now (creates and starts the ride). Ride with a group opens a
-  setup screen that has its own primary (Create ride). Primary = the action that starts riding.
-- **Glove safety:** neither action is destructive. A mis-tap on Ride solo starts a solo ride that End ride undoes;
-  a mis-tap on Ride with a group opens a form that ✕ closes. 12 dp gap, 56 dp each, full width (328 at 360).
-- Positions never change (no "remember last choice" re-ordering: muscle memory with gloves).
+#### 3.4.1 One primary, one secondary (D5, D6)
+- **D6:** under Start ride sits **Invite riders** (`preview.invite`, secondary, 56, icon `invite`, label while it runs
+  `preview.inviting`). Start stays the one filled primary. Both are disabled offline; while one runs it loads and the
+  other is blocked (`routeActions`, tested), and Android Back is blocked, exactly as for Start (the same `goingRef` guard and start lock).
+- The earlier two-action design ("How are you riding?" + **Ride with a group** + **Ride solo**, decisions 2 and the
+  P1 reviews) is withdrawn. There is one kind of ride; the rider shares its code from inside the ride when they want
+  company (§3.8). Nothing asks "solo or group" at the start.
+- **Fewer taps and a lower panel than the two-choice design:** 2 taps from a recent place to Start.
+- **Glove safety:** Start commits now (creates and starts the ride); a mis-tap is undone by End ride. Full width, 56.
 
 #### 3.4.2 States added to the 21 §2.3 table
-| State | Panel | Ride with a group | Ride solo |
-|---|---|---|---|
-| Viewer offline | `preview.offline` banner (exists) | **disabled** | **disabled** |
-| No location permission | note `preview.noLocation` + ghost `whereTo.locAllow` 56 (→ OS prompt; blocked → `perm.openSettings`); map frames the pin only | enabled | enabled (the ride's own permissions explainer runs after) |
-| Ride solo running | `preview.starting` on Ride solo, loading | disabled | loading; Android back blocked (exists) |
-| A lobby ride is open (I'm a rider) | unchanged | → `home.confirmSwitch*` sheet → `/new-ride?dest=1&leaveRideId=…` | → `home.confirmSwitch*` sheet → `startNavigationRide(place, s, { leaveRideId })` |
-| A lobby ride is open (I'm its leader) | unchanged | → `home.leaderBusy*` sheet ("Go to {ride}") | same sheet |
-| Active ride open | not reachable (the bar opens the in-ride search, §3.10); a stale route mode is reset on focus | — | — |
+| State | Panel | Start ride |
+|---|---|---|
+| Viewer offline | `preview.offline` banner (exists) | **disabled** |
+| No location permission | note `preview.noLocation` + ghost `whereTo.locAllow` 56 (→ OS prompt; blocked → `perm.openSettings`); map frames the pin only | enabled (the ride's own permissions explainer runs after) |
+| Start / Invite running | `preview.starting` on Start ride, or `preview.inviting` on Invite riders, loading | the running one loads, the other is disabled; Android back blocked (exists) |
+| A lobby ride is open (I'm a rider) | unchanged | both → `home.confirmSwitch*` sheet → `startNavigationRide` / `startInviteRide(place, s, { leaveRideId, rideName })` (the one that was tapped) |
+| A lobby ride is open (I'm its leader) | unchanged | both → `home.leaderBusy*` sheet ("Go to {ride}") |
+| Active ride open | not reachable (the bar opens the in-ride search, §3.10); a stale route mode is reset on focus | — |
 
-### 3.5 Solo path
-- **Ride solo** = 21 §2.4 `startNavigationRide(place, thresholdS)` unchanged, plus an optional
-  `{ leaveRideId }` (leave + `stopRideTracking()` first, as `new-ride.tsx` does today) for the switch case.
+### 3.5 Start (was "Solo path")
+- **Start ride** = 21 §2.4 `startNavigationRide(place, thresholdS, { rideName, leaveRideId? })`. `rideName` is
+  `defaultRideName(first)` ("Raghu's ride"; "Group ride" when the name is unknown): **never "Solo ride"**, because the ride
+  may be shared and its name is in the invite text (decision 3 still keeps the destination out of it). `leaveRideId`
+  (leave + `stopRideTracking()` first) is for the switch case.
 - Then exactly today's preview `go()`: `nav-store.startSession(rideId, seed, avoidMotorways)`, `recents.add(place)`,
-  `track('nav.started', { from: 'map_home' })`, `track('plan.choice', { choice: 'solo' })`, haptic `success`,
-  `plan.reset()`, `resetToRide(href)` (`dismissTo('/home')` is a no-op with Home on top, then push).
-- Live: 21 unchanged (sheet mode, turn banner, voice, arrival).
+  `track('nav.started', { from: 'map_home' })`, haptic `success`, `plan.reset()`, `resetToRide(href)` (`dismissTo('/home')`
+  is a no-op with Home on top, then push). `ride.created` carries `start_kind: 'start'` (Just ride: `'just_ride'`, Invite
+  riders: `'invite'`; D6 replaces `with_dest`, whose meaning had changed, §11). `solo-nav` also writes the nav-ride marker
+  with the stop (`markNavRide(rideId, destKey(place))`) right after `propose_stop`, and removes it if a later step fails.
+- Live: 21 unchanged (sheet mode, turn banner, voice, arrival), plus the Invite riders row (§3.8).
 
-### 3.6 Group setup with the destination — `/new-ride?dest=1` (changed)
-**Purpose:** name the group ride and its stop alert; the destination is already chosen.
-**Glance:** where we are riding to, and the Create button.
-- `new-ride.tsx` reads `plan-store.place` when `dest=1` (and the route numbers if `route` state is ok). If
-  `dest=1` but the store has no place (cold web URL), it behaves as today (no destination).
-```
-┌────────────────────────────────────────┐
-│ ✕  New group ride                      │ TopBar 56, title newRide.titleDest
-│ DESTINATION                            │ SectionLabel
-│ ┌────────────────────────────────────┐ │ DestinationCard (new) 64, Card surfaceRaised e1
-│ │ [flag] Mysuru Palace               │ │ tile 40 navRoute + endRide/coffee 20 onNavRoute · 16 semibold
-│ │  40    119 km · 1 h 34 min         │ │ 14 muted tabular: route if known, else "≈ 118 km", else address
-│ └────────────────────────────────────┘ │ not pressable (info)
-│ Riders see it in the lobby. Everyone   │ 14 muted newRide.destNote
-│ gets the route when the ride starts.   │
-│ Ride name                              │
-│ ( Arun's ride                        ) │ AppTextInput, the normal default name, max 60
-│ (Sunday ride) (Breakfast run) (Week…)  │ suggestion chips (unchanged)
-│ Alert when a rider has stopped for     │
-│ [ 1 min | ✓ 3 min | 5 min ]            │ SegmentedControl 56 (unchanged)
-│ We'll alert the group if someone …     │
-│ [             Create ride            ] │ primary (unchanged)
-└────────────────────────────────────────┘
-```
-- Default name: the **normal** `defaultRideName(first)` ("Arun's ride"), with or without a destination. Never "To {place}": the WhatsApp text carries the ride name, so a place-bearing default would put the destination in the invite (decision 3). Editable as today; `newRide.defaultNameDest` is retired.
-- ✕ → `router.back()` → Home route mode, state kept.
-- **Create ride** → `createGroupRide({ name, thresholdS, dest, leaveRideId })` (new `src/lib/group-ride.ts`):
-  ```ts
-  export function createGroupRide(i: { name: string; thresholdS: number; dest: NavPlace | null; leaveRideId?: string }): Promise<RideRow> {
-    return withStartLock(async () => {
-      if (i.leaveRideId) { await leaveIfMember(i.leaveRideId); await stopRideTracking(); } // today's new-ride logic
-      const ride = await createRide(i.name, i.thresholdS);
-      if (!i.dest) return ride;
-      try {
-        await proposeStop(ride.id, { name: i.dest.name.slice(0, STOP_NAME_MAX), address: i.dest.address.slice(0, STOP_ADDRESS_MAX),
-          lat: i.dest.lat, lng: i.dest.lng, kind: stopKindFor(i.dest.category) });   // leader → applied at once, status lobby is allowed
-        return ride;
-      } catch (e) { await rollbackRide(ride.id); throw e; }                           // nobody has the code yet: safe to undo
-    });
-  }
-  ```
-  Success: haptic `success`, `recents.add(place)`, `track('ride.created', { with_dest: true })`,
-  `track('plan.choice', { choice: 'group' })`, `plan.reset()`, then today's `replace('/ride/<id>/invite?first=1')`.
-  Failure: today's inline error + Try again (the ride was rolled back; nothing half-made is left).
-- **How the destination is attached:** `propose_stop` **right after `create_ride`**, not at `start_ride`. Reasons:
-  the stop lives on the ride row, so every joiner's normal load and the `rides` broadcast carry it into the lobby
-  (riders know where they are going before they commit); the RPC already allows `lobby` (it only refuses `ended`);
-  and the failure is handled while the leader is still on the form. No seeded route for groups (the lobby can last
-  an hour; live fetches from where each rider is at start).
-- The leader's own `stop_set` toast is already skipped (alone in the ride, `_layout.tsx` rule).
+#### 3.5.1 Invite riders (D6): a lobby ride with the destination
+`startInviteRide(place, thresholdS, { leaveRideId?, rideName })` in `lib/solo-nav.ts`, behind the same `withStartLock`
+and the same open-ride check as Start (an open ride is opened as it is, toast `preview.existingRide`):
+1. `create_ride(defaultRideName(first))`: the normal name, **never containing the destination**; the ride is in `lobby`.
+2. `propose_stop` (the leader's stop applies at once). **If it fails the ride is ended again** (`rollbackRide`, retried, then
+   remembered), no marker is written, the error toast shows and Home stays on route mode with both buttons enabled.
+3. `markNavRide(rideId, destKey(place))`, so the leader navigates once the lobby ride (with riders) is started.
+4. Home hands the previewed route to `nav-store.startSession` (as Start), adds the recent place, `haptic('success')`,
+   `resetToRide('/ride/<id>/invite?first=1')`. Stack `[home, invite]`.
+- **Invite screen, `?first=1`:** the 6-digit code + WhatsApp / SMS / share as always (10); the footer reads
+  **Continue to lobby** (`invite.continue`) and does `replace(hrefAfterEnter({ id, status }))`: the lobby, or the
+  permissions explainer first when something is still undetermined (04). A second tap and Android Back are ignored while
+  it runs. Without `first` the footer stays **Done** (= back). TopBar Back leaves to Home: the ride stays in the lobby
+  and Home shows "Back to ride" (the lobby is `hrefAfterEnter`'s home for it). When there is nothing to go back to the
+  screen replaces itself with `rideHref(id, status)` for the ride's real status (not the lobby, which flashed before the redirect, L7).
+- **Lobby (05 + D6):** unchanged, plus the **"Riding to {place}"** caption (`lobby.destLine`, §3.7) for the leader and for joiners.
+  Riders join with the code or link while it waits. The leader taps **Start** (`lobby.start`, guarded against a double tap)
+  → `start_ride` → the ride layout moves everyone to live. The leader's turn banner and voice start there (§3.8.1);
+  joiners get the route line + stop card and never a banner.
+- **Taps from the route preview:** Invite riders (1) → [share] → Continue to lobby (2) → Start (3).
+- **Review fixes (after D6, behaviour changes):**
+  - **No background tracking in the lobby (M1, M2).** The ride layout starts the location task only when the ride is
+    **active** (`lib/location/start-rule.ts` `shouldStartTracking`: loaded, this ride, not left, foreground granted, a ride
+    screen in front, `status === 'active'`). A forgotten lobby keeps no foreground service or uploads, and the Android 11+
+    background-location Settings page can no longer pop up over the invite screen. Joiners in a lobby behave the same and
+    start when the status turns active (the effect depends on `status`). The permissions explainer, when reached with
+    `next=lobby` (a joiner), only **asks** (`requestTrackingPermissions`), it does not start tracking.
+  - **The explainer runs at Start (M1).** Lobby **Start** reads the permissions first (`hrefAfterEnter({ status: 'active' })`),
+    calls `start_ride`, and when something is undetermined goes to `/permissions?rideId=<id>&next=live` (the background
+    prompt follows the explainer, exactly like Start ride); otherwise the ride layout moves everyone to live. The
+    permissions screen is outside the ride, so the layout starts no tracking under it.
+  - **Lobby "ready" = on the channel.** With no position shared in the lobby, a fresh position can no longer mean
+    "ready": the lobby counts riders on the channel (`connected` or `ready`) in "N riders, R ready"; the row state shows
+    `connected` until the ride starts.
+  - **Android Back is ignored while lobby Start runs** (§13, M3), like Continue to lobby.
+  - **Invite riders does not seed the route (L4).** `startSession(rideId, null, avoid)` for an invited ride: its lobby may wait
+    minutes, and a seed counts as "just fetched", so the leader's first route is fetched fresh after Start.
+  - **Telemetry (L6):** `nav.started { from: 'map_home' }` fires at lobby Start for an invited ride (this phone has its
+    marker and the ride has a stop); the lobby code long-press sends `invite.shared { via: 'lobby' }`; `ride.group_formed`
+    is persisted per ride (`nav.groupFormed.v1`, cleared with the ride's marker) so a restart cannot fire it twice.
+  - **Marker pruning (L7):** `end_ride` (also how a lobby is cancelled) from this phone drops the ride's marker; Home drops
+    markers of rides that are not my open ride after a successful open-ride read (`pruneNavRidesExcept`, skipped when a new
+    marker appeared during the read). The orphan key `pref.soloFullMapSeen` is deleted there too (L3).
+  - **Launch prompt (L8):** only while Home is focused (`launchPromptWanted({ focused })`); if the permission read resolves
+    under a ride, it is asked on the next focus.
 
-### 3.7 Lobby with the destination (`ride/[id]/lobby.tsx`)
-**P1 (caption):** under `lobby.threshold`, a 14 muted line with the `endRide` (or `coffee`) icon 16
-`textMuted`: `lobby.destLine` "Riding to {place}". Everyone sees it. Nothing else changes.
+### 3.6 Group setup with the destination — withdrawn (D5)
+`/new-ride`, `createGroupRide`, `lib/group-ride.ts`, `DestinationCard`, the `plan-store.routeSummary` hand-off and the
+`newRide.*` form copy are deleted. The one thing the form held that is still needed, the **stop-alert time**
+(1 / 3 / 5 min, `pref.stopThresholdS`), is now a setting under **Profile → Safety** ("Alert when a rider has stopped
+for", the same `SegmentedControl`, keys `profile.threshold*`); every new ride is created with it. The note
+`profile.thresholdNote` ("Applies to rides you start from now on.") sits under the preview line (D6). The ride name is not
+editable at start any more (rides get the default name).
 
-**P2 (card):** replace the caption with a `DestinationCard` between the code card and the threshold caption:
-```
-┌────────────────────────────────────────┐
-│ ‹  To Mysuru Palace              ⋯     │ RideHeader (lobby meta "Lobby · 3 riders", unchanged)
-│ ┌ code 123 456 · note · (Invite riders)┐│ unchanged
-│ DESTINATION                            │ SectionLabel lobby.destTitle
-│ ┌────────────────────────────────────┐ │ DestinationCard 64 (not pressable)
-│ │ [flag] Mysuru Palace               │ │ 16 semibold
-│ │  40    ≈ 118 km from you · Set by A│ │ 14 muted tabular; "Set by Arun" only for non-leaders
-│ └────────────────────────────────────┘ │
-│ Stop alert after 3 min                 │
-│ Your setup: ✓ Location ✓ Alerts ○ SOS  │ unchanged
-│ Riders                     3 · 2 ready │
-│ …                                      │
-├────────────────────────────────────────┤
-│ Everyone ready? Start when you are.    │ unchanged footer (leader: Start ride / rider: Waiting + Leave)
-```
-- Distance: straight line from **my** position in `ride-store.positions[me]` (lobby already tracks):
-  `lobby.destDistance` "≈ {km} from you"; no fix → `stop.noFix`. No OSRM request in the lobby (fair use, D1).
-- Non-leaders see the same card, read-only, with `lobby.destSetBy` "Set by {leader first name}".
-- **Leader: Remove** lives in the ⋯ menu (as 20 C5): the existing `isLeader && hasStop` row. **Fix in the lobby:**
-  label `lobby.menuRemoveDest` "Remove destination" (today the lobby shows the solo "Stop directions" copy because
-  the leader is alone), ConfirmSheet `lobby.removeDestTitle` / `lobby.removeDestBody`, confirm
-  `lobby.removeDestConfirm`, cancel `stop.clearCancel` → `clear_stop`. Riders get the existing `stop_cleared` notice.
-- Changing the destination from the lobby is P3 (needs `search` allowed in `lobby` by `rideRedirect`).
+**Rename ride (D6 decision 3): done; migration 0010 applied to the project on 2026-10-15 (the user approved).** The ⋯ menu row
+**"Rename ride"** (`SheetAction`, `edit` icon, after Share code) shows for the **leader only**, in lobby and live, never for riders,
+after the ride ended or once I left (`renameMenuVisible`, `lib/rename-ride.ts`). It opens `RenameRideSheet`: a full-screen
+sheet (same keyboard-safe pattern as the profile name editor) with a text field prefilled with the current name, a live
+`n/60` count from 48 characters on, **Save** disabled when unchanged, empty (no letter or digit) or over 60 (`canSaveRename`),
+and the typing lock (`useTypingLock`, 21 §2.2.2): while moving the field is read-only, the keyboard is dismissed, the note
+`rename.locked` shows and Save stays disabled. Save calls `ride-api.renameRide` -> RPC `rename_ride` (`supabase/migrations/0010_rename_ride.sql`:
+leader only, ride not ended, trim, 1 to 60 characters, `security definer`, no ride event). On success: the returned row goes
+into the ride store at once (`applyRide`), toast "Ride renamed", success haptic; everyone else gets it through the existing
+`rides_broadcast` update trigger (header re-renders from the store). On error the sheet stays open with the message under the
+field. Until 0010 is applied the RPC fails with "function not found", mapped to `rename_unavailable` ("Renaming isn't
+available yet. Try again later."). Telemetry: `ride.renamed` (no props).
 
-### 3.8 Live group ride with a destination, and group navigation
-**Everyone (P1, no change needed):** the ride starts with the stop set, so live shows the 19 A route line from each
-phone's own position and the 20 C5 stop card ("119 km · 1 h 34 min / Mysuru Palace"), the full-map stop chip and
-the 150 m arrival line. No "Next stop" toast at start (the stop was set before they joined).
+### 3.7 Lobby with the destination — restored by D6 for Invite riders (the P2 card stays dropped)
+D5 withdrew this because no ride from Home sat in the lobby. **Invite riders** (D6) makes one: the lobby shows the
+one-line caption **"Riding to {place}"** (`lobby.destLine`, `caption` muted, a `coffee` / `endRide` icon by stop kind,
+one line) under the stop-alert line, for the leader **and for joiners** (it reads the ride's stop, not local state). The P2
+destination card (distance, Remove destination) and the lobby copy fix stay dropped. The lobby is otherwise 05.
 
-**Recommendation for navigation in a group (P2, needs Q1): leader-only turn banner + voice.**
-```ts
-// lib/nav-engine.ts
-isNavActive(a) = a.rideLive && a.hasStop && !a.arrived && (a.solo || a.engineRunning || a.leaderNav)
-// _layout.tsx: leaderNav = flags.GROUP_LEADER_NAV && isLeader   (EXPO_PUBLIC_GROUP_LEADER_NAV, default on)
-```
-- The leader gets the 21 banner docked above the convoy strip (21 §10 "rider joins" layout, already built), voice
-  (toggle in ⋯ for groups, 21 §6.3), arrival haptic + "You've arrived" once (21 L3). No ArrivalPanel in a group (the
-  group sheet stays; End ride is in ⋯).
-- Other riders: route line + stop card only (unchanged; reroute on the 19 A 60 s rule).
-- **Trade-off for the user:**
-  | Option | Riders get | Cost / risk |
-  |---|---|---|
-  | **A. Leader-only banner + voice (recommended)** | Leader: turn-by-turn. Others: line + distance/ETA, they follow the leader | Request load = one solo rider on the OSRM demo (D1 unchanged). Leader's phone: 1 Hz GPS + voice battery (21 §5.5). Fixes today's quirk (a group started with only the leader present navigates, one started with two does not) |
-  | B. Nothing new | Everyone: line + card | No new load; leaders get no directions in groups |
-  | C. Everyone (21 §6 P4) | Everyone: turn-by-turn | Needs hosted routing first (D1): N riders rerouting breaks the demo's fair use. Out of scope |
-#### 3.8.1 `isNavActive` after decision 1 (implemented in P1)
+### 3.8 How a ride becomes a group, and what each rider gets (D5)
+
+**Becoming a group is inside the ride, with the existing screens (no new UI beyond copy):**
+1. Live, solo panel: the **Invite riders** row (`SoloInviteRow`, 64 dp, below the stop card). Its sub-line is now
+   `live.soloSub` "Share the code to ride together" (was "You're riding solo": it says what the row is for). Tap →
+   `/ride/<id>/invite`. Or the header ⋯ → **Invite riders** (also **Share code**, which opens the share sheet directly).
+2. Invite screen: the 6-digit code, WhatsApp / SMS / share (10). The text carries the ride name ("Raghu's ride") and the
+   link or code, never the destination (decision 3).
+3. Riders join with the code or the link (`join_ride`, which accepts any ride that is not `ended`); the leader's
+   panel switches from the solo panel to the group sheet (20 C4) on the first join; the rest of the ride is unchanged.
+
+**Discoverability with a destination (20 C4 heights checked).** The solo panel is one fixed height at every snap:
+`8 + stop card 64 + invite row 64 = 136 dp` with a destination (72 without). The invite row is **not** displaced by the
+stop card; both are always visible. The turn banner (96, +40 with the Then row) docks at the top of the map, above the
+convoy strip, so it does not touch the sheet. Where the row is not on screen: **arrived** (the arrival panel, 216 dp,
+replaces the invite row: the ride is ending, and ⋯ → Invite riders stays one tap away in sheet mode) and **full map**
+(no sheet and no header; the rider leaves full map first). A free ride from **Just ride** no longer opens in
+full map (D6, §3.9), so the row is visible from the first second; full map stays one tap away.
+
+**What each rider gets in a ride that has riders (decision 1 stands):**
+- **Joiners:** the 19 A route line from their own position and the 20 C5 stop card ("119 km · 1 h 34 min / Mysuru
+  Palace"), the full-map stop chip and the 150 m arrival line. No "Next stop" toast at join (the stop was set before
+  they joined). A joiner lands on `/ride/<id>/live` (`hrefAfterEnter`, via the permissions explainer when something is
+  undetermined); the group sheet, not full map (no ride opens in full map by itself: the full-map toggle is per ride, see §3.9).
+- **The leader who started navigating:** keeps the turn banner and voice (21 §10 layout: banner above the convoy strip,
+  voice toggle in ⋯). Arrival is announced once; there is no ArrivalPanel in a group (End ride is in ⋯).
+- **Group turn-by-turn for everyone** waits for hosted routing (D1): N riders rerouting would break the OSRM demo's
+  fair use. Request load today = one navigating rider + one route per joiner on the 19 A 60 s rule.
+
+#### 3.8.1 `isNavActive` after D5 and D6 (implemented)
 ```ts
 isNavActive(a) = a.rideLive && a.hasStop && !a.arrived &&
-  (a.engineRunning || (a.solo && a.leader && !a.groupRide))
+  (a.engineRunning || (a.leader && (a.solo || a.navRide)))
 ```
-- `groupRide` = a ride created through `createGroupRide` (remembered on the creating phone, `nav.groupRides.v1`).
-  A group ride never *starts* navigation, whether one rider or ten are present when it starts: this removes the
-  quirk where a group started with only the leader navigated and one started with two did not.
 - `leader`: only a ride's leader starts navigation (a rider left alone in someone else's ride does not).
-- `engineRunning` (leader whose session is already running for this stop) still carries on when a rider joins a
-  solo ride (21 §10). It can never be true for a group ride, because the engine never started for it.
+- `solo`: a ride of one starts it (Start ride, or a stop added to a Just ride).
+- `engineRunning`: the leader's session keeps running when riders join (21 §10), while the ride screens are up.
+- `navRide` (D6: **`marker === destKey(stop)`**): this phone navigated THIS stop of the ride as its leader
+  (`lib/nav-rides.ts`, `nav.navRides.v1` = `{ rideId: destKey }`). The marker is written (a) at creation, by `solo-nav`,
+  for Start ride and for Invite riders (the leader navigates after starting a lobby ride that already has riders), and
+  (b) by the ride layout whenever navigation is on for the leader (a solo leader who sets a new stop re-marks it). It is
+  removed when the ride ends or I leave it, pruned from Home's ended list, and **cleared on sign-out**
+  (`clearHomeDevicePrefs`). The first version (a list of ride ids) is read as empty.
+- **Read live, so every screen agrees (review H1).** The layout and the live screen both use `useNavRide(rideId, stopLL)`
+  (`useSyncExternalStore` on the marker), not a value read once at mount. Whether turn-by-turn is on no longer depends on
+  whether a screen remounted: a stop that is not the marked one (a proposal the leader accepted with riders present, a stop
+  added to a group) is **never navigated**, mounted or reopened; the same stop set again resumes.
+- A phone without the marker (another device, reinstall) does not resume it: it fails closed, and the group keeps the
+  route line and the stop card. Joiners never navigate (`leader`). The old "group ride" marker (`nav.groupRides.v1`) has
+  no job and is deleted from storage by Home and at sign-out.
+- Tests: `nav-banner.test.ts` (`isNavActive` and the marker scenarios), `nav-rides.test.ts`, `solo-nav.test.ts`.
 
 - Note: the 19 A route lines already send one OSRM request per rider per stop change (+ reroutes). That load exists
   today and grows with group size; it stays the D1 pre-launch risk.
@@ -648,8 +676,7 @@ isNavActive(a) = a.rideLive && a.hasStop && !a.arrived &&
 ### 3.9 Free rides (no destination)
 | Ride | Where | Behaviour |
 |---|---|---|
-| Solo, no destination | Tile **Just ride solo** (1 tap) | `startSoloRide` (unchanged): live, full map the first time, header search adds a stop later (21 §2.9) |
-| Group, no destination | Tile **Start a group ride** (1 tap) | Today's `new-ride` (title `newRide.title`, no destination card) → invite → lobby. A stop can be set once live (19 A) |
+| Just ride | Tile **Just ride** (1 tap) | `startSoloRide(thresholdS, defaultRideName(first))`: live in the **normal sheet view** (D6: never full map by itself; the Invite riders row and ⋯ are visible at once), header search adds a stop later (21 §2.9); invite riders from the panel / ⋯ like any ride. `lib/full-map.ts` has no first-open rule any more (`shouldDefaultFullMap`, `fullMapDefaultStep` and `pref.soloFullMapSeen` are deleted); full map is the toggle, and it is per ride: `createRide` calls `live-ui-store.startNewRide()`, so a new ride (Start ride, Invite riders, Just ride) never opens in full map because the last one was left in it (L1) |
 | Join | Tile **Join with a code** (1 tap) | `/join` (unchanged) |
 Not on long-press (undiscoverable, and long-press on the map is reserved for "drop a pin", P3).
 
@@ -660,7 +687,7 @@ Not on long-press (undiscoverable, and long-press on the map is reserved for "dr
 - Active ride: the bar reads `homeMap.searchStops` and opens `/ride/<id>/search?from=home` (19 A search; leader
   sets, rider suggests). `search.tsx`: when `from=home`, a successful pick does `router.replace('/ride/<id>/live')`
   instead of `back()`. Chips are hidden. Recent places are hidden (they would lead to a second ride).
-- Lobby ride: the bar is the normal "Where to?"; route mode's two actions run the switch / leader-busy sheets
+- Lobby ride: the bar is the normal "Where to?"; route mode's Start ride runs the switch / leader-busy sheets
   (§3.4.2). P3: a lobby leader gets "Make it the destination of {ride}" instead.
 - On focus with an active ride, `plan.reset()` (a stale place/route mode is never shown under "Back to ride").
 
@@ -694,7 +721,7 @@ Not on long-press (undiscoverable, and long-press on the map is reserved for "dr
 - **No 1 Hz watch on Home.** `usePlanningPosition`: one last-known read + Balanced, 10 m watch, only while Home is
   focused and the app is active (iOS suspends it in the background; Android pauses it, 21 notes).
 - **One GL map at a time.** `homeMapMounted(pathname)`: the map is mounted only while the path is `/home`,
-  `/where-to` or `/new-ride` (instant return from search and setup). On any other path (ride screens, permissions,
+  `/where-to` or `/route-preview` (instant return from search). On any other path (ride screens, permissions,
   profile, join, rides) Home renders `bg` instead of the map; on return it remounts at the saved camera with a 150 ms
   fade from `bg` (none under Reduce Motion). So the home map and the live map never run together.
 - No OSRM request in browse or place mode. One preview request per route mode (5 min cache, 21 §3.1).
@@ -727,25 +754,27 @@ Not on long-press (undiscoverable, and long-press on the map is reserved for "dr
 | Home place | → browse (camera restored) | bar ‹, panel ✕ |
 | Home route (from a search result) | → place | floating ‹ |
 | Home route (from a recent) | → browse | floating ‹ |
-| Home route, Ride solo running | blocked (exists) | ‹ ignored |
+| Home route, Start ride running | blocked (exists) | ‹ ignored |
 | `/where-to` | → Home, mode unchanged | ‹ |
-| `/new-ride?dest=1` | → Home route mode, state kept | ✕ |
 | Lobby / live | → Home browse (the ride keeps going; plan was reset at entry) | header ‹ |
 | A Sheet / ConfirmSheet open on Home | closes the sheet first | Cancel / scrim |
-iOS: Home is the stack root (no edge swipe); `new-ride` modal swipe-down = ✕.
+iOS: Home is the stack root (no edge swipe).
 
 ### 5.2 Stacks after each start
-- Solo: `[home, live]` (or `[home, permissions → live]`) via `resetToRide`, as 21.
-- Group: `[home, new-ride]` → replace → `[home, invite]` → `[home, permissions|lobby]` → `[home, live]`.
-- Join (tile or deep link): unchanged `join.tsx` replaces; the stack ends `[home, lobby|live]` when Home was below.
+- Start / Just ride: `[home, live]` (or `[home, permissions → live]`) via `resetToRide`, as 21.
+- Invite riders on the route preview (D6): `[home, invite?first=1]` → Continue to lobby → `[home, lobby]` → Start → `[home, live]`.
+- Inviting from the live screen: `[home, live, invite]`; Done / Back returns to live.
+- Join (tile or deep link): unchanged `join.tsx` replaces; the stack ends `[home, live]` (or `[home, lobby]` for a ride an
+  older build left in the lobby) when Home was below.
 
 ### 5.3 Plan reset (never a stale preview under a ride)
-`plan.reset()` runs: in `resetToRide()`, on `createGroupRide` success, on join success (`join.tsx`), and on Home
+`plan.reset()` runs: in `resetToRide()`, on join success (`join.tsx`), and on Home
 focus when an active ride is open. The browse camera is kept.
 
 ### 5.4 Deep links and old routes
 - `throttletribe://join?code=` and the hosted invite `?c=` → `/join` (outside `(app)`): unchanged. They work with
-  the map home mounted below or not.
+  the map home mounted below or not, and with a ride that is already active and has a destination (D5, verified).
+- `/new-ride` no longer exists (D5); nothing linked to it.
 - Notification taps → ride routes: unchanged.
 - `/where-to` opened directly (web URL): works; a pick does `replace('/home')` with the plan store set.
 - `/route-preview?id&name&address&lat&lng&category` (old links, bookmarks): the route file becomes a redirect:
@@ -757,12 +786,12 @@ focus when an active ride is open. The browse camera is kept.
 
 | Screen / state | Behaviour |
 |---|---|
-| Home: first run | Sheet expanded once (§3.1.2 A); welcome text in the header; LocationRow if not granted |
+| Home: first run | Sheet expanded once (§3.1.2 A); welcome text in the header; LocationRow if not granted; the launch location prompt shows first (D5) |
 | Home: returning, no ride | Peek: tiles + 1–2 recent places; expanded: recents, nudge, stats, recent rides |
 | Home: loading (open ride / rides unknown) | Returning layout without recent rides; tiles enabled; ride card fades in if found |
 | Home: active ride open | Peek: compact ride card + Back to ride; bar → in-ride search; tiles, chips, recents hidden |
 | Home: lobby ride open | Peek: compact card ("Waiting in the lobby") + Back to ride; bar = Where to?; route actions → switch / leader-busy |
-| Home: location undetermined / denied | Me slot "Show my location" → explainer sheet; LocationRow in the sheet; no distances |
+| Home: location undetermined / denied | Undetermined: asked once on open (D5). After "Don't allow": me slot "Show my location" → explainer sheet; LocationRow in the sheet; no distances |
 | Home: location blocked / services off | Same, button `perm.openSettings`; services copy when off; re-read on return |
 | Home: granted, no fix yet | Me slot "Finding you…" disabled; camera saved / fallback |
 | Home: viewer offline | Offline banner on top; cached tiles; tiles and search enabled (they explain errors) |
@@ -771,12 +800,8 @@ focus when an active ride is open. The browse camera is kept.
 | Place: no fix | `stop.noFix` instead of the distance; pin centred |
 | Place: offline | Works (data came from search); Directions enabled; route mode shows its offline state |
 | Route: all | 21 §2.3 table + §3.4.2 |
-| Group setup: with destination / without | §3.6 / today's form |
-| Group setup: create OK, propose_stop fails | Ride rolled back; inline error + Try again; stays on the form |
-| Group setup: offline | Today's network error on Create |
-| Lobby: destination set (leader / rider) | P1 caption; P2 card (rider sees "Set by") |
-| Lobby: destination removed | Card/caption gone; riders get the `stop_cleared` notice |
-| Live group with destination | 19 A line + 20 C5 card for all; leader banner + voice (P2, Q1) |
+| Start ride: propose_stop fails | The ride is ended again (`rollbackRide`, 21 §2.4); toast; stay on route mode with Start enabled |
+| Live ride with riders and a destination | 19 A line + 20 C5 card for joiners; the leader who was navigating keeps banner + voice (§3.8) |
 | Light / dark × Tribe / Maps | Token-driven. Floating chrome e2 (shadow light, `edge2` dark); sheet e3; check bar/chip contrast on positron, dark, liberty, fiord |
 | 360 dp / 1.3× | §10 |
 
@@ -794,7 +819,7 @@ focus when an active ride is open. The browse camera is kept.
 | Re-centre / Show my location | 56 | tap | `select` | camera → me / explainer sheet |
 | Allow location (row or sheet) | 56 | tap | `select`; `success` on grant | OS prompt / settings |
 | Sheet header / chevron | 56 | tap, or drag | `select` | toggle peek ↔ expanded |
-| Tile | 104×80 | tap | `select`, press scale | §3.1.3 |
+| Tile | 160×80 | tap | `select`, press scale | §3.1.3 |
 | Recent place row | 64 | tap | `select`, `surfacePressed` | Home route mode |
 | Clear (recents) | 56 | tap → confirm | `select` | list emptied |
 | Back to ride | 56 | tap | `select` | lobby / live |
@@ -803,10 +828,8 @@ focus when an active ride is open. The browse camera is kept.
 | Directions | 56 | tap | `select` | route mode |
 | Route ‹ | 56 | tap | `select` | place / browse |
 | Allow expressways (flagged) | 56 | tap row | `select` | 21 §2.3.1 |
-| Ride with a group | 56 | tap | `select` | `/new-ride?dest=1` (or switch / leader-busy sheet) |
-| Ride solo | 56 | tap | loading; `success` on start | 21 §2.4 → live |
-| Create ride (dest) | 56 | tap | loading; `success` | create + propose_stop → invite |
-| Lobby ⋯ Remove destination | 56 | tap → confirm | `select` | `clear_stop` |
+| Start ride | 56 | tap | loading; `success` on start | 21 §2.4 → live (or switch / leader-busy sheet) |
+| Live: Invite riders row / ⋯ → Invite riders | 64 / 56 | tap | `select` | invite screen: code + WhatsApp (§3.8) |
 
 ---
 
@@ -827,43 +850,40 @@ focus when an active ride is open. The browse camera is kept.
 | `homeMap.locServicesTitle` | Location is off on this phone |
 | `homeMap.locServicesBody` | Turn it on in Settings to see where you are. |
 | `homeMap.sheetA11y` | Ride options |
-| `homeMap.tileGroup` ✎ / `homeMap.tileGroupA11y` | Start a group ride / Start a group ride without a destination |
 | `homeMap.tileJoin` / `homeMap.tileJoinA11y` | Join with a code / Join a ride with a 6-digit code |
-| `homeMap.tileSolo` ✎ / `homeMap.tileSoloA11y` | Just ride solo / Start a solo ride without a destination |
+| `homeMap.tileRide` ✎ / `homeMap.tileRideA11y` (D5, was `tileSolo`) | Just ride / Start a ride without a destination. You can invite riders once it has started. |
+| `home.firstSub` (D5) | Your first ride is three steps away. |
+| `home.step2Title` / `home.step2Body` (D5) | Share the code to ride together / Invite riders from your ride. They join from WhatsApp or the code. No sign-up. |
+| `live.soloSub` (D5) | Share the code to ride together |
+| `profile.thresholdLabel` / `profile.threshold1,3,5` / `profile.thresholdPreview` (moved from `newRide.*`) | Alert when a rider has stopped for / 1 min, 3 min, 5 min / We'll alert the group if someone stays still for {n} min. |
+| `preview.invite` / `preview.inviting` / `preview.inviteA11y` (D6) | Invite riders / Setting up… / Invite riders to ride to {name}. Opens the ride code first, and you start from the lobby. |
+| `invite.continue` (restored, D6) | Continue to lobby |
+| `lobby.destLine` (restored, D6) | Riding to {place} |
+| `profile.thresholdNote` (D6) | Applies to rides you start from now on. |
+| `newRide.defaultNameNeutral` (D6) | My ride (the default name when the rider's name is unknown; `newRide.defaultNameUnknown` "Group ride" stays only as `displayRideName`'s fallback for a blank stored name) |
 | `homeMap.recentPlaces` | Recent places |
 | `homeMap.recentA11y` | Recent place, {row} |
 | `homeMap.barBackA11y` | Back to map |
 | `homeMap.barPlaceA11y` | {name}. Search again |
 | `homeMap.step1Title` ✎ | Pick where you're riding |
-| `homeMap.step1Body` ✎ | Search a place, then choose solo or group. |
+| `homeMap.step1Body` ✎ (D5) | Search a place, check the route, tap Start. |
 | `place.distance` | ≈ {km} away |
 | `place.directions` / `place.directionsA11y` | Directions / Directions to {name} |
 | `place.closeA11y` | Close {name} |
 | `place.a11ySummary` | {name}, {distance} away, {address} |
-| `preview.choiceLabel` ✎ | How are you riding? |
-| `preview.rideSolo` / `preview.rideSoloA11y` | Ride solo / Ride solo to {name}. Starts now. |
-| `preview.rideGroup` / `preview.rideGroupA11y` | Ride with a group / Set up a group ride to {name} |
+| `preview.start` / `preview.startA11y` (D5) | Start ride / Start riding to {name}. Starts now. |
 | `preview.noLocation` | Allow location to see the route. |
 | `preview.a11yBack` (changed) | Back |
-| `newRide.titleDest` | New group ride |
-| `newRide.destLabel` | Destination |
-| `newRide.destNote` ✎ | Riders see it in the lobby. Everyone gets the route when the ride starts. |
-| `newRide.existingRide` | You already have a ride open, so we opened it. End it first to start a new one. |
-| `newRide.a11yDest` | Destination {name}, {distance} |
-| `lobby.destLine` (P1) | Riding to {place} |
-| `lobby.destTitle` (P2) | Destination |
-| `lobby.destDistance` | ≈ {km} from you |
-| `lobby.destSetBy` | Set by {name} |
-| `lobby.menuRemoveDest` | Remove destination |
-| `lobby.removeDestTitle` | Remove the destination? |
-| `lobby.removeDestBody` | Riders won't get a route to it. You can set a stop after the ride starts. |
-| `lobby.removeDestConfirm` | Remove |
+| `preview.existingRide` | You already have a ride open, so we opened it. End it first to ride to {name}. |
 
 - Reused: `home.firstTitle`, `home.firstTitleNoName`, `home.firstSub`, `home.greet*`, `home.step2*`, `home.step3*`,
   `home.resume*`, `home.role*`, `home.confirmSwitch*`, `home.leaderBusy*`, `home.toastWelcome`, `home.recent*`,
   `home.seeAll*`, `home.stat*`, `home.exc*`, `whereTo.*` (incl. `clear*`, `locAllow`), `perm.openSettings`,
   `live.recentre`, `live.recentreA11y`, `live.attribution`, `live.attributionRoute`, `live.sheetValueCollapsed` /
-  `Expanded`, `preview.*` (21), `stop.noFix`, `stop.clearCancel`, `newRide.*`.
+  `Expanded`, `preview.*` (21), `stop.noFix`, `stop.clearCancel`, `newRide.defaultName` / `defaultNameUnknown` (the name of every ride).
+- Retired by D5: `homeMap.tileGroup*`, `homeMap.tileSolo*`, `preview.choiceLabel`, `preview.rideSolo*`, `preview.rideGroup*`,
+  `newRide.title`, `newRide.nameLabel`, `newRide.cta`, `newRide.setName`, `newRide.suggest1-3`, `newRide.titleDest`, `newRide.destLabel`,
+  `newRide.destNote`, `newRide.existingRide`, `newRide.a11yDest`, `solo.rideName` ("Solo ride"). (`invite.continue` and `lobby.destLine` came back with D6.)
 - Retired: `newRide.defaultNameDest` (decision 3), `home.heading`, `home.subtitle`, `home.start`, `home.join`, `home.joinTitle`, `home.joinSub`,
   `home.quickJoinTitle`, `home.quickJoinSub`, `home.whereToTitle`, `home.whereToSub`, `home.offlineSaved`,
   `home.step1Title`, `home.step1Body`, `whereTo.justRide`, `preview.go`, `preview.goA11y`.
@@ -888,7 +908,7 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
 ## 10. Safety and accessibility
 - **Glove:** every control ≥ 56 (chips 48 + 56 hit, as 21). The sheet drags, but every drag has a tap
   equivalent (header, chevron, Android back). No action needs a swipe. No long-press is required for anything.
-- **Thumb zone:** the commit actions (Back to ride, Directions, Ride solo, Ride with a group, tiles, recent places)
+- **Thumb zone:** the commit actions (Back to ride, Directions, Start ride, tiles, recent places)
   are all at the bottom. The search bar sits at the top by design (Google pattern, used at rest); the most common
   destinations are duplicated at the bottom as recent places, so the top is never the only way.
 - **Typing lock:** unchanged on the search screen (21 §2.2.2). Home itself has no text input.
@@ -900,12 +920,12 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
   (adjustable) → sheet content in visual order. The map view is hidden from screen readers
   (`accessibilityElementsHidden`, as the preview); the marker information is in the pill and the place panel.
   Place mode: focus moves to the place name; route mode: focus moves to the summary (`preview.a11ySummary`), then
-  the note, the choice label (header), Ride with a group, Ride solo. `onAccessibilityEscape` = `plan.back()`.
+  the note, Start ride. `onAccessibilityEscape` = `plan.back()`.
 - **Dynamic type:** `maxFontSizeMultiplier` 1.3 on the bar, chips, me slot, sheet header, tiles, place and route
   panels (fixed-height or glance zones). Expanded sheet content scales like today's Home (rest-time).
   At 1.3× the tile label may take 3 lines (tile grows past 80; the peek height is measured, not fixed).
 - **360 dp:** bar text column = 336 − 16 − 24 − 12 − 56 = 228 dp ("Search stops for Sunday Run" truncates the ride
-  name); place bar text = 336 − 56 − 16 = 264; tiles 104; route buttons 328; chips scroll horizontally (3 visible).
+  name); place bar text = 336 − 56 − 16 = 264; tiles 160; route button 328; chips scroll horizontally (3 visible).
 - **Light / dark × Tribe / Maps:** the bar and chips must read on every basemap: e2 shadow in light, `edge2`
   hairline in dark. QA screenshot set: A–E × 4 palettes.
 
@@ -913,73 +933,110 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
 
 ## 11. Telemetry (`lib/telemetry/events.ts` allowlist)
 `home.search_opened` { from: `bar` | `chip` } · `home.place_opened` { from: `search` | `recent` } ·
-`home.directions` · `plan.choice` { choice: `solo` | `group` } · `ride.created` gains `with_dest: boolean` ·
-`nav.started` gains `from: 'map_home'` · `map.recentre` gains `screen: 'home'`. No coordinates in any event.
+`home.directions` · ~~`plan.choice`~~ (removed by D5) · `ride.created` gains **`start_kind: 'start' | 'invite' | 'just_ride'`** (D6;
+the earlier `with_dest` is retired and not sent: its meaning had silently changed from HEAD's "group ride made with a
+destination") · **`ride.group_formed`** (D6; no props; once per ride, on the leader's phone, when the active rider count goes
+from exactly 1 to more: `lib/group-formed.ts`) · **`invite.shared`** (D6; `via: 'share' | 'sms' | 'menu'`: the code / link was
+handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long-press on the lobby code (`lobby`)) · `nav.started` gains `from: 'map_home'` (Start ride; for Invite riders at the lobby's Start) ·
+`map.recentre` gains `screen: 'home'`. No coordinates, names, codes or place names in any event.
 
 ---
 
 ## 12. Files (engineer)
 
-**P1**
+**P1 (as shipped, then amended by D5)**
 - New:
   - `src/store/plan-store.ts`; `src/lib/plan-flow.ts` (+ `__tests__/plan-flow.test.ts`)
   - `src/components/plan-map.tsx` + `.web.tsx` (renamed from `route-preview-map(.web).tsx`, extended §2.2)
   - `src/components/home-search-bar.tsx`, `home-chips.tsx`, `home-sheet.tsx`, `quick-tiles.tsx`,
-    `place-panel.tsx`, `route-panel.tsx` (today's `Preview` body + the choice), `location-row.tsx` (moved from
-    `where-to.tsx`), `destination-card.tsx`
+    `place-panel.tsx`, `route-panel.tsx` (today's `Preview` body + Start ride), `location-row.tsx` (moved from
+    `where-to.tsx`)
   - `src/hooks/use-home-camera.ts` (centred / free, saved camera, intents)
-  - `src/lib/group-ride.ts` (`createGroupRide`, + test with mocked `ride-api`)
 - Changed:
   - `src/app/(app)/home.tsx` (rewrite: map, modes, sheet; keeps the refresh / welcome toast / confirm sheets logic)
   - `src/app/(app)/where-to.tsx` (params, pick → plan store + back, no footer), `place-search-view.tsx`
     (`initialText`, `initialChip`)
   - `src/app/(app)/route-preview.tsx` → redirect into Home (§5.4); keep `lib/preview-params.ts`
-  - `src/app/(app)/new-ride.tsx` (`dest=1`, destination card, default name, `createGroupRide`)
-  - `src/app/(app)/ride/[id]/lobby.tsx` (destination caption)
   - `src/app/(app)/ride/[id]/search.tsx` (`from=home` → replace live)
   - `src/app/join.tsx` (plan reset on success); `src/lib/reset-to-ride.ts` (plan reset)
-  - `src/lib/solo-nav.ts` (`{ leaveRideId }` option), `hooks/use-planning-position.ts` (`servicesEnabled`)
+  - `src/lib/solo-nav.ts` (`{ leaveRideId, rideName }`), `hooks/use-planning-position.ts` (`servicesEnabled`)
   - `src/components/ride-progress-card.tsx` (`variant: 'compact' | 'full'`), `home-widgets.tsx` (step 1 keys),
     `recent-places-section.tsx` (peek variant: no label, `limit`, a11y prefix)
   - `src/lib/storage.ts` (`homeCamera`, `homeFirstRunSeen`) + sign-out path (clear both)
   - `src/lib/copy.ts`, `src/lib/telemetry/events.ts`, `src/theme/tokens.ts` (§9)
 - Deleted: `route-preview-map.tsx` / `.web.tsx` (renamed), `action-card.tsx` if no other user remains.
 
-**P2**
-- `src/app/(app)/ride/[id]/lobby.tsx` (DestinationCard), `ride/[id]/_layout.tsx` (lobby Remove destination copy,
-  `leaderNav`), `src/lib/nav-engine.ts` (`isNavActive` + test), `src/lib/flags.ts` (`GROUP_LEADER_NAV`),
-  `src/lib/copy.ts`.
+**D5 (2026-10-15)**
+- Deleted: `src/app/(app)/new-ride.tsx` (and its modal entry in `(app)/_layout.tsx`), `src/lib/group-ride.ts` (+ test),
+  `src/lib/group-rides.ts`, `src/components/destination-card.tsx`, `plan-store.routeSummary`, `plan-flow`
+  `newRideHref` / `choiceStep` / `afterSwitch` / `PlanChoice`, the lobby "Riding to" caption and the invite screen's
+  `?first=1` "Continue to lobby" mode (**both restored by D6** for Invite riders), the `plan.choice` event, `solo.rideName`.
+- New: `src/lib/nav-rides.ts` (+ `__tests__/nav-rides.test.ts`), `plan-flow` `startStep` / `startAction` / `homeTiles`.
+- Changed: `home.tsx` (Start, Just ride, `rideName`, launch location request kept), `quick-tiles.tsx` (two tiles),
+  `route-panel.tsx` (one primary), `solo-nav.ts` / `solo-ride.ts` (`rideName`, `with_dest`), `nav-engine.ts`
+  (`isNavActive`: `navRide`), `ride/[id]/_layout.tsx` + `live.tsx` (`navRide`, marker set / cleared), `profile.tsx`
+  (stop-alert time), `copy.ts`, `storage.ts`, `telemetry/events.ts`.
+- Obsolete from the old plan: P2 (lobby destination card, lobby remove-destination copy, `leaderNav` / `GROUP_LEADER_NAV`)
+  and the P3 items "Make it the destination of {ride}", "change destination in the lobby" and "destination in the
+  invite text".
+
+**D6 (2026-10-15)**
+- New: `src/hooks/use-nav-ride.ts` (live marker read), `src/hooks/use-app-in-front.ts` (`useSyncExternalStore` on `AppState`),
+  `src/lib/group-formed.ts`, `src/lib/location/front-recheck.ts` (+ tests `group-formed`, `front-recheck`).
+- Changed: `nav-rides.ts` (rideId -> destKey, subscribe, `clearNavRides`), `solo-nav.ts` (`startInviteRide`, marker at creation),
+  `solo-ride.ts` / `ride-api.ts` (`start_kind`), `plan-flow.ts` (`routeActions`, `launchPromptWanted`), `route-panel.tsx` (Invite riders),
+  `home.tsx` (`launch`, module-level launch flag, no web prompt), `ride/[id]/{_layout,live,lobby,invite}.tsx`, `plan-store.ts`
+  (sign-out clears markers), `use-planning-position.ts` / `use-nav-position.ts` (`useAppInFront`), `location/tracking.ts`
+  (recovery re-checks the app state for ~2 s), `full-map.ts` + `live.tsx` (no first-open default), `names.ts`, `copy.ts`,
+  `profile.tsx`, `telemetry/events.ts`, `storage.ts` (`soloFullMapSeen` removed).
+- **Rename ride** built (§3.6): `rename-ride-sheet.tsx`, `lib/rename-ride.ts`, `ride-api.renameRide`, `ride/[id]/_layout.tsx`; **migration `0010_rename_ride.sql` applied 2026-10-15.**
 
 **P3**
-- `plan-map(.web).tsx` (result pins, long-press), `lib/place-search.ts` (Photon `/reverse`, `stay` chip),
-  `lib/routing.ts` (`search` allowed in `lobby` for the leader), `route-panel.tsx` (lobby-leader action),
-  `lib/invite.ts` (destination in the share text, if Q3 = yes).
+- `plan-map(.web).tsx` (result pins, long-press), `lib/place-search.ts` (Photon `/reverse`, `stay` chip).
 
 ---
 
 ## 13. Acceptance checklist
 
-**P1**
+**P1 (amended by D5)**
 - [ ] Launch with no ride lands on the map home; active ride → live, lobby ride → lobby (gate unchanged).
-- [ ] No location prompt at launch or on any Home render; "Show my location" and the LocationRow explain first; the
-      OS prompt comes only from their button; blocked / services off open Settings and re-read on return.
+- [ ] **D5:** the location prompt appears once when Home first opens with the permission undetermined (not on every
+      render, not again in the same app run after "Don't allow"); granted → the camera eases to me. "Show my location" and
+      the LocationRow still explain first after a refusal; blocked / services off open Settings and re-read on return.
 - [ ] Without permission the map shows the saved camera or India at zoom 4; search, places and routes still work.
 - [ ] With permission: marker + centred camera; panning shows Re-centre; Re-centre eases back; no fix → "Finding you…".
 - [ ] Search bar: 56 tall, brand mark left, avatar (with to-do dot and label) right; tap opens search with the
       keyboard (not when typing-locked); chip opens search with that chip's results and no keyboard.
 - [ ] Search result → place sheet (name, ≈ distance, address, Directions); recent (search or home sheet) → route mode.
 - [ ] Android back: route → place (or browse for recents) → browse → collapse sheet → leave app; ‹ and ✕ match.
-- [ ] Route mode = 21 preview (summary, arrive time, note, flagged expressway row) + "How are you riding?" with
-      Ride with a group (secondary, above) and Ride solo (primary, lowest); both disabled offline.
-- [ ] Ride solo = 21 Go (create → start → propose_stop, seed, recents, stack `[home, live]`); 2 taps from a home recent.
-- [ ] Ride with a group → "New group ride" with the destination card and the normal "{name}'s ride" default name; Create = create_ride
-      then propose_stop (check the `rides` row has `stop_*` while `status = 'lobby'`); a failing propose_stop rolls
-      the ride back and shows the error on the form.
-- [ ] Lobby shows "Riding to {place}" for the leader and for a rider who joined by code; live shows the route line
-      and stop card for every rider at start, with no "Next stop" toast.
-- [ ] Tiles: Start a group ride → today's form; Join with a code → /join; Just ride solo → free solo ride (full map first time).
+- [ ] **D5:** Route mode = 21 preview (summary, arrive time, note, flagged expressway row) + **one** primary, Start ride;
+      no "How are you riding?", no group button; disabled offline.
+- [ ] **D5:** Start ride = 21 Go (create → start → propose_stop, seed, recents, stack `[home, live]`); 2 taps from a home
+      recent. The ride is named "{name}'s ride" (check the `rides.name`), never "Solo ride".
+- [ ] **D5:** Tiles: Join with a code → /join; Just ride → ride with no destination (normal sheet view since D6), also named
+      "{name}'s ride". There is no group tile and no group form anywhere.
+- [ ] **D5:** First run: "Your first ride is three steps away"; steps read pick a place → share the code to ride together
+      → nobody gets lost.
+- [ ] **D5:** From a running ride with a destination: the Invite riders row ("Share the code to ride together") is visible
+      under the stop card; tap → invite screen with the code and WhatsApp; a second phone joins by code or link and lands
+      on live with the route line and the stop card; the leader's panel becomes the group sheet and keeps the turn banner
+      + voice; the joiner gets no banner and no voice.
+- [ ] **D5:** Back to Home and back into that ride (riders present), and an app restart: the leader's banner + voice resume
+      (`navRide` marker); the joiner's phone never starts turn-by-turn.
+- [ ] **D5:** Profile → Safety has the stop-alert time (1 / 3 / 5 min); a new ride is created with the saved value, and the note says it applies to rides started from now on (D6).
+- [ ] **D6:** Route preview shows **Start ride** (filled) with **Invite riders** (secondary) under it; both disabled offline. Invite riders →
+      the invite screen with the code and WhatsApp (footer "Continue to lobby") → the lobby shows "Riding to {place}" and the
+      leader's own row; a second phone joins by code and sees the same caption and itself in the list; the leader taps Start →
+      both land on live; the leader has the turn banner and voice, the joiner the route line + stop card only. The ride is named
+      "{name}'s ride" (never with the place); if `propose_stop` fails the ride is ended and both buttons come back.
+- [ ] **D6:** Double-tapping Invite riders, Continue to lobby or the lobby's Start makes one ride / one hand-off; Android Back is ignored while they run.
+- [ ] **D6:** Start ride, accept a rider's different stop with riders present: the leader's navigation stops for the new stop and
+      stays stopped after leaving and re-entering the ride (the marker holds the old stop). Same after an app restart.
+- [ ] **D6:** Just ride opens in the normal sheet view with the Invite riders row visible; full map is the toggle.
+- [ ] **D6:** The launch location prompt shows once per app run (not again when coming back from a ride), and never on web.
+- [ ] **D6:** A rider with no name gets "My ride" from Just ride. Sign-out clears the nav-ride markers.
 - [ ] Open ride on Home: compact card + Back to ride is the only primary; tiles hidden; active ride: bar opens the
-      in-ride search and a pick lands on live; lobby ride: route actions open the switch / leader-busy sheets.
+      in-ride search and a pick lands on live; lobby ride: Start ride opens the switch / leader-busy sheets.
 - [ ] Browsing (search, place, route) and backing out creates no ride row.
 - [ ] The home map is unmounted on ride screens (one GL map at a time: check with the profiler) and remounts at
       the saved camera; no location watch runs while Home is not focused.
@@ -992,36 +1049,31 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
 - [ ] Screen-reader order as §10; map hidden; focus moves to the place name / route summary on mode change.
 - [ ] 360 dp and 1.3× screenshots of A–E, place and route, in all four palettes.
 - [ ] Unit tests: `planBack`, `homeSheetBlocks`, `initialSheetSnap`, `peekRecentCount`, `homeMapMounted`,
-      `meSlotForHome`, `searchBarTarget`, `createGroupRide` (rollback on stop failure, lock), camera save throttle.
+      `meSlotForHome`, `searchBarTarget`, `startStep`, `confirmedSwitch`, `startAction`, `homeTiles`, `isNavActive`,
+      nav-ride marker (with destination, subscribe, clear), `startNavigationRide` / `startInviteRide` / `startSoloRide` (ride name,
+      rollback, marker), `routeActions`, `launchPromptWanted`, `noteRiderCount`, `recheckFront` + the Android cold-start recovery, camera save throttle.
 - [ ] `npx expo lint`, `npx tsc --noEmit`, Jest clean.
 
-**P2**
-- [ ] Lobby destination card: ≈ distance from my position (no OSRM request), "Set by" for riders; no fix → `stop.noFix`.
-- [ ] Lobby ⋯ shows "Remove destination" (not "Stop directions") with its confirm; riders see the card disappear.
-- [ ] (Q1 = A) Group leader with a stop gets banner + voice; riders do not; the flag off restores B; the layout
-      matches 21 §10 (banner above the convoy); `isNavActive` tests cover `leaderNav`.
+**P2 — obsolete (D5).** The lobby destination card, "Remove destination" copy and `leaderNav` checks are dropped.
 
 **P3**
 - [ ] Per the items in §14.
 
 ## 14. Phase plan
-1. **P1 — Map home and the choice (no new native code, no migration).** Ships the whole user request end to end:
-   map home, search, place sheet, route preview with Ride solo / Ride with a group, solo into 21, group into the
-   setup with the destination attached and visible in the lobby (caption). Order: plan store + pure flow → map
-   component → browse + sheet content migration → place + route modes → search changes → group create → lobby caption.
-2. **P2 — Group with destination, properly.** Lobby destination card and remove, the lobby menu copy fix, and
-   (if Q1 = A) leader-only navigation behind `GROUP_LEADER_NAV`, after one real group test ride.
-3. **P3 — Polish.** Chip results as pins on the map (list + pins), long-press drop-pin with Photon reverse, lobby
-   leader "Make it the destination", change destination in the lobby, "Stay" chip, destination in the invite text
-   (Q3), optional route prefetch on the place sheet.
-4. **Still open from 21:** hosted routing before public launch or everyone-navigates groups (D1).
+1. **P1 — Map home and Start (no new native code, no migration).** Map home, search, place sheet, route preview with
+   Start ride into 21. D5 removed the solo / group choice, the group setup and the lobby caption that P1 first shipped;
+   a ride becomes a group from the live screen. Order: plan store + pure flow → map component → browse + sheet content
+   migration → place + route modes → search changes.
+2. ~~**P2 — Group with destination, properly.**~~ Obsolete (D5).
+3. **P3 — Polish.** Chip results as pins on the map (list + pins), long-press drop-pin with Photon reverse, "Stay" chip,
+   optional route prefetch on the place sheet. (Dropped: lobby-leader "Make it the destination", change destination in
+   the lobby, destination in the invite text.)
+4. **Still open from 21:** hosted routing before public launch or everyone-navigates groups (D1). A server-side
+   `rides` flag is no longer needed (the old `is_group` follow-up is moot).
 
-## 15. Open questions (need the user's call)
-1. **Group navigation (blocks P2).** Leader-only turn banner + voice (recommended, §3.8 option A), nothing new for
-   groups (B), or wait for hosted routing and give everyone directions (C)?
-2. **Which choice is the filled primary on the route preview?** Recommended: **Ride solo** (it starts riding now;
-   the group button opens a setup screen with its own primary). The alternative makes **Ride with a group** primary
-   to keep group rides the app's headline. Positions stay fixed either way.
-3. **Destination in the WhatsApp invite text?** ("Join my ride to Mysuru Palace"). Recommended: **not now** (P3 at
-   the earliest): the invite reaches people who are not yet ride members (rule 8 is about rider location, but a
-   destination can reveal plans).
+## 15. Open questions
+All three original questions are answered (decisions 1-3). New, from D5:
+1. ~~Just ride opens in full map the first time~~ **Answered by D6:** it opens in the normal sheet view.
+2. **Arrival panel has no Invite row** (216 dp, End ride + Pick next). Keep (the ride is ending; ⋯ → Invite riders is one
+   tap) or add a third row?
+3. ~~Renaming a ride~~ **Done in the app (§3.6).** Migration `0010_rename_ride.sql` applied 2026-10-15.

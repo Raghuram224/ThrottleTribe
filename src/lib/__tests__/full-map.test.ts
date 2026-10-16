@@ -1,4 +1,5 @@
-import { backAction, fullMapDefaultStep, shouldDefaultFullMap, shownSpeedKmh } from '../full-map';
+import * as fullMap from '../full-map';
+import { backAction, shownSpeedKmh } from '../full-map';
 
 describe('shownSpeedKmh', () => {
   it('is null when unknown or under 3 km/h', () => {
@@ -21,41 +22,9 @@ describe('backAction', () => {
   });
 });
 
-describe('shouldDefaultFullMap', () => {
-  it('defaults on the first open of a solo ride', () => {
-    expect(shouldDefaultFullMap({ activeMembers: 1, rideId: 'a', seenRideId: null, hasStop: false })).toBe(true);
-    expect(shouldDefaultFullMap({ activeMembers: 1, rideId: 'b', seenRideId: 'a', hasStop: false })).toBe(true);
-  });
-  it('not again for the same ride', () => {
-    expect(shouldDefaultFullMap({ activeMembers: 1, rideId: 'a', seenRideId: 'a', hasStop: false })).toBe(false);
-  });
-  it('not for a group ride', () => {
-    expect(shouldDefaultFullMap({ activeMembers: 3, rideId: 'a', seenRideId: null, hasStop: false })).toBe(false);
-  });
-  it('not for a solo ride that opens with a stop (a navigation ride opens in sheet mode)', () => {
-    expect(shouldDefaultFullMap({ activeMembers: 1, rideId: 'a', seenRideId: null, hasStop: true })).toBe(false);
-  });
-});
-
-describe('fullMapDefaultStep', () => {
-  const solo = { activeMembers: 1, rideId: 'a', seenRideId: null, hasStop: false, holding: false };
-  it('enters full map on the first solo open', () => {
-    expect(fullMapDefaultStep(solo)).toBe('enter');
-  });
-  it('waits while an SOS hold is in progress, without marking the ride seen', () => {
-    expect(fullMapDefaultStep({ ...solo, holding: true })).toBe('wait');
-  });
-  it('applies once the hold ends', () => {
-    expect(fullMapDefaultStep({ ...solo, holding: false })).toBe('enter');
-  });
-  it('is done for a ride already handled, hold or not', () => {
-    expect(fullMapDefaultStep({ ...solo, seenRideId: 'a' })).toBe('seen');
-    expect(fullMapDefaultStep({ ...solo, seenRideId: 'a', holding: true })).toBe('seen');
-  });
-  it('marks a navigation ride (solo with a stop) as seen without entering full map', () => {
-    expect(fullMapDefaultStep({ ...solo, hasStop: true })).toBe('mark');
-  });
-  it('only marks a group ride as seen', () => {
-    expect(fullMapDefaultStep({ ...solo, activeMembers: 3 })).toBe('mark');
+describe('no ride opens in full map by itself (22 D6: Just ride opens in the normal sheet view)', () => {
+  it('the first-open default rule is gone: nothing decides to enter full map from a ride opening', () => {
+    expect(Object.keys(fullMap)).not.toContain('shouldDefaultFullMap');
+    expect(Object.keys(fullMap)).not.toContain('fullMapDefaultStep');
   });
 });

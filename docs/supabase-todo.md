@@ -44,6 +44,10 @@ Legend: 🔴 needed now (Milestone 2a) · 🟡 Milestone 2b (Google/Apple) · �
 What it creates: a `profiles` table (id, display_name). Any signed-in rider can read names
 (the group needs to see who's who); only you can create/edit your own row.
 
+- [x] **Run `supabase/migrations/0010_rename_ride.sql`** (applied 2026-10-15 to Throttle Tribe `aqzpdxyckwbxlvqnsnye`; verified: authenticated-only, a non-leader is refused) (SQL Editor → New query → paste → **Run**, after 0001 to 0009 are applied).
+      It adds the `rename_ride` function the leader's **Rename ride** menu row calls. Until it runs, renaming shows
+      "Renaming isn't available yet". Check: **Database → Functions** lists `rename_ride`.
+
 ---
 
 ## 3. Email sign-in (OTP code) 🔴
@@ -146,6 +150,7 @@ How it works: location pings go over **Broadcast** (fast, not stored in the data
 - [ ] Project created in Mumbai region
 - [ ] `.env` filled with URL + publishable key
 - [ ] `0001_profiles.sql` run
+- [x] `0010_rename_ride.sql` run (Rename ride), 2026-10-15
 - [ ] Email provider on + template has `{{ .Token }}`
 - [ ] Custom SMTP set up (or test only with your own email)
 - [ ] Phone provider on + test phone number added

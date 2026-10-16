@@ -9,6 +9,7 @@ import {
   type PlanFrom,
   type PlanMode,
 } from '@/lib/plan-flow';
+import { clearNavRides } from '@/lib/nav-rides';
 import type { Place } from '@/lib/place-search';
 import { readItem, STORAGE_KEYS, writeItem } from '@/lib/storage';
 
@@ -24,9 +25,6 @@ interface PlanState {
   sheetSnap: HomeSnap;
   /** Browse camera: persisted (throttled by the map home), restored when Back returns to browse. */
   camera: PlanCamera | null;
-  /** The route's numbers, handed to the group form's destination card (set when Ride with a group is tapped). */
-  routeSummary: { distanceM: number; durationS: number } | null;
-  setRouteSummary: (r: { distanceM: number; durationS: number } | null) => void;
   /** The welcome sheet was already shown and dismissed once. */
   firstRunSeen: boolean;
   /** A new place from a search: the place sheet. */
@@ -57,8 +55,6 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   place: null,
   from: null,
   query: '',
-  routeSummary: null,
-  setRouteSummary: (routeSummary) => set({ routeSummary }),
   sheetSnap: 'peek',
   camera: parseCamera(readItem(STORAGE_KEYS.homeCamera)),
   firstRunSeen: readItem(STORAGE_KEYS.homeFirstRunSeen) === '1',
@@ -68,13 +64,13 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     const s = get();
     const next = planBack(s);
     if (!next) return false;
-    set(next.mode === 'browse' ? { mode: 'browse', place: null, from: null, query: '', routeSummary: null, sheetSnap: next.sheetSnap } : { mode: next.mode, sheetSnap: next.sheetSnap });
+    set(next.mode === 'browse' ? { mode: 'browse', place: null, from: null, query: '', sheetSnap: next.sheetSnap } : { mode: next.mode, sheetSnap: next.sheetSnap });
     return true;
   },
   reset: () => {
     // Every way into a ride comes through here: the first-run welcome has done its job.
     if (!get().firstRunSeen) writeItem(STORAGE_KEYS.homeFirstRunSeen, '1');
-    set({ mode: 'browse', place: null, from: null, query: '', routeSummary: null, firstRunSeen: true });
+    set({ mode: 'browse', place: null, from: null, query: '', firstRunSeen: true });
   },
   setSheetSnap: (sheetSnap) => set({ sheetSnap }),
   setCamera: (camera) => set({ camera }),
@@ -84,11 +80,15 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 }));
 
-/** Sign-out: the camera is location history and the welcome belongs to the account (22 §4.2, §9). */
+/**
+ * Sign-out: the camera is location history, the welcome belongs to the account (22 §4.2, §9), and the "I navigate
+ * this ride" markers (22 D6) belong to rides of the account that just left.
+ */
 export function clearHomeDevicePrefs(): void {
   writeItem(STORAGE_KEYS.homeCamera, null);
   writeItem(STORAGE_KEYS.homeFirstRunSeen, null);
-  usePlanStore.setState({ camera: null, firstRunSeen: false, mode: 'browse', place: null, from: null, query: '', routeSummary: null });
+  clearNavRides();
+  usePlanStore.setState({ camera: null, firstRunSeen: false, mode: 'browse', place: null, from: null, query: '' });
 }
 
 /** Writes the browse camera (rounded to about 100 m). Called throttled while panning and on leaving Home. */

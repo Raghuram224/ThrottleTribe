@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, StyleSheet, Switch, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AppText } from '@/components/app-text';
 import { BigButton } from '@/components/big-button';
 import { Icon } from '@/components/icon';
 import { Skeleton } from '@/components/skeleton';
@@ -13,6 +12,7 @@ import { copy, spokenDistance, spokenDuration, t } from '@/lib/copy';
 import { ROUTING_SUPPORTS_EXCLUDE } from '@/lib/flags';
 import { formatClockTime, formatDistance, formatDuration } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { routeActions, type GoingKind } from '@/lib/plan-flow';
 import { track } from '@/lib/telemetry';
 import { usePrefsStore } from '@/store/prefs-store';
 import type { PlanPlace } from '@/store/plan-store';
@@ -28,11 +28,12 @@ interface RoutePanelProps {
   avoidMotorways: boolean;
   offline: boolean;
   permission: LocationPerm;
-  /** Ride solo is starting (the ride is being made): Ride solo loads, Ride with a group waits. */
-  going: boolean;
+  /** Start or Invite riders was tapped (the ride is being made): that button loads and the other is blocked. */
+  going: GoingKind;
   onRetry: () => void;
-  onSolo: () => void;
-  onGroup: () => void;
+  onStart: () => void;
+  /** Invite riders (22 D6): the ride is made in the lobby with this destination, then the invite screen opens. */
+  onInvite: () => void;
   /** The "Allow location" ghost button (no permission): the OS prompt, or Settings when blocked. */
   onAllowLocation: () => void;
   /** Screen-reader escape gesture (iOS two-finger Z): the same as Back, one step out (22 §10). */
@@ -41,9 +42,9 @@ interface RoutePanelProps {
 }
 
 /**
- * Route mode panel (21 §2.3, 22 §3.4): the preview's summary, arrive time, car note and expressway row, then
- * "How are you riding?" with Ride with a group (secondary) above Ride solo (the filled primary, lowest, at the
- * thumb). Nothing here touches Supabase: a ride is made only when one of the two is chosen.
+ * Route mode panel (21 §2.3, 22 §3.4): the preview's summary, arrive time, car note and expressway row, then one
+ * primary, Start ride, with Invite riders (secondary) under it, both at the thumb. One kind of ride: it becomes a
+ * group when its code is shared (22 D5, D6). Nothing here touches Supabase: the ride is made only when one is tapped.
  */
 export function RoutePanel({
   place,
@@ -54,8 +55,8 @@ export function RoutePanel({
   permission,
   going,
   onRetry,
-  onSolo,
-  onGroup,
+  onStart,
+  onInvite,
   onAllowLocation,
   onEscape,
   onLayout,
@@ -66,6 +67,8 @@ export function RoutePanel({
   const allowExpressways = usePrefsStore((s) => s.allowExpressways);
   const setAllowExpressways = usePrefsStore((s) => s.setAllowExpressways);
   const summaryRef = useRef<View>(null);
+  const actions = routeActions({ offline, going });
+  const busy = going !== null;
 
   const updating = state.status === 'updating';
   const route = state.status === 'ok' || updating ? state.route : null;
@@ -75,7 +78,7 @@ export function RoutePanel({
   const noLocation = permission.status !== 'granted' && permission.status !== 'unknown';
   const blocked = permission.status === 'denied' && !permission.canAskAgain;
 
-  // Focus moves to the summary when the route opens (22 §10), then the note, the choice label, the buttons.
+  // Focus moves to the summary when the route opens (22 §10), then the note and Start.
   useEffect(() => {
     const timer = setTimeout(() => {
       const node = findNodeHandle(summaryRef.current);
@@ -188,14 +191,14 @@ export function RoutePanel({
         <Pressable
           accessibilityRole="switch"
           accessibilityLabel={allowExpressways ? copy['preview.a11yExpresswaysOn'] : copy['preview.a11yExpresswaysOff']}
-          accessibilityState={{ checked: allowExpressways, busy: updating, disabled: going }}
-          disabled={going}
+          accessibilityState={{ checked: allowExpressways, busy: updating, disabled: busy }}
+          disabled={busy}
           onPress={() => {
             haptic('select');
             track('nav.expressways_toggled', { allowed: !allowExpressways });
             setAllowExpressways(!allowExpressways);
           }}
-          style={[styles.switchRow, going && styles.dim]}>
+          style={[styles.switchRow, busy && styles.dim]}>
           <Text maxFontSizeMultiplier={1.3} style={[styles.switchLabel, { color: colors.text }]}>
             {copy['preview.allowExpressways']}
           </Text>
@@ -211,28 +214,25 @@ export function RoutePanel({
         </Pressable>
       ) : null}
 
-      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-      <AppText variant="caption" accessibilityRole="header" maxFontSizeMultiplier={1.3} style={[styles.choice, { color: colors.textMuted }]}>
-        {copy['preview.choiceLabel']}
-      </AppText>
       <View style={styles.actions}>
-        {/* Fixed positions, never re-ordered by a remembered choice (gloves, muscle memory). */}
         <BigButton
-          label={copy['preview.rideGroup']}
-          accessibilityLabel={t('preview.rideGroupA11y', { name: place.name })}
-          variant="secondary"
-          icon="riders"
-          disabled={offline || going}
-          onPress={onGroup}
-        />
-        <BigButton
-          label={going ? copy['preview.starting'] : copy['preview.rideSolo']}
-          accessibilityLabel={t('preview.rideSoloA11y', { name: place.name })}
+          label={going === 'start' ? copy['preview.starting'] : copy['preview.start']}
+          accessibilityLabel={t('preview.startA11y', { name: place.name })}
           icon="navigate"
           prominent
-          loading={going}
-          disabled={offline}
-          onPress={onSolo}
+          loading={actions.start.loading}
+          disabled={actions.start.disabled}
+          onPress={onStart}
+        />
+        {/* Secondary, under Start (22 D6): the ride waits in the lobby with this destination until the leader starts it. */}
+        <BigButton
+          label={going === 'invite' ? copy['preview.inviting'] : copy['preview.invite']}
+          accessibilityLabel={t('preview.inviteA11y', { name: place.name })}
+          icon="invite"
+          variant="secondary"
+          loading={actions.invite.loading}
+          disabled={actions.invite.disabled}
+          onPress={onInvite}
         />
       </View>
     </View>
@@ -266,8 +266,5 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.5 },
   stateWord: { fontSize: font.sm, lineHeight: 20, fontFamily: family.semibold },
   switchLabel: { flex: 1, fontSize: font.md, lineHeight: 22, fontFamily: family.semibold },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: space.md },
-  choice: { fontFamily: family.semibold },
-  // 12 dp gap between the two actions (22 §3.4.1).
-  actions: { gap: space.md },
+  actions: { paddingTop: space.md, gap: space.sm },
 });

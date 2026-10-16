@@ -14,8 +14,8 @@ export interface RideActions {
   connection: ConnectionState;
   /** Latest permission read; null until the first read. */
   permissions: PermissionInfo | null;
-  /** Native share sheet with ride name, grouped code and the join link. */
-  shareCode: () => void;
+  /** Native share sheet with ride name, grouped code and the join link. `via` is the telemetry source ('menu' by default). */
+  shareCode: (via?: 'menu' | 'lobby') => void;
   /** Pushes the Invite riders screen (10). */
   openInvite: () => void;
   /** Opens the confirm sheet: leave (riders). Handles SOS clearing, tracking, navigation home. */

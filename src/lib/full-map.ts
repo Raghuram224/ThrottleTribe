@@ -12,33 +12,5 @@ export function backAction(fullMap: boolean): 'exit-full-map' | 'default' {
   return fullMap ? 'exit-full-map' : 'default';
 }
 
-/**
- * Full map is the default only the first time a FREE solo ride opens, tracked per ride id (not global):
- * `seenRideId` is the last ride whose first open was already handled. A ride that already has a stop
- * (a navigation ride, 21 decision 2) opens in sheet mode: the panel is where distance and ETA live.
- */
-export function shouldDefaultFullMap(args: {
-  activeMembers: number;
-  rideId: string;
-  seenRideId: string | null;
-  hasStop: boolean;
-}): boolean {
-  return args.activeMembers === 1 && args.seenRideId !== args.rideId && !args.hasStop;
-}
-
-/**
- * What the solo full-map default does on this render. An SOS hold in progress defers it ('wait'): switching to
- * full map swaps the bar's SOS button for the floating one and would drop the hold with no hint. The default
- * is not marked as seen while waiting, so it applies once the finger lifts.
- */
-export function fullMapDefaultStep(args: {
-  activeMembers: number;
-  rideId: string;
-  seenRideId: string | null;
-  hasStop: boolean;
-  holding: boolean;
-}): 'seen' | 'wait' | 'mark' | 'enter' {
-  if (args.seenRideId === args.rideId) return 'seen';
-  if (args.holding) return 'wait';
-  return shouldDefaultFullMap(args) ? 'enter' : 'mark';
-}
+// No rule opens full map by itself (22 D6): every ride, a free Just ride included, opens in the normal sheet view, so the
+// Invite riders row and the header menu are visible from the first second. Full map is one tap away (the toggle).

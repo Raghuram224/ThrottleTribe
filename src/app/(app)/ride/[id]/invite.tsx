@@ -1,7 +1,7 @@
 import * as SMS from '@/lib/sms';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ActionCard } from '@/components/action-card';
 import { AppText } from '@/components/app-text';
@@ -31,6 +31,8 @@ import { contactsAccess, pickContact, requestContactsAccess, type PickedContact 
 import { href } from '@/lib/nav';
 import { displayRideName, firstName } from '@/lib/names';
 import { DEFAULT_PREFIX, formatPhoneDisplay, normalisePhone } from '@/lib/phone';
+import { rideHref } from '@/lib/routing';
+import { track } from '@/lib/telemetry';
 import { NO_INVITEES, useInviteStore } from '@/store/invite-store';
 import { useRideStore } from '@/store/ride-store';
 import { showToast } from '@/store/toast-store';
@@ -55,6 +57,7 @@ function clockTime(ms: number): string {
 }
 
 export default function Invite() {
+  // `first=1`: opened right after Invite riders on the route preview (22 D6): Done becomes "Continue to lobby".
   const { id, first } = useLocalSearchParams<{ id: string; first?: string }>();
   const rideId = id ?? '';
   const isFirst = first === '1';
@@ -82,6 +85,8 @@ export default function Invite() {
   const [rowId, setRowId] = useState<string | null>(null);
   const [highlightShare, setHighlightShare] = useState(false);
   const [continuing, setContinuing] = useState(false);
+  // State lags a render: a double tap could otherwise run the hand-off twice.
+  const continuingRef = useRef(false);
 
   const { schedule, onDismiss } = useAfterModalClose();
   // One stable handler for every memoised invitee row.
@@ -119,6 +124,7 @@ export default function Invite() {
 
   const shareLink = () => {
     if (!loadedRide) return;
+    track('invite.shared', { via: 'share' });
     void shareText(inviteShareMessage(rideName, code, link));
   };
 
@@ -245,6 +251,7 @@ export default function Invite() {
     if (!person) return;
     const opened = await openComposer(person);
     if (!opened) return;
+    track('invite.shared', { via: 'sms' });
     useInviteStore.getState().add(rideId, { name: person.name, phone: person.phone });
     const done = sentCount + 1;
     if (done >= queue.length) {
@@ -278,16 +285,35 @@ export default function Invite() {
 
   // ------------------------------------------------------------ footer
 
-  const onFooter = async () => {
-    if (!isFirst) {
-      if (router.canGoBack()) router.back();
-      else router.replace(href(`/ride/${rideId}/lobby`));
-      return;
-    }
-    setContinuing(true);
-    const target = await hrefAfterEnter({ id: rideId, status: loadedRide?.status ?? 'lobby' });
-    router.replace(href(target));
+  // The ride layout moves an active ride on to live; this is only for when there is nothing to go back to.
+  const rideStatus = loadedRide?.status ?? 'lobby';
+  const leaveScreen = () => {
+    if (continuingRef.current) return;
+    if (router.canGoBack()) router.back();
+    else router.replace(href(rideHref(rideId, rideStatus)));
   };
+
+  const onFooter = async () => {
+    if (!isFirst) return leaveScreen();
+    if (continuingRef.current) return;
+    continuingRef.current = true;
+    setContinuing(true);
+    try {
+      // Straight to the lobby (the permissions explainer first when something is still undetermined). The lobby shows who
+      // has joined and where the ride goes; the leader taps Start there.
+      router.replace(href(await hrefAfterEnter({ id: rideId, status: rideStatus })));
+    } finally {
+      continuingRef.current = false;
+      setContinuing(false);
+    }
+  };
+
+  // Android back is ignored while the hand-off to the lobby runs (as Start's is while the ride is made).
+  useEffect(() => {
+    if (!continuing) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [continuing]);
 
   const rowInvitee = invitees.find((i) => i.id === rowId) ?? null;
   const rowState = rowInvitee ? inviteState(rowInvitee, matchMembers) : null;
@@ -299,7 +325,7 @@ export default function Invite() {
       top={
         <TopBar
           title={copy['invite.title']}
-          onBack={() => (router.canGoBack() ? router.back() : router.replace(href(`/ride/${rideId}/lobby`)))}
+          onBack={leaveScreen}
         />
       }
       footer={

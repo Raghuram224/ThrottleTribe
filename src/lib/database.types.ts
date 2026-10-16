@@ -422,6 +422,11 @@ export type Database = {
         Args: { p_address: string; p_kind: string; p_lat: number; p_lng: number; p_name: string; p_ride_id: string };
         Returns: Json;
       };
+      rename_ride: {
+        Args: { p_name: string; p_ride_id: string };
+        Returns: RideRow;
+        SetofOptions: { from: '*'; to: 'rides'; isOneToOne: true; isSetofReturn: false };
+      };
       send_ride_message: { Args: { p_kind: string; p_ride_id: string }; Returns: undefined };
       set_sos: { Args: { p_on: boolean; p_ride_id: string }; Returns: undefined };
       start_ride: {

@@ -9,10 +9,10 @@ export function truncateName(name: string, max = NAME_MAX_IN_ALERTS): string {
   return chars.length <= max ? chars.join('') : `${chars.slice(0, max).join('')}…`;
 }
 
-/** Prefilled ride name; a neutral default when the rider's name is unknown (never "'s ride"). */
+/** The default ride name; a neutral "My ride" when the rider's name is unknown (never "'s ride", never "Group ride"). */
 export function defaultRideName(first: string): string {
   const f = first.trim();
-  return f ? fill(copy['newRide.defaultName'], { name: f }) : copy['newRide.defaultNameUnknown'];
+  return f ? fill(copy['newRide.defaultName'], { name: f }) : copy['newRide.defaultNameNeutral'];
 }
 
 /** A ride name must contain a letter or digit ("'s ride" passes the DB btrim check; "--" must not). */

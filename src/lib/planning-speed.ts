@@ -58,3 +58,8 @@ export const FIX_MAX_AGE_MS = 120_000;
 export function fixFresh(at: number, now: number): boolean {
   return now - at <= FIX_MAX_AGE_MS;
 }
+
+/** Wait before the next one-shot attempt for a first fix: quick at first, then every 10 s (22 §4.3: no tight loop). */
+export function firstFixRetryMs(attempt: number): number {
+  return attempt < 2 ? 3000 : 10_000;
+}

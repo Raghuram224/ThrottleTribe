@@ -27,8 +27,6 @@ export const STORAGE_KEYS = {
   mapTilt: 'pref.mapTilt',
   haptics: 'pref.haptics',
   fullMap: 'pref.fullMap',
-  /** Last ride whose first open (solo full-map default) was handled. */
-  soloFullMapSeen: 'pref.soloFullMapSeen',
   /** Where to? recent places (21 §2.2): on this device only, cleared on sign-out. */
   recentPlaces: 'pref.recentPlaces',
   /** Route preview "Allow expressways" switch (21 decision); default off = avoid. */
@@ -46,6 +44,12 @@ export const STORAGE_KEYS = {
   homeCamera: 'pref.homeCamera',
   /** Map home: the first-run welcome sheet was dismissed once (22 §3.1.2). Cleared on sign-out. */
   homeFirstRunSeen: 'pref.homeFirstRunSeen',
-  /** Rides this phone created as group rides: they never start turn-by-turn (22 decision 1). */
-  groupRides: 'nav.groupRides.v1',
+  /** Rides this phone navigates as the leader: turn-by-turn resumes in them after riders joined (22 D5). */
+  navRides: 'nav.navRides.v1',
+  /** Rides whose `ride.group_formed` was already sent (22 L6): once per ride across restarts, cleared with the ride's markers. */
+  groupFormedSent: 'nav.groupFormed.v1',
+  /** The withdrawn "group ride" marker (22 decision 1): only read to be deleted. */
+  legacyGroupRides: 'nav.groupRides.v1',
+  /** The solo full-map "seen" marker of the removed full-map default (22 L1): only read to be deleted. */
+  legacySoloFullMapSeen: 'pref.soloFullMapSeen',
 } as const;

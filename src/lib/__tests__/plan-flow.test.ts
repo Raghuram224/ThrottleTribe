@@ -1,22 +1,20 @@
 import {
-  afterSwitch,
   attributionFade,
   attributionInSheet,
   confirmedSwitch,
   browsePadding,
   categoryWord,
-  choiceStep,
   chipsTop,
   firstRunSeenOnSnap,
   HOME_CAMERA_SAVE_MS,
   HOME_FALLBACK_CAMERA,
   homeMapMounted,
+  homeTiles,
   homeSheetBlocks,
   initialCamera,
   initialSheetSnap,
   isFirstRun,
   meSlotForHome,
-  newRideHref,
   openRideCard,
   parseCamera,
   peekRecentCount,
@@ -28,10 +26,14 @@ import {
   searchBarTarget,
   settleHomeSnap,
   shouldSaveCamera,
+  launchPromptWanted,
+  routeActions,
+  startStep,
   toggleHomeSnap,
   whereToHref,
   type SheetBlocksInput,
 } from '../plan-flow';
+import { copy } from '../copy';
 
 describe('planBack (22 §2.1, §5.1)', () => {
   it('route from a search result steps back to its place sheet', () => {
@@ -164,13 +166,13 @@ describe('peekRecentCount', () => {
 });
 
 describe('homeMapMounted (22 §4.3)', () => {
-  it('only Home, search, setup and the preview redirect keep the map', () => {
-    for (const p of ['/home', '/where-to', '/new-ride', '/route-preview', '/home/', '/home?welcome=1']) {
+  it('only Home, search and the preview redirect keep the map', () => {
+    for (const p of ['/home', '/where-to', '/route-preview', '/home/', '/home?welcome=1']) {
       expect(homeMapMounted(p)).toBe(true);
     }
   });
   it('every ride screen and everything else unmounts it (one GL map at a time)', () => {
-    for (const p of ['/ride/abc/live', '/ride/abc/lobby', '/ride/abc/search', '/permissions', '/profile', '/join', '/rides', '/']) {
+    for (const p of ['/ride/abc/live', '/ride/abc/lobby', '/ride/abc/search', '/permissions', '/profile', '/join', '/rides', '/new-ride', '/']) {
       expect(homeMapMounted(p)).toBe(false);
     }
   });
@@ -237,26 +239,59 @@ describe('sheet settling', () => {
   });
 });
 
-describe('solo / group branching (22 §3.4.2)', () => {
+describe('Start branching (22 §3.4.2, D5): one kind of ride', () => {
   it('no ride open: go straight', () => {
-    expect(choiceStep('solo', null)).toEqual({ kind: 'go', choice: 'solo' });
-    expect(choiceStep('group', null)).toEqual({ kind: 'go', choice: 'group' });
+    expect(startStep(null)).toEqual({ kind: 'go' });
   });
   it('a ride open as a rider: ask before leaving it; as the leader: the ride must be ended first', () => {
-    expect(choiceStep('solo', { role: 'rider' })).toEqual({ kind: 'confirm', sheet: 'switch' });
-    expect(choiceStep('group', { role: 'rider' })).toEqual({ kind: 'confirm', sheet: 'switch' });
-    expect(choiceStep('solo', { role: 'leader' })).toEqual({ kind: 'confirm', sheet: 'leaderBusy' });
-    expect(choiceStep('group', { role: 'leader' })).toEqual({ kind: 'confirm', sheet: 'leaderBusy' });
+    expect(startStep({ role: 'rider' })).toEqual({ kind: 'confirm', sheet: 'switch' });
+    expect(startStep({ role: 'leader' })).toEqual({ kind: 'confirm', sheet: 'leaderBusy' });
   });
-  it('after "Leave and continue" the same choice goes with the ride to leave', () => {
-    expect(afterSwitch('solo', 'r9')).toEqual({ kind: 'go', choice: 'solo', leaveRideId: 'r9' });
-    expect(afterSwitch('group', 'r9')).toEqual({ kind: 'go', choice: 'group', leaveRideId: 'r9' });
+});
+
+describe('the route preview: Start is the primary, Invite riders the secondary under it (D5, D6)', () => {
+  it('both enabled and idle', () => {
+    expect(routeActions({ offline: false, going: null })).toEqual({
+      start: { disabled: false, loading: false },
+      invite: { disabled: false, loading: false },
+    });
   });
-  it('the group form href carries the destination flag and the ride to leave', () => {
-    expect(newRideHref({ dest: false })).toBe('/new-ride');
-    expect(newRideHref({ dest: true })).toBe('/new-ride?dest=1');
-    expect(newRideHref({ dest: true, leaveRideId: 'r9' })).toBe('/new-ride?dest=1&leaveRideId=r9');
-    expect(newRideHref({ dest: false, leaveRideId: 'r9' })).toBe('/new-ride?leaveRideId=r9');
+  it('both disabled offline (they need the server)', () => {
+    expect(routeActions({ offline: true, going: null })).toEqual({
+      start: { disabled: true, loading: false },
+      invite: { disabled: true, loading: false },
+    });
+  });
+  it('while one is running it loads and the other is blocked: no second ride from a second tap', () => {
+    expect(routeActions({ offline: false, going: 'start' })).toEqual({
+      start: { disabled: false, loading: true },
+      invite: { disabled: true, loading: false },
+    });
+    expect(routeActions({ offline: false, going: 'invite' })).toEqual({
+      start: { disabled: true, loading: false },
+      invite: { disabled: false, loading: true },
+    });
+  });
+});
+
+describe('home sheet tiles (D5)', () => {
+  it('Join with a code and Just ride; no group tile', () => {
+    expect(homeTiles()).toEqual(['join', 'ride']);
+    expect(homeTiles()).not.toContain('group');
+  });
+  it('the tile copy names Just ride neutrally (any ride can become a group)', () => {
+    expect(copy['homeMap.tileRide']).toBe('Just ride');
+    expect(Object.keys(copy)).not.toContain('homeMap.tileGroup');
+    expect(Object.keys(copy)).not.toContain('homeMap.tileSolo');
+    expect(copy['homeMap.tileJoin']).toBe('Join with a code');
+  });
+  it('the first-run steps say: pick a place, share the code to ride together, nobody gets lost', () => {
+    expect(copy['homeMap.step1Title']).toMatch(/where you're riding/i);
+    expect(copy['homeMap.step1Body']).not.toMatch(/solo|group/i);
+    expect(copy['home.step2Title']).toMatch(/share the code/i);
+    expect(copy['home.step2Title']).toMatch(/together/i);
+    expect(copy['home.step3Title']).toMatch(/nobody gets lost/i);
+    expect(copy['home.firstSub']).not.toMatch(/group/i);
   });
 });
 
@@ -290,19 +325,18 @@ describe('camera padding counts everything that floats (22 §4.2)', () => {
 describe('confirmedSwitch: the open ride is re-read before it is left (L2)', () => {
   const lobby = (id: string, role: 'leader' | 'rider' = 'rider') => ({ id, status: 'lobby' as const, role });
   it('still the same lobby ride as a rider: leave it and continue', () => {
-    expect(confirmedSwitch('solo', 'r1', lobby('r1'))).toEqual({ kind: 'go', choice: 'solo', leaveRideId: 'r1' });
-    expect(confirmedSwitch('group', 'r1', lobby('r1'))).toEqual({ kind: 'go', choice: 'group', leaveRideId: 'r1' });
+    expect(confirmedSwitch('r1', lobby('r1'))).toEqual({ kind: 'go', leaveRideId: 'r1' });
   });
   it('the ride ended meanwhile: nothing to leave, just go', () => {
-    expect(confirmedSwitch('solo', 'r1', null)).toEqual({ kind: 'go', choice: 'solo' });
-    expect(confirmedSwitch('solo', 'r1', { id: 'r1', status: 'ended', role: 'rider' })).toEqual({ kind: 'go', choice: 'solo' });
+    expect(confirmedSwitch('r1', null)).toEqual({ kind: 'go' });
+    expect(confirmedSwitch('r1', { id: 'r1', status: 'ended', role: 'rider' })).toEqual({ kind: 'go' });
   });
   it('the ride started meanwhile: do not leave it on the old confirmation, show the ride', () => {
-    expect(confirmedSwitch('solo', 'r1', { id: 'r1', status: 'active', role: 'rider' })).toEqual({ kind: 'stale' });
+    expect(confirmedSwitch('r1', { id: 'r1', status: 'active', role: 'rider' })).toEqual({ kind: 'stale' });
   });
   it('a different ride, or I became its leader: ask again', () => {
-    expect(confirmedSwitch('solo', 'r1', lobby('r2'))).toEqual({ kind: 'stale' });
-    expect(confirmedSwitch('solo', 'r1', lobby('r1', 'leader'))).toEqual({ kind: 'stale' });
+    expect(confirmedSwitch('r1', lobby('r2'))).toEqual({ kind: 'stale' });
+    expect(confirmedSwitch('r1', lobby('r1', 'leader'))).toEqual({ kind: 'stale' });
   });
 });
 
@@ -319,5 +353,29 @@ describe('attribution placement (never hidden while a map shows)', () => {
   });
   it('a sheet with nothing to expand never fades it', () => {
     expect(attributionFade(200, 200, 200)).toBe(1);
+  });
+});
+
+describe('the launch location prompt (D5, D6: once per app run, never on web)', () => {
+  const base = { asked: false, platform: 'android', status: 'undetermined', canAskAgain: true, focused: true };
+  it('asks while the permission is undecided and can still be asked', () => {
+    expect(launchPromptWanted(base)).toBe(true);
+    expect(launchPromptWanted({ ...base, platform: 'ios' })).toBe(true);
+  });
+  it('not again once asked in this app run (a second Home mount, after Back from a ride)', () => {
+    expect(launchPromptWanted({ ...base, asked: true })).toBe(false);
+  });
+  it('not while Home is not focused (a ride is on top): it is asked on the next focus instead', () => {
+    expect(launchPromptWanted({ ...base, focused: false })).toBe(false);
+    expect(launchPromptWanted({ ...base, focused: true })).toBe(true);
+  });
+  it('not on web: the browser prompt only comes from the explainer button (22 §4.5)', () => {
+    expect(launchPromptWanted({ ...base, platform: 'web' })).toBe(false);
+  });
+  it('not while the permission has not been read, once granted, or when the OS will not ask again', () => {
+    expect(launchPromptWanted({ ...base, status: 'unknown' })).toBe(false);
+    expect(launchPromptWanted({ ...base, status: 'granted' })).toBe(false);
+    expect(launchPromptWanted({ ...base, status: 'denied' })).toBe(false);
+    expect(launchPromptWanted({ ...base, canAskAgain: false })).toBe(false);
   });
 });

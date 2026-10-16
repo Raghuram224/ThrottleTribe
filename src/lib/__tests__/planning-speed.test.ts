@@ -1,4 +1,4 @@
-import { deriveSpeed, fixFresh, FIX_MAX_AGE_MS, nextAnchor, planningWatchWanted, type SpeedFix } from '../planning-speed';
+import { deriveSpeed, firstFixRetryMs, fixFresh, FIX_MAX_AGE_MS, nextAnchor, planningWatchWanted, type SpeedFix } from '../planning-speed';
 
 const M_PER_DEG_LAT = 111_320;
 const fix = (northM: number, takenAt: number, over: Partial<SpeedFix> = {}): SpeedFix => ({
@@ -84,5 +84,12 @@ describe('fixFresh (22 §4.4)', () => {
   });
   it('a fix from the future (clock skew) is fresh, not stale', () => {
     expect(fixFresh(5000, 1000)).toBe(true);
+  });
+});
+
+describe('firstFixRetryMs', () => {
+  it('retries quickly twice, then settles at 10 s', () => {
+    expect([0, 1].map(firstFixRetryMs)).toEqual([3000, 3000]);
+    expect([2, 3, 50].map(firstFixRetryMs)).toEqual([10_000, 10_000, 10_000]);
   });
 });

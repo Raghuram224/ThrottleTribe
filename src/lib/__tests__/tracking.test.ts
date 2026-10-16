@@ -106,7 +106,15 @@ beforeEach(() => {
     return { remove: jest.fn() };
   }) as never);
 });
+// Every recovery started by a test is cancelled with it: a recheck timer firing after teardown threw on a gone AppState.
+const cancels: (() => void)[] = [];
+const recovery = () => {
+  const cancel = startTrackingRecovery();
+  cancels.push(cancel);
+  return cancel;
+};
 afterEach(async () => {
+  for (const c of cancels.splice(0)) c();
   await stopRideTracking();
   Platform.OS = origOS;
   jest.restoreAllMocks();
@@ -138,7 +146,7 @@ describe('C1: the rate changes only in front, and never by stop -> start', () =>
     expect(getNavRateFlag()).toBe(true); // the wish is kept
 
     mockNavActive = true; // the session is still running
-    startTrackingRecovery();
+    recovery();
     setAppState('active');
     mockAppStateHandler?.('active');
     await settle();
@@ -155,7 +163,7 @@ describe('C1: the rate changes only in front, and never by stop -> start', () =>
     expect(mockRegistered).toBe(true);
 
     mockNavActive = true;
-    startTrackingRecovery();
+    recovery();
     mockAppStateHandler?.('active');
     await settle();
     expect(mockCalls.filter((c) => c === 'start:1000')).toHaveLength(2);
@@ -165,7 +173,7 @@ describe('C1: the rate changes only in front, and never by stop -> start', () =>
   it('recovery: on active during a ride, a task that is no longer registered is started again', async () => {
     await startRide();
     mockRegistered = false; // the service was lost
-    startTrackingRecovery();
+    recovery();
     mockAppStateHandler?.('active');
     await settle();
     expect(mockCalls).toEqual(['start:5000']);
@@ -173,7 +181,7 @@ describe('C1: the rate changes only in front, and never by stop -> start', () =>
   });
 
   it('recovery does nothing when the ride is not being tracked', async () => {
-    startTrackingRecovery();
+    recovery();
     mockAppStateHandler?.('active');
     await settle();
     expect(mockCalls).toEqual([]);
@@ -183,10 +191,57 @@ describe('C1: the rate changes only in front, and never by stop -> start', () =>
     await startRide();
     mockRegistered = false;
     setAppState('background');
-    startTrackingRecovery();
+    recovery();
     mockAppStateHandler?.('background');
     await settle();
     expect(mockCalls).toEqual([]);
+  });
+});
+
+describe('M2 (D6): Android cold start reports an unknown app state and sends no change event', () => {
+  beforeEach(() => jest.useFakeTimers({ doNotFake: ['setImmediate'] }));
+  afterEach(() => jest.useRealTimers());
+
+  it('the recovery runs once the state reads active within ~2 s, with no change event', async () => {
+    await startRide();
+    mockRegistered = false; // the service was lost with the old process
+    setAppState('unknown');
+    recovery();
+    await settle();
+    expect(mockCalls).toEqual([]); // not treated as in front: a service start from the background would throw
+    setAppState('active'); // the app became active before the listener existed: no event follows
+    jest.advanceTimersByTime(2100);
+    await settle();
+    expect(mockCalls).toEqual(['start:5000']);
+    expect(mockRegistered).toBe(true);
+  });
+
+  it('never starts the task while the state stays unknown, nor after the app is explicitly behind', async () => {
+    await startRide();
+    mockRegistered = false;
+    setAppState('unknown');
+    recovery();
+    jest.advanceTimersByTime(5000);
+    await settle();
+    expect(mockCalls).toEqual([]);
+    setAppState('background');
+    jest.advanceTimersByTime(5000);
+    await settle();
+    expect(mockCalls).toEqual([]);
+  });
+
+  it('a change event to active does the work at once and the pending checks do not run it again', async () => {
+    await startRide();
+    mockRegistered = false;
+    setAppState('unknown');
+    recovery();
+    setAppState('active');
+    mockAppStateHandler?.('active');
+    await settle();
+    expect(mockCalls).toEqual(['start:5000']);
+    jest.advanceTimersByTime(5000);
+    await settle();
+    expect(mockCalls).toEqual(['start:5000']);
   });
 });
 
@@ -194,7 +249,7 @@ describe('L4: the registered rate survives the JS process', () => {
   it('a task registered at the right rate by an earlier process is not re-registered', async () => {
     await startRide();
     expect(getTaskNav()).toBe(false);
-    startTrackingRecovery(); // a "new process": nothing in memory, the persisted rate matches
+    recovery(); // a "new process": nothing in memory, the persisted rate matches
     await settle();
     expect(mockCalls).toEqual([]);
   });
@@ -204,7 +259,7 @@ describe('L4: the registered rate survives the JS process', () => {
     await setNavRate(true);
     mockCalls.length = 0;
     mockNavActive = false;
-    startTrackingRecovery();
+    recovery();
     await settle();
     expect(getNavRateFlag()).toBe(false);
     expect(mockCalls).toEqual(['start:5000']);
@@ -215,7 +270,7 @@ describe('L4: the registered rate survives the JS process', () => {
     await setNavRate(true);
     mockCalls.length = 0;
     mockNavActive = true;
-    startTrackingRecovery();
+    recovery();
     await settle();
     expect(getNavRateFlag()).toBe(true);
     expect(mockCalls).toEqual([]);

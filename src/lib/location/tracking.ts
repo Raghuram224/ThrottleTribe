@@ -6,6 +6,7 @@ import { navSession } from '@/lib/nav-session';
 import { reportError, track } from '@/lib/telemetry';
 
 import { LOCATION_TASK } from './background-task';
+import { recheckFront } from './front-recheck';
 import { needsRestart, taskIntervalMs } from './nav-rate';
 import {
   clearRideId,
@@ -78,7 +79,15 @@ function exclusive<T>(fn: () => Promise<T>): Promise<T> {
  */
 let gen = 0;
 
-const inFront = () => AppState.currentState === 'active';
+/** `AppState` can be unavailable (a late timer after teardown): that reads as unknown, never throws. */
+function appState(): string | null | undefined {
+  try {
+    return AppState.currentState;
+  } catch {
+    return undefined;
+  }
+}
+const inFront = () => appState() === 'active';
 const trackingWanted = () => getTrackingFlag() && !!getRideId();
 
 /** Android answers a stop of a task that is not registered with "not found": the task is gone, which is the goal. */
@@ -92,20 +101,28 @@ async function registerTask(nav: boolean): Promise<void> {
   setTaskNav(nav);
 }
 
-export async function startRideTracking(rideId: string): Promise<StartResult> {
-  const myGen = ++gen;
+/**
+ * Asks for foreground, then background, location (nothing is started). Android 11+ sends the user to settings for
+ * background; on iOS they may stay on "While Using". Callers show the explainer first (04). Used by the permissions
+ * screen for a ride still in the lobby, which must not start tracking yet.
+ */
+export async function requestTrackingPermissions(): Promise<{ foreground: boolean; background: boolean }> {
   const fg = await Location.requestForegroundPermissionsAsync();
   if (fg.status !== Location.PermissionStatus.GRANTED) {
     track('permission.location', { foreground: false, background: false });
-    return { ok: false, reason: 'foreground-denied' };
+    return { foreground: false, background: false };
   }
-  // Android 11+ sends the user to settings; on iOS they may stay on "While Using".
-  // Keep going either way: foreground tracking still works while the app is open.
   const bg = await Location.requestBackgroundPermissionsAsync();
-  track('permission.location', {
-    foreground: true,
-    background: bg.status === Location.PermissionStatus.GRANTED,
-  });
+  const background = bg.status === Location.PermissionStatus.GRANTED;
+  track('permission.location', { foreground: true, background });
+  return { foreground: true, background };
+}
+
+export async function startRideTracking(rideId: string): Promise<StartResult> {
+  const myGen = ++gen;
+  const perm = await requestTrackingPermissions();
+  if (!perm.foreground) return { ok: false, reason: 'foreground-denied' };
+  // Keep going without background: foreground tracking still works while the app is open.
   // The ride ended (or another one began) while the permission sheets were up.
   if (myGen !== gen) return { ok: false, reason: 'start-failed', message: 'superseded' };
 
@@ -130,7 +147,7 @@ export async function startRideTracking(rideId: string): Promise<StartResult> {
       message: e instanceof Error ? e.message : String(e),
     };
   }
-  const backgroundGranted = bg.status === Location.PermissionStatus.GRANTED;
+  const backgroundGranted = perm.background;
   track('tracking.started', { background: backgroundGranted });
   return { ok: true, backgroundGranted };
 }
@@ -190,10 +207,18 @@ export function startTrackingRecovery(): () => void {
     void exclusive(() => recover(myGen)).catch(surface('recover'));
   };
   run();
+  // Android cold start: the state can still be `unknown` here with no `change` event to follow. Do not call that "in
+  // front" (a foreground service started from the background throws on Android 12+): read it again for ~2 s instead.
+  const cancelRecheck = inFront() ? () => {} : recheckFront({ state: appState, onFront: run });
   const sub = AppState.addEventListener('change', (state) => {
-    if (state === 'active') run();
+    if (state !== 'active') return;
+    cancelRecheck();
+    run();
   });
-  return () => sub.remove();
+  return () => {
+    cancelRecheck();
+    sub.remove();
+  };
 }
 
 export async function stopRideTracking(): Promise<void> {

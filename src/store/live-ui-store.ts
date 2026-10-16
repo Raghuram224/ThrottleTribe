@@ -14,6 +14,8 @@ interface LiveUiState {
   /** Full map (19 B): map edge to edge, chrome hidden. Persisted so it survives restarts. */
   fullMap: boolean;
   setFullMap: (on: boolean) => void;
+  /** A new ride was created: it opens in the normal view, whatever the last ride was left in (22 L1). */
+  startNewRide: () => void;
   /** Height (incl. status-bar inset) of the banner stack floating over the full map; 0 when empty. */
   topStackH: number;
   setTopStackH: (h: number) => void;
@@ -54,6 +56,10 @@ export const useLiveUiStore = create<LiveUiState>((set, get) => ({
   setFullMap: (on) => {
     writeItem(STORAGE_KEYS.fullMap, on ? '1' : '0');
     set({ fullMap: on });
+  },
+  startNewRide: () => {
+    writeItem(STORAGE_KEYS.fullMap, '0');
+    set({ fullMap: false });
   },
   topStackH: 0,
   setTopStackH: (h) => set({ topStackH: h }),

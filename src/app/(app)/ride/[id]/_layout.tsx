@@ -12,6 +12,7 @@ import { Screen } from '@/components/screen';
 import { WebRideNotices } from '@/components/web-ride-notices';
 import { Sheet } from '@/components/sheet';
 import { StopApprovalCard } from '@/components/stop-approval-card';
+import { RenameRideSheet } from '@/components/rename-ride-sheet';
 import { SheetAction } from '@/components/sheet-action';
 import { SosSenderPanel } from '@/components/sos-sender-panel'; // sos contacts
 import { SosPinnedBanner, SosTakeover, useReceiverSos } from '@/components/sos-takeover';
@@ -19,6 +20,7 @@ import { MODAL_CLOSE_MS, useAfterModalClose } from '@/hooks/use-after-modal'; //
 import { useConnection, useNetOffline } from '@/hooks/use-connection';
 import { useInviteMatching } from '@/hooks/use-invite-matching'; // invite
 import { useNavigation } from '@/hooks/use-navigation';
+import { useNavRide } from '@/hooks/use-nav-ride';
 import { useNow } from '@/hooks/use-now';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useRideAlerts } from '@/hooks/use-ride-alerts';
@@ -27,8 +29,9 @@ import { RideActionsContext, type RideActions } from '@/hooks/use-ride-actions';
 import { notifyStopProposal, setupNotifications } from '@/lib/alerts';
 import { copy, errorText, riderCount as riderCountText, t } from '@/lib/copy';
 import { headerSearchVisible, panelVariant } from '@/lib/live-chrome';
-import { isGroupRide, unmarkGroupRide } from '@/lib/group-rides';
 import { isNavActive } from '@/lib/nav-engine';
+import { noteRiderCount } from '@/lib/group-formed';
+import { markNavRide, unmarkNavRide } from '@/lib/nav-rides';
 import { destKey, isArrived } from '@/lib/nav-arrival';
 import { INVITE_BASE_URL } from '@/lib/flags'; // invite
 import { formatElapsed } from '@/lib/format';
@@ -40,12 +43,14 @@ import { shareText } from '@/lib/share-text';
 import { phraseFor } from '@/lib/live-list';
 import { showLobbyContactsBanner } from '@/lib/home';
 import { getRideId } from '@/lib/location/ride-config';
+import { shouldStartTracking } from '@/lib/location/start-rule';
 import { isTracking, startRideTracking, stopRideTracking } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
 import { fixPermission as fixPermissionAction } from '@/lib/permissions';
-import { clearStop, decideStop, endRide, leaveRide, setSos, toRideError } from '@/lib/ride-api';
+import { clearStop, decideStop, endRide, leaveRide, renameRide, setSos, toRideError } from '@/lib/ride-api';
+import { renameMenuVisible } from '@/lib/rename-ride';
 import { rideRedirect, type RideChild } from '@/lib/routing';
-import { setTelemetryRideId } from '@/lib/telemetry';
+import { track, setTelemetryRideId } from '@/lib/telemetry';
 import { sosIsOn } from '@/lib/sos';
 import { approvalCardModel, rideStop } from '@/lib/stop-ui';
 import { useAlertStore } from '@/store/alert-store';
@@ -115,10 +120,16 @@ export default function RideLayout() {
   const status = storeRideId === id ? ride?.status : undefined;
   const left = !!me?.leftAt;
   const riderCount = Object.values(members).filter((m) => !m.leftAt).length;
+  // The first other rider joins a ride I lead: the ride became a group (22 D6, one event per ride).
+  useEffect(() => {
+    if (!id || !isLeader || !loaded || storeRideId !== id || status === 'ended') return;
+    if (noteRiderCount(id, riderCount)) track('ride.group_formed');
+  }, [id, isLeader, loaded, storeRideId, status, riderCount]);
   // A ride of one (20 C4): its copy must not talk about "everyone" (21 decision 5).
   const solo = panelVariant(loaded && storeRideId === id, riderCount) === 'solo';
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const afterMenu = useAfterModalClose(); // invite: menu -> confirm sheet hand-off
   useInviteMatching(id, child); // invite
   const [confirm, setConfirm] = useState<ConfirmKind>(null);
@@ -182,8 +193,8 @@ export default function RideLayout() {
   useEffect(() => {
     if (id && (status === 'ended' || left)) {
       useNavStore.getState().clearArrival(id);
-      // ...and its device-local "group ride" marker (22 decision 1), which is otherwise kept for good.
-      unmarkGroupRide(id);
+      // ...and its device-local "I navigate this ride" marker (22 D5), which is otherwise kept for good.
+      unmarkNavRide(id);
     }
   }, [id, status, left]);
   // --- end sos contacts ---
@@ -219,12 +230,13 @@ export default function RideLayout() {
     router.replace(href(redirect.to === 'home' ? '/home' : `/ride/${id}/${redirect.to}`));
   }, [inRide, loaded, storeRideId, id, status, child, left, holdRedirect]);
 
-  // Start background tracking when entering a live ride with foreground permission (covers the
-  // skipped-permissions path and app restarts); re-evaluated when permissions change.
+  // Start background tracking when a ride is ACTIVE with foreground permission (covers the skipped-permissions
+  // path and app restarts); re-evaluated when status or permissions change, so a lobby that turns active starts at
+  // once. Never in the lobby: it shares no position, and the background prompt belongs to the explainer at Start.
   const foreground = permissions?.snapshot.foreground;
   useEffect(() => {
-    if (!loaded || storeRideId !== id || !status || status === 'ended' || left) return;
-    if (foreground !== 'granted' || trackingStart.current) return;
+    if (!shouldStartTracking({ loaded, storeRideId, id, status, left, foreground, inRide })) return;
+    if (!id || trackingStart.current) return;
     trackingStart.current = true;
     (async () => {
       try {
@@ -233,7 +245,7 @@ export default function RideLayout() {
         trackingStart.current = false;
       }
     })().catch(() => {});
-  }, [loaded, storeRideId, id, status, left, foreground]);
+  }, [loaded, storeRideId, id, status, left, foreground, inRide]);
 
   // "Back online" confirmation for 3 s after an offline spell.
   useEffect(() => {
@@ -253,9 +265,10 @@ export default function RideLayout() {
   const rideName = ride ? displayRideName(ride.name) : '';
 
   // --- invite --- share text = https link when EXPO_PUBLIC_INVITE_BASE_URL is set, else code only.
-  const shareCode = () => {
+  const shareCode = (via: 'menu' | 'lobby' = 'menu') => {
     if (!ride) return;
     const message = inviteShareMessage(rideName, ride.code, inviteLink(ride.code, INVITE_BASE_URL));
+    track('invite.shared', { via });
     void shareText(message);
   };
   const openInvite = useCallback(() => {
@@ -336,6 +349,18 @@ export default function RideLayout() {
     }
   };
 
+  // Leader-only "Rename ride" (22 section 3.6): the sheet throws to stay open with the error under the field.
+  const canRename = renameMenuVisible({ isLeader, status, left });
+  const doRename = async (name: string) => {
+    if (!id) return;
+    const row = await renameRide(id, name);
+    // Show it now; the broadcast of the same row follows and is a no-op.
+    useRideStore.getState().applyRide(row);
+    setRenameOpen(false);
+    showToast(copy['rename.toast']);
+    haptic('success');
+  };
+
   const openSearch = useCallback(() => {
     if (id) router.push(href(`/ride/${id}/search`));
   }, [id]);
@@ -359,17 +384,23 @@ export default function RideLayout() {
   const arrivalLatch = useNavStore((s) => arrivalForRide(s, id ?? ''));
   const engineKey = useNavStore((s) => (s.engine.active ? s.engine.key : ''));
   const engineOffRoute = useNavStore((s) => !!s.engine.progress?.offRoute);
-  // Read from storage once per ride, not on every render of this layout.
-  const groupRide = useMemo(() => isGroupRide(id), [id]);
+  // This phone navigated THIS stop as the ride's leader (22 D6). Read live, so this layout and the live screen
+  // always agree, whether or not they remounted since the marker was written.
+  const navRide = useNavRide(id, stopLL);
   const navOn = isNavActive({
     solo,
     leader: isLeader,
-    groupRide,
+    navRide,
     rideLive: status === 'active' && !left,
     hasStop: !!stopLL,
     arrived: isArrived(arrivalLatch, stopLL),
     engineRunning: isLeader && engineKey !== '' && engineKey === destKey(stopLL),
   });
+  // The leader who navigates keeps turn-by-turn to this stop after riders join, also after Back to Home or a restart
+  // (22 D5). The marker holds the stop: a different one set later with riders present is not navigated (D6).
+  useEffect(() => {
+    if (id && navOn && isLeader && stopLL) markNavRide(id, destKey(stopLL));
+  }, [id, navOn, isLeader, stopLL]);
   const voiceOn = useNavStore((s) => s.voiceOn);
   useNavigation({
     rideId: id,
@@ -703,6 +734,16 @@ export default function RideLayout() {
             shareCode();
           }}
         />
+        {canRename ? (
+          <SheetAction
+            icon="edit"
+            label={copy['rename.menu']}
+            onPress={() => {
+              setMenuOpen(false);
+              afterMenu.schedule(() => setRenameOpen(true));
+            }}
+          />
+        ) : null}
         {navOn ? (
           // Voice toggle (21 §2.10): always reachable here, also when the map's right column is hidden.
           <SheetAction
@@ -737,6 +778,16 @@ export default function RideLayout() {
           }}
         />
       </Sheet>
+
+      {canRename && renameOpen ? (
+        <RenameRideSheet
+          current={ride?.name.trim() ?? ''}
+          speedMps={myPos?.speedMps ?? null}
+          fixAtMs={Number.isNaN(myT) ? null : myT}
+          onSave={doRename}
+          onCancel={() => setRenameOpen(false)}
+        />
+      ) : null}
 
       <ConfirmSheet
         visible={confirm === 'clearStop'}

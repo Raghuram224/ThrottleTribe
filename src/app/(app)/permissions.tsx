@@ -10,7 +10,7 @@ import { ErrorText } from '@/components/error-text';
 import { Icon, type IconName } from '@/components/icon';
 import { Screen } from '@/components/screen';
 import { copy, t } from '@/lib/copy';
-import { startRideTracking } from '@/lib/location/tracking';
+import { requestTrackingPermissions, startRideTracking } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
 import { readPermissions } from '@/lib/permissions';
 import { nextPermissionStep, permissionSteps, type PermissionStep } from '@/lib/routing';
@@ -125,6 +125,18 @@ export default function Permissions() {
     if (!rideId) return advance('bg');
     setLoading(true);
     try {
+      // A ride still in the lobby only asks (here, after the explainer): tracking starts when it turns active.
+      if (next !== 'live') {
+        if (skip) {
+          setLoading(false);
+          return advance('bg');
+        }
+        const asked = await requestTrackingPermissions();
+        if (!asked.foreground) foregroundGranted.current = false;
+        setLoading(false);
+        advance('bg');
+        return;
+      }
       // Re-uses the granted foreground permission and asks for background.
       const result = await startRideTracking(rideId);
       if (!result.ok && result.reason === 'start-failed' && !skip) {

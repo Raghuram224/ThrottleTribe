@@ -1,10 +1,11 @@
 import { copy } from '../copy';
+import { inviteShareMessage } from '../invite';
 import { defaultRideName, displayRideName, isValidRideName, splitNameTag } from '../names';
 
 describe('ride name', () => {
   it('uses a neutral default when the rider name is unknown, never "\'s ride"', () => {
-    expect(defaultRideName('')).toBe('Group ride');
-    expect(defaultRideName('  ')).toBe('Group ride');
+    expect(defaultRideName('')).toBe('My ride');
+    expect(defaultRideName('  ')).toBe('My ride');
     expect(defaultRideName('Arun')).toBe("Arun's ride");
   });
 
@@ -34,8 +35,18 @@ describe('ride name', () => {
   });
 });
 
-describe('group ride name with a destination (22 decision 3)', () => {
-  it('has no destination-bearing default: the invite text carries the ride name, so the name must not carry the place', () => {
+describe('every ride started from Home is a normal ride that may be shared (22 D5)', () => {
+  it('starts with the default name ("Raghu\'s ride"), never "Solo ride", and the destination stays out of it (decision 3)', () => {
+    expect(defaultRideName('Raghu')).toBe("Raghu's ride");
+    expect(Object.keys(copy)).not.toContain('solo.rideName');
     expect(Object.keys(copy)).not.toContain('newRide.defaultNameDest');
+  });
+  it('falls back to a neutral name while the rider\'s name is unknown: a ride of one is not a "Group ride" (D6)', () => {
+    expect(defaultRideName('')).toBe('My ride');
+  });
+  it('the invite text reads sensibly with the default name', () => {
+    const msg = inviteShareMessage(defaultRideName('Raghu'), '123456', null);
+    expect(msg).toContain("Raghu's ride");
+    expect(msg).not.toMatch(/solo/i);
   });
 });

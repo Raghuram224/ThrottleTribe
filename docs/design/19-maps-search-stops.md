@@ -139,7 +139,7 @@ Proposals are **ride_events**, so they need no new table: add `'stop_proposed'`,
   - the sheet summary line is "Solo ride · 42 km/h" (or "Solo ride" when stopped);
   - the "alone" invite block becomes a single secondary row, "Invite riders", so others can still join
     by code;
-  - the full map is the **default** the first time a solo ride opens.
+  - the full map is the **default** the first time a solo ride opens. **Superseded by 22 D6 (2026-10-15): no ride opens in full map by itself; it is the toggle.**
 - **Speed bubble** (all rides, follow mode): a 56 dp circle at the bottom-left of the map, above the
   sheet. It shows the current km/h big and "km/h" small, and is hidden when the speed is unknown or
   under 3 km/h. In full map it sits above the floating SOS button.

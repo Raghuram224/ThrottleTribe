@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { useAppInFront } from '@/hooks/use-app-in-front';
 import { navSession } from '@/lib/nav-session';
 
 /** Some platforms report a negative value for "unknown". */
@@ -16,10 +17,10 @@ const nonNegative = (v: number | null | undefined): number | null => (v == null 
  * `timeInterval` is Android only; on iOS BestForNavigation already delivers about 1 Hz.
  */
 export function useNavPosition(active: boolean): void {
-  const [inFront, setInFront] = useState(() => AppState.currentState === 'active');
+  // Re-reads the state right after subscribing (no race between the first read and the listener, L3).
+  const inFront = useAppInFront();
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      setInFront(s === 'active');
       // The watch was paused meanwhile: the GPS-lost clock starts again from now.
       if (s === 'active') navSession.resume();
     });

@@ -146,7 +146,7 @@ engine on top of OSRM `steps=true`, a docked turn banner, voice prompts, and an 
 | # | Was | Now | Why |
 |---|---|---|---|
 | 1 | 19 C: Home card **Ride solo** (one tap → free solo ride) | Home card **Where to?**. Free solo = Where to? → **Just ride, no destination** (2 taps) | User decision 1: "Where to?" first |
-| 2 | 19 B / 20 C4: full map is the default the first time a solo ride opens | Only for a **free** solo ride. A ride that has a destination when it opens starts in **sheet** mode | The solo panel (distance · ETA + SOS) is the bottom bar riders expect; full map has nowhere to show the ETA (§2.6) |
+| 2 | 19 B / 20 C4: full map is the default the first time a solo ride opens | **Superseded by 22 D6 (2026-10-15): no ride opens in full map by itself, a free ride included (the Invite riders row must be visible).** Was: only for a **free** solo ride; a ride with a destination starts in **sheet** mode | The solo panel (distance · ETA + SOS) is the bottom bar riders expect; full map has nowhere to show the ETA (§2.6) |
 | 3 | 19 A: the search result sheet has two buttons (break / destination) | **Solo** rides: one primary **Go here**; the stop kind comes from the place category | Rule 4; in solo, "suggest" and "set" are the same act |
 | 4 | 19 A: after the leader sets a stop, the map frames me + stop (camera goes free) | Solo navigation: the camera stays in **follow** | Framing the route and then needing Re-centre is wrong when the next turn matters |
 | 5 | 20 C5: menu "Remove next stop" + "Remove the stop for everyone?" | Solo: **Stop directions** + solo copy. Solo End confirm loses "for everyone" | The copy was wrong for a ride of one |
@@ -531,7 +531,7 @@ One 96 main row in every state; the Then row appears only in `guide`. Priority w
 - Full map + arrived: the `StopChip` shows the arrived line (exists), and tapping it exits full map so the panel shows.
 
 ### 2.9 Just ride, no destination
-Exactly today's free solo ride (19 C + 20 C4): full map the first time, solo panel = the Invite row only, header
+Today's free solo ride (19 C + 20 C4), **without the full-map first open (22 D6: it opens in the sheet view)**: solo panel = the Invite row only, header
 search to add a stop later. If a stop is added later (solo **Go here**), navigation starts: banner and voice. It does
 not jump to full map.
 
@@ -1334,7 +1334,7 @@ size.maneuverIcon = 48   // banner arrow
 | Recent / result row 64 | tap | `select`, `surfacePressed` | push `/route-preview` |
 | Clear (recents) 56 | tap → confirm | `select` | list emptied |
 | Allow location 56 | tap | `select` | OS prompt / settings |
-| Just ride 56 | tap | `select`, loading | `startSoloRide` → stack reset → live (full map first time) |
+| Just ride 56 | tap | `select`, loading | `startSoloRide` → stack reset → live (sheet view; 22 D6) |
 | Preview back 56 | tap / Android back | `select` | back to `/where-to`, state kept |
 | Allow expressways row 56 | tap (whole row) | `select`, switch flips, updating state | persisted; route refetched after 500 ms (§2.3.1) |
 | Go 56 | tap | `success` on start, loading | §2.4 |
@@ -1360,7 +1360,7 @@ size.maneuverIcon = 48   // banner arrow
 - [ ] Preview shows duration (28 bold) · distance, name, address, arrival time, car note; route + pin + me framed clear of the back button and panel.
 - [ ] Preview offline: Go disabled with `preview.offline`; OSRM failing: Go still works and live shows the `≈` stop card.
 - [ ] Go: `create_ride` → `start_ride` → `propose_stop` (destination applied); if any step fails the ride is ended and an error toast shows.
-- [ ] A navigation ride opens in **sheet** mode, camera following; free solo still opens in full map the first time.
+- [ ] A navigation ride opens in **sheet** mode, camera following; a free ride too since 22 D6 (full map is the toggle).
 - [ ] No "Next stop" toast for my own solo stop.
 - [ ] Within 150 m: ArrivalPanel latches (You've arrived · Pick next destination · End ride); nothing ends without a tap; End ride asks "End your ride?" first.
 - [ ] Riding away from an unanswered arrival keeps the panel; no route line, no reroute.

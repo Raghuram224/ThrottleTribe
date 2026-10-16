@@ -1,11 +1,19 @@
 import { copy } from '../copy';
 import { describeBanner, maneuverAnnouncement, relativeBearing } from '../nav-banner-view';
 import { EMPTY_ENGINE, isNavActive, maneuverKey, newestPosition, pickOrigin, selectBanner, type BannerInput, type NavEngineState } from '../nav-engine';
+import { isNavRideFor, markNavRide } from '../nav-rides';
+import { destKey } from '../nav-arrival';
 import { initProgress, prepareRoute, stepProgress } from '../nav-progress';
 import { at, fix, straightRoute } from '../__fixtures__/nav-fixtures';
 import type { NavStep } from '../nav-steps';
 
 jest.mock('expo-sqlite/localStorage/install', () => ({}));
+const mem = new Map<string, string>();
+(globalThis as { localStorage?: unknown }).localStorage = {
+  getItem: (k: string) => mem.get(k) ?? null,
+  setItem: (k: string, v: string) => void mem.set(k, v),
+  removeItem: (k: string) => void mem.delete(k),
+};
 
 const route = straightRoute(3000, [[1000, 'turn', 'left'], [1300, 'turn', 'right'], [2500, 'turn', 'left']]);
 const prepared = prepareRoute(route, 1);
@@ -201,29 +209,75 @@ describe('maneuver announcements and keys', () => {
   });
 });
 
-describe('isNavActive', () => {
-  const base = { solo: true, leader: true, groupRide: false, rideLive: true, hasStop: true, arrived: false, engineRunning: false };
-  it('solo, live, with a stop that is not arrived at', () => {
+describe('isNavActive (22 D5)', () => {
+  const base = { solo: true, leader: true, navRide: false, rideLive: true, hasStop: true, arrived: false, engineRunning: false };
+  it('a ride of one, live, with a stop that is not arrived at, led by me', () => {
     expect(isNavActive(base)).toBe(true);
     expect(isNavActive({ ...base, hasStop: false })).toBe(false);
     expect(isNavActive({ ...base, arrived: true })).toBe(false);
     expect(isNavActive({ ...base, rideLive: false })).toBe(false);
   });
-  it('a group does not start navigation, but a running session continues when someone joins', () => {
+  it('a ride that already has riders does not start navigation', () => {
     expect(isNavActive({ ...base, solo: false })).toBe(false);
+  });
+  it('a ride that started solo and gained riders keeps navigating for its leader while the session runs', () => {
     expect(isNavActive({ ...base, solo: false, engineRunning: true })).toBe(true);
     expect(isNavActive({ ...base, solo: false, engineRunning: true, arrived: true })).toBe(false);
+    expect(isNavActive({ ...base, solo: false, engineRunning: true, hasStop: false })).toBe(false);
   });
-  it('22 decision 1: a group ride never starts navigation, even with only its leader present', () => {
-    // The old quirk: a group started with one rider present counted as solo and navigated.
-    expect(isNavActive({ ...base, groupRide: true })).toBe(false);
-    expect(isNavActive({ ...base, groupRide: true, leader: true, solo: false })).toBe(false);
+  it('...and after Back to Home or a restart, when only this phone\'s marker remembers it', () => {
+    expect(isNavActive({ ...base, solo: false, navRide: true })).toBe(true);
+    expect(isNavActive({ ...base, solo: false, navRide: true, arrived: true })).toBe(false);
+    expect(isNavActive({ ...base, solo: false, navRide: true, rideLive: false })).toBe(false);
   });
-  it('only the leader starts navigation; a rider left alone in someone else\'s ride does not', () => {
+  it('a joiner never navigates: not the leader, with or without a marker or a running session value', () => {
+    expect(isNavActive({ ...base, leader: false, solo: false })).toBe(false);
+    expect(isNavActive({ ...base, leader: false, solo: false, navRide: true })).toBe(false);
+  });
+  it('a rider left alone in someone else\'s ride does not start it either', () => {
     expect(isNavActive({ ...base, leader: false })).toBe(false);
   });
-  it('a running session of the leader is not cut by the group flag', () => {
-    expect(isNavActive({ ...base, solo: false, engineRunning: true, groupRide: false })).toBe(true);
+});
+
+describe('H1 (22 D6): the leader\'s navigation follows the marker\'s destination, never whether a screen remounted', () => {
+  const A = { lat: 12.3, lng: 76.6 };
+  const B = { lat: 13.1, lng: 77.2 };
+  const leaderWithRiders = (rideId: string, stop: { lat: number; lng: number } | null) => ({
+    solo: false,
+    leader: true,
+    navRide: isNavRideFor(rideId, destKey(stop)),
+    rideLive: true,
+    hasStop: !!stop,
+    arrived: false,
+    engineRunning: false,
+  });
+  beforeEach(() => mem.clear());
+
+  it('a lobby ride made by Invite riders (marked at creation) navigates once the leader starts it with riders present', () => {
+    markNavRide('r1', destKey(A));
+    expect(isNavActive(leaderWithRiders('r1', A))).toBe(true);
+  });
+
+  it('a stop the leader accepts later with riders present is not navigated, mounted or remounted: the marker holds the old stop', () => {
+    markNavRide('r1', destKey(A));
+    expect(isNavActive(leaderWithRiders('r1', B))).toBe(false);
+    // Reopening the ride gives the same answer (it reads the same marker).
+    expect(isNavActive(leaderWithRiders('r1', B))).toBe(false);
+  });
+
+  it('a ride that was never marked on this phone (another device) fails closed', () => {
+    expect(isNavActive(leaderWithRiders('r2', A))).toBe(false);
+  });
+
+  it('a joiner never navigates, even with a marker for that stop', () => {
+    markNavRide('r1', destKey(A));
+    expect(isNavActive({ ...leaderWithRiders('r1', A), leader: false })).toBe(false);
+  });
+
+  it('a stop removed and set again to the same place resumes (same destination), a new place does not', () => {
+    markNavRide('r1', destKey(A));
+    expect(isNavActive(leaderWithRiders('r1', null))).toBe(false);
+    expect(isNavActive(leaderWithRiders('r1', { ...A }))).toBe(true);
   });
 });
 

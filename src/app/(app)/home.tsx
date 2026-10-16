@@ -31,19 +31,18 @@ import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy, errorText, t } from '@/lib/copy';
 import { ROUTING_SUPPORTS_EXCLUDE } from '@/lib/flags';
 import { formatElapsed } from '@/lib/format';
-import { pruneGroupRides } from '@/lib/group-rides';
 import { haversineM, type LatLng } from '@/lib/geo';
 import { haptic } from '@/lib/haptics';
 import { greetingCopyKey, isGuest, pickNudge, profilePill, profileTodoCount } from '@/lib/home';
 import { href } from '@/lib/nav';
 import { destKey } from '@/lib/nav-arrival';
-import { displayRideName, firstName } from '@/lib/names';
+import { defaultRideName, displayRideName, firstName } from '@/lib/names';
+import { navRideEpoch, pruneNavRides, pruneNavRidesExcept } from '@/lib/nav-rides';
 import {
   attributionFade,
   attributionInSheet,
   ATTRIBUTION_CLEAR,
   browsePadding,
-  choiceStep,
   chipsTop,
   confirmedSwitch,
   firstRunSeenOnSnap,
@@ -54,20 +53,21 @@ import {
   initialCamera,
   initialSheetSnap,
   isFirstRun,
+  launchPromptWanted,
   meSlotForHome,
-  newRideHref,
   type OpenRideLite,
   openRideCard,
   peekRecentCount,
   placePadding,
   searchBarTarget,
   shouldSaveCamera,
+  startStep,
   whereToHref,
   type CameraIntent,
-  type ChoiceStep,
+  type GoingKind,
   type HomeSnap,
-  type PlanChoice,
   type SheetBlock,
+  type StartStep,
 } from '@/lib/plan-flow';
 import { fixFresh } from '@/lib/planning-speed';
 import { previewPadding } from '@/lib/preview-fit';
@@ -78,7 +78,7 @@ import { resetToRide } from '@/lib/reset-to-ride';
 import { getMyOpenRide, toRideError, type OpenRide } from '@/lib/ride-api';
 import { isRideStartBusy } from '@/lib/ride-start';
 import { rideHref } from '@/lib/routing';
-import { startNavigationRide, stopKindFor } from '@/lib/solo-nav';
+import { startInviteRide, startNavigationRide, stopKindFor } from '@/lib/solo-nav';
 import { startSoloRide } from '@/lib/solo-ride';
 import { navLineFor } from '@/lib/stop-ui';
 import { track } from '@/lib/telemetry';
@@ -99,10 +99,14 @@ const toLite = (o: OpenRide | null): OpenRideLite | null =>
 
 const NO_DEST: LatLng = { lat: 0, lng: 0 };
 
+/** The launch location prompt was asked in this app run: one per process, not per Home mount (22 D6). */
+let launchPromptAsked = false;
+
 /**
  * Map home (22): one full-screen map, a floating "Where to?" bar, category chips and a bottom sheet with the old
  * Home content. Three modes share the one map: `browse`, `place` (a searched place's sheet) and `route` (the
- * 21 preview plus "How are you riding?"). Nothing here creates a ride until Ride solo / Create ride is chosen.
+ * 21 preview with one primary, Start ride). There is one kind of ride (22 D5): it becomes a group when its code
+ * is shared from the live screen. Nothing here creates a ride until Start ride / Just ride is tapped.
  */
 export default function Home() {
   const { colors, scheme } = useTheme();
@@ -119,7 +123,7 @@ export default function Home() {
   const allowExpressways = usePrefsStore((s) => s.allowExpressways);
   // Kept across refetches so the resume card shows the last known ride while offline.
   const [open, setOpen] = useState<OpenRide | null>(null);
-  const [confirm, setConfirm] = useState<{ kind: ConfirmKind; choice: PlanChoice } | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
   // Ticks so "Started N min ago" keeps counting and the greeting follows the clock.
   const now = useNow(30_000);
 
@@ -147,7 +151,12 @@ export default function Home() {
   const dataEpoch = useSessionStore((s) => s.dataEpoch);
   const refresh = useCallback(async () => {
     try {
-      setOpen(await getMyOpenRide());
+      const epoch = navRideEpoch();
+      const fresh = await getMyOpenRide();
+      setOpen(fresh);
+      // A successful read only (never the offline cache): markers of rides that are not my open ride are of no use
+      // (a lobby cancelled from this phone never reaches the recent-rides list below).
+      pruneNavRidesExcept(fresh?.ride ?? null, epoch);
     } catch {
       // Offline or failing: keep showing what we have; the tiles explain their own errors.
     }
@@ -172,9 +181,9 @@ export default function Home() {
   const startedMs = open?.ride.started_at ? Date.parse(open.ride.started_at) : NaN;
   const convoy = useHomeConvoy(open?.ride.id ?? null, active, user?.id ?? null);
   const { rides, failed } = useRecentRides();
-  // Rides that ended while I was elsewhere: their device-local "group ride" markers are no longer needed.
+  // Rides that ended while I was elsewhere: their device-local "I navigate this ride" markers are no longer needed.
   useEffect(() => {
-    if (rides) pruneGroupRides(rides.map((r) => r.id));
+    if (rides) pruneNavRides(rides.map((r) => r.id));
   }, [rides]);
   const stats = rides ? monthStats(rides, readRideStats(), now) : null;
   const firstRun = isFirstRun(rides, hasRide);
@@ -186,7 +195,7 @@ export default function Home() {
     router.setParams({ welcome: undefined });
   }, [welcome, name, first]);
 
-  // ---------------------------------------------------------------- position (no prompt, no 1 Hz watch)
+  // ---------------------------------------------------------------- position (the launch prompt is below; no 1 Hz watch)
   const { perm, fix, request, servicesEnabled } = usePlanningPosition();
   // No fix for 2 minutes: the marker goes rather than showing a stale "me" (22 §4.4). `now` ticks every 30 s.
   const shownFix = fix && fixFresh(fix.at, now) ? fix : null;
@@ -315,13 +324,14 @@ export default function Home() {
     retry();
   };
 
-  const [going, setGoing] = useState(false);
-  // State lags a render: a double tap could otherwise get a second start through before `going` is true.
+  // Which action is making the ride (Start ride or Invite riders); the other is blocked meanwhile.
+  const [going, setGoing] = useState<GoingKind>(null);
+  // State lags a render: a double tap could otherwise get a second start through before `going` is set.
   const goingRef = useRef(false);
-  // Just ride solo is starting (tile). Declared here: the back handler below reads it.
+  // What the switch / leader-busy sheet was opened for, so the confirmed one runs.
+  const pendingKind = useRef<'start' | 'invite'>('start');
+  // Just ride is starting (tile). Declared here: the back handler below reads it.
   const soloRef = useRef(false);
-  // Ride with a group opened its form: a second tap before the screen is up must not push it twice.
-  const groupOpeningRef = useRef(false);
 
   // ---------------------------------------------------------------- back (22 §5.1) and focus
   useFocusEffect(
@@ -329,7 +339,6 @@ export default function Home() {
       void refresh();
       setMapFailed(false);
       usePlanStore.getState().setSheetSnap(initialSheetSnap(firstRunRef.current, usePlanStore.getState().firstRunSeen));
-      groupOpeningRef.current = false;
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         // Android back must not leave while a ride is being started (it would still be created, with no screen waiting).
         if (goingRef.current || soloRef.current) return true;
@@ -365,13 +374,16 @@ export default function Home() {
     if (open) router.push(href(rideHref(open.ride.id, open.ride.status)));
   };
 
-  const justRideSolo = async () => {
+  // Every ride gets the normal default name ("Raghu's ride"): it may be shared, and the name is in the invite text.
+  const rideName = defaultRideName(first);
+
+  const justRide = async () => {
     if (soloRef.current) return;
     soloRef.current = true;
     setSoloLoading(true);
     try {
-      // Today's free solo ride, unchanged: it opens in full map the first time.
-      resetToRide(await startSoloRide(thresholdS));
+      // A ride with no destination: it opens in the normal view (22 D6), and a stop can be added from the header.
+      resetToRide(await startSoloRide(thresholdS, rideName));
     } catch (e) {
       if (!isRideStartBusy(e)) showToast(errorText(toRideError(e).code));
     } finally {
@@ -380,74 +392,71 @@ export default function Home() {
     }
   };
 
-  /** Ride solo (21 §2.4, unchanged), optionally leaving the ride I confirmed leaving. */
-  const rideSolo = async (p: PlanPlace, leaveRideId?: string) => {
+  /**
+   * Start ride (21 §2.4): create, start and set the stop; Invite riders (22 D6): create in the lobby, set the stop,
+   * open the invite screen. Optionally leaving the ride I confirmed leaving. One at a time, shared lock and guard.
+   */
+  const launch = async (kind: 'start' | 'invite', p: PlanPlace, leaveRideId?: string) => {
     if (goingRef.current || offline) return;
     goingRef.current = true;
-    setGoing(true);
+    setGoing(kind);
     try {
-      const start = await startNavigationRide(p, thresholdS, { leaveRideId });
+      const create = kind === 'start' ? startNavigationRide : startInviteRide;
+      const start = await create(p, thresholdS, { leaveRideId, rideName });
       if (!start.existing) {
-        // Hand the route and the expressway choice to the live ride: no second request, same avoidance on reroutes.
+        // Hand the route and the expressway choice to the ride: no second request, same avoidance on reroutes. Not for
+        // an invited ride: its lobby may wait minutes and a seed counts as just fetched, so it is fetched at Start.
         useNavStore.getState().startSession(
           start.rideId,
-          routeState.status === 'ok' ? { key: destKey(dest), route: routeState.route } : null,
+          kind === 'start' && routeState.status === 'ok' ? { key: destKey(dest), route: routeState.route } : null,
           avoidMotorways,
         );
         useRecentsStore.getState().add(p);
-        track('nav.started', { from: 'map_home' });
-        track('plan.choice', { choice: 'solo' });
+        // Navigation starts now only for Start ride; an invited ride starts it when the leader taps Start in the lobby.
+        if (kind === 'start') track('nav.started', { from: 'map_home' });
       }
       // A ride was already open: it is opened as it is (never a second one), so the chosen place was not set.
       if (start.existing) showToast(t('preview.existingRide', { name: p.name }));
       haptic('success');
       resetToRide(start.href);
     } catch (e) {
-      // The ride was ended by startNavigationRide; stay here with the buttons enabled again.
+      // The ride was ended again by the start; stay here with the buttons enabled again.
       if (!isRideStartBusy(e)) showToast(errorText(toRideError(e).code));
     } finally {
       goingRef.current = false;
-      setGoing(false);
+      setGoing(null);
     }
   };
 
-  /** Ride with a group: the setup screen with the destination pre-filled; the ride is made there. */
-  const openGroupForm = (leaveRideId?: string) => {
-    if (groupOpeningRef.current) return;
-    groupOpeningRef.current = true;
-    usePlanStore.getState().setRouteSummary(
-      routeState.status === 'ok' ? { distanceM: routeState.route.distanceM, durationS: routeState.route.durationS } : null,
-    );
-    router.push(href(newRideHref({ dest: true, leaveRideId })));
-  };
-
   /** The switch was confirmed on what Home knew; read the open ride again before leaving it (22 §3.4.2). */
-  const confirmSwitch = async (choice: PlanChoice, confirmedRideId: string) => {
+  const confirmSwitch = async (confirmedRideId: string) => {
     let fresh: OpenRide | null = open;
     try {
       fresh = await getMyOpenRide();
     } catch {
       // Offline or failing: go on what we know (the start itself will fail the same way if it must).
     }
-    const step = confirmedSwitch(choice, confirmedRideId, toLite(fresh));
+    const step = confirmedSwitch(confirmedRideId, toLite(fresh));
     if (step.kind === 'go') return run(step);
     // It is not the ride that was confirmed any more: show it as it is. A started ride just shows "Back to ride".
     setOpen(fresh);
-    const next = choiceStep(choice, toLite(fresh));
-    if (fresh && fresh.ride.status !== 'active' && next.kind === 'confirm') setConfirm({ kind: next.sheet, choice });
+    const next = startStep(toLite(fresh));
+    if (fresh && fresh.ride.status !== 'active' && next.kind === 'confirm') setConfirm(next.sheet);
   };
 
-  const run = (step: Extract<ChoiceStep, { kind: 'go' }>) => {
-    if (step.choice === 'solo') {
-      if (place) void rideSolo(place, step.leaveRideId);
-    } else openGroupForm(step.leaveRideId);
+  const run = (step: Extract<StartStep, { kind: 'go' }>) => {
+    if (place) void launch(pendingKind.current, place, step.leaveRideId);
   };
-  const onChoice = (choice: PlanChoice) => {
+  const begin = (kind: 'start' | 'invite') => {
+    if (goingRef.current) return;
     haptic('select');
-    const step = choiceStep(choice, openLite);
-    if (step.kind === 'confirm') setConfirm({ kind: step.sheet, choice });
+    pendingKind.current = kind;
+    const step = startStep(openLite);
+    if (step.kind === 'confirm') setConfirm(step.sheet);
     else run(step);
   };
+  const onStart = () => begin('start');
+  const onInvite = () => begin('invite');
 
   const allowFromRoute = () => {
     if (perm.status === 'denied' && !perm.canAskAgain) void Linking.openSettings().catch(() => {});
@@ -460,6 +469,18 @@ export default function Home() {
       recentre();
     }
   };
+
+  // Ask for location as soon as Home opens while it is still undecided (user decision, 2026-10-15; replaces the
+  // spec 22 "no prompt on launch" rule). Once per app process (module flag): after "Don't allow" the OS will not show
+  // it again anyway, and the "Show my location" control stays as the way back. Not on web (22 §4.5).
+  useEffect(() => {
+    // Only while Home is in front: if the permission read resolves under a ride, the prompt waits for the next focus.
+    if (!launchPromptWanted({ asked: launchPromptAsked, platform: Platform.OS, status: perm.status, canAskAgain: perm.canAskAgain, focused })) return;
+    launchPromptAsked = true;
+    void request().then((granted) => {
+      if (granted) recentre();
+    });
+  }, [perm.status, perm.canAskAgain, focused, request, recentre]);
 
   // ---------------------------------------------------------------- derived view data
   const recents = useRecentsStore((s) => s.recents);
@@ -531,10 +552,9 @@ export default function Home() {
         return (
           <View key={b} style={styles.tiles}>
             <QuickTiles
-              soloLoading={soloLoading}
-              onGroup={() => router.push(href(newRideHref({ dest: false })))}
+              rideLoading={soloLoading}
               onJoin={() => router.push(href('/join'))}
-              onSolo={() => void justRideSolo()}
+              onRide={() => void justRide()}
             />
           </View>
         );
@@ -654,7 +674,9 @@ export default function Home() {
           />
           {chipsShown ? <HomeChips top={chipsTop(insets.top, bannerH)} onChip={(key) => openSearch('chip', key)} /> : null}
           {mapFailed ? (
-            <View pointerEvents="none" style={[styles.failed, { top: chipsTop(insets.top, bannerH) + (chipsShown ? size.chip + space.xl : space.sm) }]}>
+            <View
+              pointerEvents="none"
+              style={[styles.failed, { top: chipsTop(insets.top, bannerH) + (chipsShown ? size.chip + space.xl : space.sm) }]}>
               <Text maxFontSizeMultiplier={1.3} style={[styles.failedText, { color: colors.textMuted }]}>
                 {copy['homeMap.mapFailed']}
               </Text>
@@ -755,8 +777,8 @@ export default function Home() {
           permission={perm}
           going={going}
           onRetry={onRetry}
-          onSolo={() => onChoice('solo')}
-          onGroup={() => onChoice('group')}
+          onStart={onStart}
+          onInvite={onInvite}
           onAllowLocation={allowFromRoute}
           onEscape={() => {
             if (!goingRef.current) usePlanStore.getState().back();
@@ -766,20 +788,19 @@ export default function Home() {
       ) : null}
 
       <ConfirmSheet
-        visible={confirm?.kind === 'switch'}
+        visible={confirm === 'switch'}
         title={t('home.confirmSwitchTitle', { ride: open ? displayRideName(open.ride.name) : '' })}
         body={t('home.confirmSwitchBody', { ride: open ? displayRideName(open.ride.name) : '' })}
         confirmLabel={copy['home.confirmSwitchConfirm']}
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
-          const choice = confirm?.choice;
           setConfirm(null);
-          // The old ride is left only when the new one is really being made, so Cancel on the form is free.
-          if (choice && open) void confirmSwitch(choice, open.ride.id);
+          // The old ride is left only when the new one is really being made.
+          if (open) void confirmSwitch(open.ride.id);
         }}
       />
       <ConfirmSheet
-        visible={confirm?.kind === 'leaderBusy'}
+        visible={confirm === 'leaderBusy'}
         title={t('home.leaderBusyTitle', { ride: open ? displayRideName(open.ride.name) : '' })}
         body={copy['home.leaderBusyBody']}
         confirmLabel={t('home.leaderBusyAction', { ride: open ? displayRideName(open.ride.name) : '' })}
@@ -802,7 +823,8 @@ export default function Home() {
           setClearOpen(false);
         }}
       />
-      {/* "Show my location": explain first, the OS prompt only comes from this button (rule 8, 04). */}
+      {/* "Show my location": explains first. The OS prompt comes from the launch prompt above (once per app run) and,
+          after a refusal that can be asked again, from this button (rule 8, 04). */}
       <Sheet visible={showMeSheet} onClose={() => setShowMeSheet(false)}>
         <LocationRow
           perm={perm}

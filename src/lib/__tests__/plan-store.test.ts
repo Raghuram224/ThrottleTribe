@@ -19,7 +19,6 @@ beforeEach(() => {
     sheetSnap: 'peek',
     camera: null,
     firstRunSeen: false,
-    routeSummary: null,
   });
 });
 
@@ -72,12 +71,10 @@ describe('plan store (22 §2.1)', () => {
   it('reset() (a ride was entered) is browse again, keeps the camera and marks the welcome seen', () => {
     usePlanStore.getState().setCamera({ lat: 1, lng: 2, zoom: 9 });
     usePlanStore.getState().openRoute(palace, 'recent');
-    usePlanStore.getState().setRouteSummary({ distanceM: 1, durationS: 2 });
     usePlanStore.getState().reset();
     expect(usePlanStore.getState()).toMatchObject({
       mode: 'browse',
       place: null,
-      routeSummary: null,
       camera: { lat: 1, lng: 2, zoom: 9 },
       firstRunSeen: true,
     });
@@ -101,5 +98,13 @@ describe('plan store (22 §2.1)', () => {
     expect(mem.has(STORAGE_KEYS.homeCamera)).toBe(false);
     expect(mem.has(STORAGE_KEYS.homeFirstRunSeen)).toBe(false);
     expect(usePlanStore.getState()).toMatchObject({ camera: null, firstRunSeen: false, mode: 'browse' });
+  });
+
+  it('D6: sign-out also clears the "this phone navigates this ride" markers (and the withdrawn group-ride marker)', () => {
+    mem.set(STORAGE_KEYS.navRides, '{"r1":"12.3,76.6"}');
+    mem.set(STORAGE_KEYS.legacyGroupRides, '["old"]');
+    clearHomeDevicePrefs();
+    expect(mem.has(STORAGE_KEYS.navRides)).toBe(false);
+    expect(mem.has(STORAGE_KEYS.legacyGroupRides)).toBe(false);
   });
 });

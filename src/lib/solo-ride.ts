@@ -1,6 +1,5 @@
-// Solo ride (19 §C): create and start a one-rider ride, then route like any ride start (the same
-// permission check, straight to live: no invite, no lobby).
-import { copy } from '@/lib/copy';
+// Just ride (19 §C, 22 D5): create and start a ride with no destination (it becomes a group when its code is
+// shared), then route like any ride start (the same permission check, straight to live: no invite, no lobby).
 import { hrefAfterEnter } from '@/lib/enter-ride';
 import { createRide, startRide } from '@/lib/ride-api';
 import { openRideHref, withStartLock } from '@/lib/ride-start';
@@ -10,11 +9,11 @@ import { rollbackRide } from '@/lib/stranded-rides';
  * Returns the route to open (`/ride/<id>/live`, or the permissions explainer first). When a ride is already
  * open that ride is the answer: a second one is never created. Throws `RideStartBusy` while another start runs.
  */
-export function startSoloRide(stopThresholdS: number): Promise<string> {
+export function startSoloRide(stopThresholdS: number, rideName: string): Promise<string> {
   return withStartLock(async () => {
     const existing = await openRideHref();
     if (existing) return existing;
-    const ride = await createRide(copy['solo.rideName'], stopThresholdS);
+    const ride = await createRide(rideName, stopThresholdS, { startKind: 'just_ride' });
     try {
       return await hrefAfterEnter(await startRide(ride.id));
     } catch (e) {

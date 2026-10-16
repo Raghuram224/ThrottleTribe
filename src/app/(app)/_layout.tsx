@@ -34,9 +34,5 @@ export default function AppLayout() {
   if (profileLoaded && !profile) return <Redirect href={href('/welcome')} />;
   if (!profileLoaded && !loadFailed) return <Screen>{null}</Screen>;
 
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="new-ride" options={{ presentation: 'modal' }} />
-    </Stack>
-  );
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

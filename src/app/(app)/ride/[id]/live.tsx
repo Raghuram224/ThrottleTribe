@@ -28,12 +28,13 @@ import { RideMap, type MapRider } from '@/components/ride-map';
 import { Sheet } from '@/components/sheet';
 import { StopCard, StopChip } from '@/components/stop-card';
 import { useNetOffline } from '@/hooks/use-connection';
+import { useNavRide } from '@/hooks/use-nav-ride';
 import { useNavRoute } from '@/hooks/use-nav-route';
 import { useNow } from '@/hooks/use-now';
 import { useRideActions } from '@/hooks/use-ride-actions';
 import { copy, errorText, t } from '@/lib/copy';
 import { buildConvoy } from '@/lib/convoy';
-import { backAction, fullMapDefaultStep, shownSpeedKmh } from '@/lib/full-map';
+import { backAction, shownSpeedKmh } from '@/lib/full-map';
 import { haptic } from '@/lib/haptics';
 import { href } from '@/lib/nav';
 import { announceArrival } from '@/lib/announce-arrival';
@@ -41,7 +42,6 @@ import { navSession } from '@/lib/nav-session';
 import { toggleVoice } from '@/lib/voice-toggle';
 import { arrivalState, destKey, isArrived, latchStep } from '@/lib/nav-arrival';
 import { describeBanner, maneuverAnnouncement } from '@/lib/nav-banner-view';
-import { isGroupRide } from '@/lib/group-rides';
 import { EMPTY_ENGINE, isNavActive, maneuverKey, newestPosition, selectBanner } from '@/lib/nav-engine';
 import {
   applyOrder,
@@ -79,7 +79,6 @@ import { stopCardText } from '@/lib/nav-route';
 import { sendMessage, toRideError } from '@/lib/ride-api';
 import { sosIsOn } from '@/lib/sos';
 import { navLineFor, rideStop, suggestedByName } from '@/lib/stop-ui';
-import { readItem, STORAGE_KEYS, writeItem } from '@/lib/storage';
 import { useLiveUiStore } from '@/store/live-ui-store';
 import { arrivalForRide, useNavStore } from '@/store/nav-store';
 import { usePrefsStore } from '@/store/prefs-store';
@@ -130,8 +129,6 @@ export default function Live() {
   const sosOn = sosIsOn(phase);
   const now = useNow(1000);
   const fullMap = useLiveUiStore((s) => s.fullMap);
-  const setFullMap = useLiveUiStore((s) => s.setFullMap);
-  const sosHolding = useLiveUiStore((s) => s.sosHolding);
   const setSosHolding = useLiveUiStore((s) => s.setSosHolding);
   const topStackH = useLiveUiStore((s) => s.topStackH);
   const focusStopNonce = useLiveUiStore((s) => s.focusStopNonce);
@@ -215,12 +212,12 @@ export default function Live() {
   // rerouting; `useNavRoute` keeps its 60 s policy for everyone else (group stop cards). Arrived: no route line and
   // no reroute until the rider picks something (the latch never lets go by itself).
   const rideLive = ride?.status === 'active';
-  // Read from storage once per ride, not on every render of this screen.
-  const groupRide = useMemo(() => isGroupRide(rideId), [rideId]);
+  // This phone navigated THIS stop as the ride's leader (22 D6): the same live read as the ride layout.
+  const navRide = useNavRide(rideId, stopLL);
   const navActive = isNavActive({
     solo: variant === 'solo',
     leader: isLeader,
-    groupRide,
+    navRide,
     rideLive,
     hasStop,
     arrived: latched,
@@ -383,24 +380,6 @@ export default function Live() {
   };
 
   // ------------------------------------------------------------ full map
-
-  // A free solo ride opens in full map the first time (per ride id, not global); a ride that opens with a
-  // destination opens in sheet mode (21 decision 2). After that the rider's choice stands.
-  useEffect(() => {
-    if (!loaded || !rideId) return;
-    const seen = readItem(STORAGE_KEYS.soloFullMapSeen);
-    const step = fullMapDefaultStep({
-      activeMembers: activeCount,
-      rideId,
-      seenRideId: seen,
-      hasStop,
-      holding: sosHolding,
-    });
-    // An SOS hold in progress would be dropped by the button swap: re-run when it ends (sosHolding is a dep).
-    if (step === 'seen' || step === 'wait') return;
-    writeItem(STORAGE_KEYS.soloFullMapSeen, rideId);
-    if (step === 'enter') setFullMap(true);
-  }, [loaded, rideId, activeCount, hasStop, sosHolding, setFullMap]);
 
   // Android back leaves full map before it leaves the screen.
   useFocusEffect(

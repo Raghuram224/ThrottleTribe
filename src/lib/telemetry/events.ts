@@ -8,7 +8,11 @@ export const EVENTS = [
   'onboarding.completed',
   'permission.location', // foreground, background
   'permission.notifications',
-  'ride.created', // with_dest: boolean (a group ride made with a destination)
+  // start_kind: start | invite | just_ride. (`with_dest`, from the group form that D5 removed, is retired: it is not sent.)
+  'ride.created',
+  'ride.group_formed', // the first other rider joined a ride I lead: no props (22 D6)
+  'invite.shared', // via: share | sms | menu | lobby: the code or link was handed to the share sheet / an SMS composer
+  'ride.renamed', // the leader renamed the ride: no props, never the name
   'ride.joined',
   'ride.join_failed', // code_error
   'ride.started',
@@ -35,7 +39,6 @@ export const EVENTS = [
   'home.search_opened', // from: bar | chip
   'home.place_opened', // from: search | recent
   'home.directions',
-  'plan.choice', // choice: solo | group
   'error.shown',
 ] as const;
 

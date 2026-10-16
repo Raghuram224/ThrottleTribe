@@ -8,8 +8,10 @@ import {
   type MessageKind,
 } from '@/lib/message-kinds';
 import { cacheOpenRide, cacheProfile } from '@/lib/offline-cache';
+import { unmarkNavRide } from '@/lib/nav-rides';
 import { mapRecentRides, type RecentRide } from '@/lib/recent-rides';
 import { supabase } from '@/lib/supabase';
+import { useLiveUiStore } from '@/store/live-ui-store';
 import { track } from '@/lib/telemetry';
 
 export type RideRow = Tables<'rides'>;
@@ -34,6 +36,10 @@ export type RideErrorCode =
   | 'stop_ride_ended'
   | 'proposal_not_found'
   | 'proposal_already_decided'
+  | 'rename_leader_only'
+  | 'rename_ride_ended'
+  | 'rename_invalid'
+  | 'rename_unavailable'
   | 'network'
   | 'unknown';
 
@@ -52,6 +58,10 @@ const ERROR_MESSAGES: Record<RideErrorCode, string> = {
   stop_ride_ended: copy['errors.stop_ride_ended'],
   proposal_not_found: copy['errors.proposal_not_found'],
   proposal_already_decided: copy['errors.proposal_already_decided'],
+  rename_leader_only: copy['errors.rename_leader_only'],
+  rename_ride_ended: copy['errors.rename_ride_ended'],
+  rename_invalid: copy['errors.rename_invalid'],
+  rename_unavailable: copy['errors.rename_unavailable'],
   network: copy['errors.network'],
   unknown: copy['errors.unknown'],
 };
@@ -78,6 +88,10 @@ export function toRideError(error: unknown): RideError {
     typeof error === 'object' && error !== null && 'message' in error
       ? String((error as { message: unknown }).message)
       : String(error);
+  // Migration 0010 not applied yet: PostgREST says it cannot find the function (PGRST202).
+  if (/rename_ride/.test(message) && /could not find|schema cache|does not exist/i.test(message)) {
+    return new RideError('rename_unavailable', error);
+  }
   const code = KNOWN_CODES.find((c) => message.includes(c));
   if (code) return new RideError(code, error);
   if (/network|fetch|timed? ?out|offline/i.test(message)) return new RideError('network', error);
@@ -150,11 +164,15 @@ export async function signOutLocal(): Promise<void> {
 
 // ---------------------------------------------------------------- ride RPCs
 
-/** `withDest`: telemetry only (a group ride made with a destination, 22 §11); omitted = not said. */
-export async function createRide(name: string, stopThresholdS: number, opts: { withDest?: boolean } = {}): Promise<RideRow> {
+/** How a ride was made (telemetry only, 22 §11): Start ride, Invite riders (lobby) or Just ride (no destination). */
+export type RideStartKind = 'start' | 'invite' | 'just_ride';
+
+export async function createRide(name: string, stopThresholdS: number, opts: { startKind?: RideStartKind } = {}): Promise<RideRow> {
   await ensureSignedIn();
   const ride = unwrap(await supabase.rpc('create_ride', { p_name: name, p_stop_threshold_s: stopThresholdS }));
-  track('ride.created', opts.withDest === undefined ? undefined : { with_dest: opts.withDest });
+  track('ride.created', opts.startKind === undefined ? undefined : { start_kind: opts.startKind });
+  // The full-map preference belongs to the ride before: a new ride opens in the normal view (22 L1).
+  useLiveUiStore.getState().startNewRide();
   return ride;
 }
 
@@ -178,6 +196,8 @@ export async function startRide(id: string): Promise<RideRow> {
 
 export async function endRide(id: string): Promise<RideRow> {
   const ride = unwrap(await supabase.rpc('end_ride', { p_ride_id: id }));
+  // Also how a lobby is cancelled: that ride never reaches the recent-rides list, so its marker is dropped here (22 L7).
+  unmarkNavRide(id);
   track('ride.ended');
   return ride;
 }
@@ -195,6 +215,13 @@ export async function setSos(id: string, on: boolean): Promise<void> {
 export async function sendMessage(id: string, kind: MessageKind): Promise<void> {
   check(await supabase.rpc('send_ride_message', { p_ride_id: id, p_kind: kind }));
   track('message.sent', { kind });
+}
+
+/** Leader only: renames the ride (lobby or live). Returns the updated row; everyone else gets it by broadcast. */
+export async function renameRide(rideId: string, name: string): Promise<RideRow> {
+  const ride = unwrap(await supabase.rpc('rename_ride', { p_ride_id: rideId, p_name: name.trim() }));
+  track('ride.renamed'); // never the name itself
+  return ride;
 }
 
 // ---------------------------------------------------------------- next stop

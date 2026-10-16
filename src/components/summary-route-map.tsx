@@ -1,14 +1,9 @@
-import {
-  Camera,
-  GeoJSONSource,
-  Layer,
-  Map,
-  Marker,
-  type CameraRef,
-} from '@maplibre/maplibre-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Marker } from '@maplibre/maplibre-react-native';
+import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { MapLibreMap } from '@/components/map/maplibre-map';
+import type { MapHandle, MapLine } from '@/components/map/types';
 import { RoutePin } from '@/components/route-pin';
 import { copy } from '@/lib/copy';
 import type { LatLng } from '@/lib/geo';
@@ -33,62 +28,45 @@ interface SummaryRouteMapProps {
  * line, below the labels), start and finish pins, camera fitted to the route, attribution bottom-left.
  */
 export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
-  const { colors, scheme, style } = useTheme();
-  const cameraRef = useRef<CameraRef>(null);
+  const { colors } = useTheme();
+  const mapRef = useRef<MapHandle>(null);
   const bounds = useMemo(() => fitBoundsFor(points, FIT_MIN_SPAN_M), [points]);
-  const [initial] = useState(() => (bounds ? { bounds, padding: SUMMARY_FIT_PADDING } : { center: [0, 20] as [number, number], zoom: 2 }));
-  const geo = useMemo(
-    () =>
-      ({
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'LineString', coordinates: points.map((p) => [p.lng, p.lat]) },
-      }) as GeoJSON.Feature<GeoJSON.LineString>,
-    [points],
+  const initialCamera = useMemo(
+    () => (bounds ? { bounds, padding: SUMMARY_FIT_PADDING } : { center: [0, 20] as [number, number], zoom: 2 }),
+    // The first frame only: the map ignores later changes; the fit button re-fits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
+  const lines = useMemo<MapLine[]>(() => {
+    return [
+      {
+        id: 'summary-route',
+        coords: points,
+        beforeId: colors.routeBeforeId,
+        layers: [
+          { color: colors.routeCasing, width: CASING_WIDTH },
+          { color: colors.routeLine, width: ROUTE_WIDTH },
+        ],
+      },
+    ];
+  }, [points, colors]);
   const start = points[0];
   const end = points[points.length - 1];
 
   useEffect(() => {
-    if (fitNonce > 0 && bounds) cameraRef.current?.fitBounds(bounds, { padding: SUMMARY_FIT_PADDING, duration: 300 });
+    if (fitNonce > 0 && bounds) mapRef.current?.fitBounds(bounds, { padding: SUMMARY_FIT_PADDING, durationMs: 300 });
   }, [fitNonce, bounds]);
 
   return (
     <View style={StyleSheet.absoluteFill} accessible accessibilityRole="image" accessibilityLabel={copy['summary.a11yRouteMap']}>
-      <Map
-        mapStyle={colors.mapStyle}
-        compass={false}
-        dragPan={false}
-        touchZoom={false}
-        touchRotate={false}
-        touchPitch={false}
-        scaleBar={false}
-        logo={false}
-        attribution={false}>
-        <Camera ref={cameraRef} initialViewState={initial} />
-        <GeoJSONSource key={`${style}-${scheme}`} id="summary-route" data={geo}>
-          <Layer
-            id="summary-route-casing"
-            type="line"
-            beforeId={colors.routeBeforeId}
-            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-width': CASING_WIDTH, 'line-color': colors.routeCasing, 'line-opacity': 1 }}
-          />
-          <Layer
-            id="summary-route-line"
-            type="line"
-            beforeId={colors.routeBeforeId}
-            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-width': ROUTE_WIDTH, 'line-color': colors.routeLine, 'line-opacity': 1 }}
-          />
-        </GeoJSONSource>
+      <MapLibreMap ref={mapRef} initialCamera={initialCamera} interactive={false} lines={lines}>
         <Marker id="summary-start" lngLat={[start.lng, start.lat]}>
           <RoutePin kind="start" />
         </Marker>
         <Marker id="summary-end" lngLat={[end.lng, end.lat]}>
           <RoutePin kind="end" />
         </Marker>
-      </Map>
+      </MapLibreMap>
       <View pointerEvents="none" style={styles.attribution}>
         <Text maxFontSizeMultiplier={1.2} style={[styles.attributionText, { color: colors.textMuted }]}>
           {copy['live.attribution']}

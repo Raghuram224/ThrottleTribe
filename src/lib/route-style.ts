@@ -1,6 +1,6 @@
 // Route highlight geometry shared by every map (16 §2.5): Live and Summary, native and web.
 // Zoom-scaled widths; the casing is always ~1.5 dp wider on each side than the line.
-type ZoomWidth = ['interpolate', ['linear'], ['zoom'], ...number[]];
+export type ZoomWidth = ['interpolate', ['linear'], ['zoom'], ...number[]];
 
 export const ROUTE_WIDTH: ZoomWidth = ['interpolate', ['linear'], ['zoom'], 8, 4, 11, 5, 13, 6.5, 15, 8.5, 17, 11];
 export const CASING_WIDTH: ZoomWidth = ['interpolate', ['linear'], ['zoom'], 8, 7, 11, 8, 13, 9.5, 15, 12, 17, 15];

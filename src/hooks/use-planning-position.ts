@@ -3,8 +3,9 @@ import { useIsFocused } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { useAppInFront } from '@/hooks/use-app-in-front';
 import type { LatLng } from '@/lib/geo';
-import { deriveSpeed, nextAnchor, planningWatchWanted, type SpeedFix } from '@/lib/planning-speed';
+import { deriveSpeed, firstFixRetryMs, nextAnchor, planningWatchWanted, type SpeedFix } from '@/lib/planning-speed';
 import { useNavStore } from '@/store/nav-store';
 
 export interface PlanFix extends LatLng {
@@ -46,8 +47,11 @@ export function usePlanningPosition() {
   const [servicesEnabled, setServicesEnabled] = useState<boolean | null>(null);
   // The app is in the foreground: the Home screen stays "focused" while the phone is locked or the app is behind
   // another one, and the watch must not run then (22 §4.3).
-  const [appActive, setAppActive] = useState(() => AppState.currentState === 'active');
+  // (`useAppInFront` re-reads the state right after subscribing: no race between the first read and the listener.)
+  const appActive = useAppInFront();
   const lastT = useRef(0);
+  // A watch/one-shot fix has landed since this watch started (the last-known answer does not count).
+  const gotLive = useRef(false);
   const lastFix = useRef<SpeedFix | null>(null);
   // The last speed we had real evidence for, held across fixes that carry none (a too-short gap, a poor fix).
   const evidence = useRef<{ speedMps: number; t: number } | null>(null);
@@ -73,7 +77,6 @@ export function usePlanningPosition() {
   useEffect(() => {
     refresh();
     const sub = AppState.addEventListener('change', (s) => {
-      setAppActive(s === 'active');
       if (s === 'active') refresh();
     });
     return () => sub.remove();
@@ -101,6 +104,7 @@ export function usePlanningPosition() {
       // The slow last-known answer must never replace a newer watch fix.
       if (cancelled || loc.timestamp < lastT.current) return;
       lastT.current = loc.timestamp;
+      if (!fromLastKnown) gotLive.current = true;
       const { latitude, longitude, accuracy, speed } = loc.coords;
       const cur: SpeedFix = {
         lat: latitude,
@@ -127,12 +131,25 @@ export function usePlanningPosition() {
     Location.getLastKnownPositionAsync({ maxAge: 120_000 })
       .then((loc) => loc && accept(loc, true))
       .catch(() => {});
-    Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 10 }, (loc) => accept(loc, false))
+    Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 10, timeInterval: 5000 }, (loc) => accept(loc, false))
       .then((s) => {
         if (cancelled) s.remove();
         else sub = s;
       })
       .catch(() => {});
+    // The watch alone can stay silent for minutes on a still phone whose fused cache is old (seen on a moto g64:
+    // the 10 m filter never fires and the first fix never comes). A one-shot read asks the provider for a fix
+    // now, so seek one at once and keep retrying (rejects or times out indoors/offline) until a live one lands.
+    let seekTimer: ReturnType<typeof setTimeout> | null = null;
+    const seek = (attempt: number) => {
+      if (cancelled || gotLive.current) return;
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+        .then((loc) => accept(loc, false))
+        .catch(() => {
+          if (!cancelled && !gotLive.current) seekTimer = setTimeout(() => seek(attempt + 1), firstFixRetryMs(attempt));
+        });
+    };
+    seek(0);
     // A 10 m distance filter sends nothing while I stand still, which would read as "fix lost" (22 §4.4). One
     // low-effort read a minute tells "standing still" from "no GPS": the first renews the marker, the second
     // does not (it rejects or times out).
@@ -144,9 +161,11 @@ export function usePlanningPosition() {
     return () => {
       cancelled = true;
       clearInterval(heartbeat);
+      if (seekTimer) clearTimeout(seekTimer);
       sub?.remove();
       // Back from the background the old anchor is too far in the past to say anything about speed.
       lastFix.current = null;
+      gotLive.current = false;
     };
   }, [focused, granted, appActive]);
 

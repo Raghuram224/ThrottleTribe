@@ -19,7 +19,7 @@ import { SettingsRow } from '@/components/settings-row';
 import { Sheet } from '@/components/sheet';
 import { TopBar } from '@/components/top-bar';
 import { useContactCount } from '@/hooks/use-contact-count';
-import { copy, errorText, fill, t } from '@/lib/copy';
+import { copy, errorText, fill, minuteCount, t } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
 import { stopRideTracking } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
@@ -38,6 +38,13 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'dark', label: copy['profile.themeDark'] },
 ];
 
+// The stop alert time every new ride is created with (it moved here from the old "New ride" form, 22 D5).
+const THRESHOLDS = [
+  { value: 60, label: copy['profile.threshold1'], a11yLabel: minuteCount(1), hint: copy['profile.threshold1Hint'] },
+  { value: 180, label: copy['profile.threshold3'], a11yLabel: minuteCount(3), hint: copy['profile.threshold3Hint'] },
+  { value: 300, label: copy['profile.threshold5'], a11yLabel: minuteCount(5), hint: copy['profile.threshold5Hint'] },
+];
+
 /** Profile as settings (13 §10): identity, then Account / Safety / Appearance / Privacy, delete last. */
 export default function Profile() {
   const { colors } = useTheme();
@@ -46,6 +53,8 @@ export default function Profile() {
   const setThemePref = usePrefsStore((s) => s.setThemePref);
   const hapticsOn = usePrefsStore((s) => s.haptics);
   const setHaptics = usePrefsStore((s) => s.setHaptics);
+  const thresholdS = usePrefsStore((s) => s.stopThresholdS);
+  const setThresholdS = usePrefsStore((s) => s.setStopThresholdS);
   const contacts = useContactCount();
   const [editing, setEditing] = useState(false);
   const [howSharing, setHowSharing] = useState(false);
@@ -128,6 +137,22 @@ export default function Profile() {
             last
             onPress={() => router.push(href('/emergency-contacts'))}
           />
+        </Card>
+        <Card gap={space.sm} style={styles.spaced}>
+          <AppText style={styles.label}>{copy['profile.thresholdLabel']}</AppText>
+          <SegmentedControl
+            options={THRESHOLDS}
+            value={thresholdS}
+            onChange={setThresholdS}
+            accessibilityLabel={copy['profile.thresholdLabel']}
+          />
+          <AppText variant="caption" muted>
+            {t('profile.thresholdPreview', { n: Math.round(thresholdS / 60) })}
+          </AppText>
+          {/* The time is read when a ride is created: a ride already running keeps the one it started with. */}
+          <AppText variant="caption" muted>
+            {copy['profile.thresholdNote']}
+          </AppText>
         </Card>
 
         <SectionLabel>{copy['profile.sectionAppearance']}</SectionLabel>

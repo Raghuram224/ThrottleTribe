@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, BackHandler, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
 import { BigButton } from '@/components/big-button';
@@ -15,14 +15,17 @@ import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { useNow } from '@/hooks/use-now';
 import { useRideActions } from '@/hooks/use-ride-actions';
 import { copy, errorText, fill, t } from '@/lib/copy';
+import { hrefAfterEnter } from '@/lib/enter-ride';
 import { haptic } from '@/lib/haptics';
 import { setupIncomplete, setupItems, type SetupItem } from '@/lib/home';
 import { inviteCounts } from '@/lib/invite'; // invite
 import { readiness, sortLobbyMembers } from '@/lib/lobby';
 import { href } from '@/lib/nav';
 import { firstName } from '@/lib/names';
+import { navRideDest } from '@/lib/nav-rides';
 import { startRide, toRideError } from '@/lib/ride-api';
 import { rideStop } from '@/lib/stop-ui';
+import { track } from '@/lib/telemetry';
 import { NO_INVITEES, useInviteStore } from '@/store/invite-store'; // invite
 import { useRideStore } from '@/store/ride-store';
 import { useSosStore } from '@/store/sos-store';
@@ -62,7 +65,8 @@ export default function Lobby() {
     if (userId === myUserId && notSharing) return 'notSharing' as const;
     return readiness(positions[userId]?.updatedAt ?? null, connected.has(userId), now);
   };
-  const readyCount = rows.filter((m) => stateOf(m.userId) === 'ready').length;
+  // No position is shared in the lobby (tracking starts when the ride is active), so "ready" here is "on the channel".
+  const readyCount = rows.filter((m) => stateOf(m.userId) !== 'away' && stateOf(m.userId) !== 'notSharing').length;
 
   // P2 (13 §7): my own setup, shown only while something is missing.
   const setup = permissions
@@ -81,20 +85,41 @@ export default function Lobby() {
     [],
   );
 
+  // Back is ignored while Start is in flight: leaving now would orphan the start (22 §13), like Invite's Continue.
+  useEffect(() => {
+    if (!starting) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [starting]);
+
+  // State lags a render: a double tap on Start must not send start_ride twice (the second would fail and toast).
+  const startingRef = useRef(false);
   const start = async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
     setStarting(true);
     try {
+      // The explainer check comes first: the ride turning active starts background tracking, and the OS prompt must
+      // follow the explainer (04), exactly like the Start ride path.
+      const target = await hrefAfterEnter({ id: rideId, status: 'active' });
       const started = await startRide(rideId);
+      // An Invite riders ride navigates from here (22 D6): the leader's marker says this phone navigates its stop.
+      if (lobbyStop && navRideDest(rideId)) track('nav.started', { from: 'map_home' });
+      if (target.startsWith('/permissions')) {
+        router.replace(href(target));
+        return;
+      }
       // The ride layout navigates on the `ride` broadcast; if it has not arrived in 3 s, apply the RPC result.
       startTimer.current = setTimeout(() => {
         if (useRideStore.getState().ride?.status === 'lobby') useRideStore.getState().applyRide(started);
       }, 3000);
     } catch (e) {
+      startingRef.current = false;
       showToast(errorText(toRideError(e).code));
       void useRideStore.getState().load(rideId);
-    } finally {
       setStarting(false);
     }
+    // On success Start stays busy until the ride layout moves this screen on to live (or the 3 s fallback does).
   };
 
   const fixSetup = (key: SetupItem['key']) => {
@@ -120,7 +145,7 @@ export default function Lobby() {
         <Card gap={space.md}>
           {ride ? (
             <>
-              <RideCodeDisplay code={ride.code} onLongPress={shareCode} />
+              <RideCodeDisplay code={ride.code} onLongPress={() => shareCode('lobby')} />
               <AppText variant="caption" muted>
                 {copy['invite.codeNote']}
               </AppText>
@@ -139,7 +164,7 @@ export default function Lobby() {
           </AppText>
         ) : null}
         {lobbyStop ? (
-          // 22 §3.7 (P1): everyone sees where the ride is going. The card with distance and Remove is P2.
+          // 22 D6: everyone in the lobby, joiners too, sees where the ride is going (set when the leader tapped Invite riders).
           <View style={styles.destLine} accessible accessibilityLabel={t('lobby.destLine', { place: lobbyStop.name })}>
             <Icon name={lobbyStop.kind === 'break' ? 'coffee' : 'endRide'} color={colors.textMuted} size={16} />
             <AppText variant="caption" muted numberOfLines={1} style={styles.destText}>
@@ -147,7 +172,6 @@ export default function Lobby() {
             </AppText>
           </View>
         ) : null}
-
         {setupIncomplete(setup) ? <SetupRow items={setup} onFix={fixSetup} /> : null}
 
         <View style={styles.sectionRow}>

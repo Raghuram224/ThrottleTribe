@@ -218,7 +218,6 @@ describe('invite copy budgets (09-states-copy max lengths)', () => {
     'invite.stateLeft': 6,
     'invite.honestNote': 88,
     'invite.emptyHint': 64,
-    'invite.continue': 20,
     'invite.permTitle': 32,
     'invite.permBody': 56,
     'invite.permCta': 12,

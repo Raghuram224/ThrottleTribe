@@ -198,10 +198,10 @@ export function toggleHomeSnap(snap: HomeSnap): HomeSnap {
 
 // ---------------------------------------------------------------- the map (22 §4)
 
-/** Paths where the home map stays mounted (instant return from search and setup); elsewhere only one GL map runs. */
+/** Paths where the home map stays mounted (instant return from search); elsewhere only one GL map runs. */
 export function homeMapMounted(pathname: string): boolean {
   const p = pathname.split('?')[0].replace(/\/+$/, '') || '/';
-  return p === '/home' || p === '/where-to' || p === '/new-ride' || p === '/route-preview';
+  return p === '/home' || p === '/where-to' || p === '/route-preview';
 }
 
 /**
@@ -276,18 +276,17 @@ export function initialCamera(saved: PlanCamera | null, me: LatLng | null): Plan
   return HOME_FALLBACK_CAMERA;
 }
 
-// ---------------------------------------------------------------- how a route's two actions branch (22 §3.4.2)
+// ---------------------------------------------------------------- how Start branches (22 §3.4.2, D5)
 
-export type PlanChoice = 'solo' | 'group';
-export type ChoiceStep =
-  /** Nothing in the way: do it. */
-  | { kind: 'go'; choice: PlanChoice; leaveRideId?: string }
+export type StartStep =
+  /** Nothing in the way: do it. `leaveRideId` = the ride I just confirmed leaving. */
+  | { kind: 'go'; leaveRideId?: string }
   /** A ride is open: ask first (a rider leaves it, a leader must end it). */
   | { kind: 'confirm'; sheet: 'switch' | 'leaderBusy' };
 
-/** Ride solo / Ride with a group with a ride maybe open. */
-export function choiceStep(choice: PlanChoice, open: Pick<OpenRideLite, 'role'> | null): ChoiceStep {
-  if (!open) return { kind: 'go', choice };
+/** Start (or Just ride) with a ride maybe open. */
+export function startStep(open: Pick<OpenRideLite, 'role'> | null): StartStep {
+  if (!open) return { kind: 'go' };
   return { kind: 'confirm', sheet: open.role === 'leader' ? 'leaderBusy' : 'switch' };
 }
 
@@ -297,27 +296,56 @@ export function choiceStep(choice: PlanChoice, open: Pick<OpenRideLite, 'role'> 
  * a different ride, I became its leader) -> `stale`: show the ride as it is now instead of leaving it blind.
  */
 export function confirmedSwitch(
-  choice: PlanChoice,
   confirmedRideId: string,
   fresh: OpenRideLite | null,
-): Extract<ChoiceStep, { kind: 'go' }> | { kind: 'stale' } {
-  if (!fresh || fresh.status === 'ended') return { kind: 'go', choice };
-  if (fresh.id === confirmedRideId && fresh.status === 'lobby' && fresh.role === 'rider') return afterSwitch(choice, confirmedRideId);
+): Extract<StartStep, { kind: 'go' }> | { kind: 'stale' } {
+  if (!fresh || fresh.status === 'ended') return { kind: 'go' };
+  if (fresh.id === confirmedRideId && fresh.status === 'lobby' && fresh.role === 'rider') return { kind: 'go', leaveRideId: confirmedRideId };
   return { kind: 'stale' };
 }
 
-/** After "Leave and continue": the same choice, now allowed to leave the old ride. */
-export function afterSwitch(choice: PlanChoice, leaveRideId: string): Extract<ChoiceStep, { kind: 'go' }> {
-  return { kind: 'go', choice, leaveRideId };
+/** Which of the route preview's two actions is running (the ride is being made); null = neither. */
+export type GoingKind = 'start' | 'invite' | null;
+
+/**
+ * The route preview's actions (D6): **Start ride** is the primary, **Invite riders** the secondary under it. Both
+ * need the server, so both are disabled offline. While one runs it loads and the other is blocked, so a second tap
+ * cannot make a second ride.
+ */
+export function routeActions(a: { offline: boolean; going: GoingKind }): {
+  start: { disabled: boolean; loading: boolean };
+  invite: { disabled: boolean; loading: boolean };
+} {
+  return {
+    start: { disabled: a.offline || a.going === 'invite', loading: a.going === 'start' },
+    invite: { disabled: a.offline || a.going === 'start', loading: a.going === 'invite' },
+  };
 }
 
-/** The group form: with the destination pre-filled (`dest=1`), and/or leaving the open ride on Create. */
-export function newRideHref(o: { dest: boolean; leaveRideId?: string }): string {
-  const q = new URLSearchParams();
-  if (o.dest) q.set('dest', '1');
-  if (o.leaveRideId) q.set('leaveRideId', o.leaveRideId);
-  const s = q.toString();
-  return s ? `/new-ride?${s}` : '/new-ride';
+/**
+ * Whether Home asks for foreground location as it opens (22 D5, D6). Once per app run (`asked` is a module-level
+ * flag, not per mount), only while the answer is still undecided and the OS will show its dialog, never on web (the
+ * browser prompt belongs to the explainer button, where the rider can see why).
+ */
+export function launchPromptWanted(a: {
+  asked: boolean;
+  platform: string;
+  status: string;
+  canAskAgain: boolean;
+  /** Home is the screen in front: a prompt over a ride (a cold start straight into it) would be out of context. */
+  focused: boolean;
+}): boolean {
+  return a.focused && !a.asked && a.platform !== 'web' && a.status === 'undetermined' && a.canAskAgain;
+}
+
+export type HomeTile = 'join' | 'ride';
+
+/**
+ * The sheet tiles (D5): Join with a code and Just ride. There is no group tile: any ride becomes a group when its
+ * code is shared from the ride itself.
+ */
+export function homeTiles(): readonly HomeTile[] {
+  return ['join', 'ride'];
 }
 
 // ---------------------------------------------------------------- place sheet text (22 §3.3)

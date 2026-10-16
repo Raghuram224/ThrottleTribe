@@ -67,7 +67,9 @@
   "expo": {
     "autolinking": {
       "android": {
-        "buildFromSource": ["expo-speech"]
+        "buildFromSource": [
+          "expo-speech"
+        ]
       }
     }
   },

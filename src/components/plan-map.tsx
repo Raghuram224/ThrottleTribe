@@ -1,15 +1,16 @@
-import { Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type InitialViewState, type ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
+import { Marker } from '@maplibre/maplibre-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { MapLibreMap } from '@/components/map/maplibre-map';
+import type { MapHandle, MapLine } from '@/components/map/types';
 import { MeMarker } from '@/components/me-marker';
-import { navRouteLayerProps } from '@/components/route-layers';
 import { StopPin } from '@/components/stop-pin';
 import { fitBoundsFor, type Bounds } from '@/lib/map-fit';
 import { HOME_ME_ZOOM, type CameraIntent, type PlanCamera } from '@/lib/plan-flow';
 import { previewFitPoints, type PreviewPadding } from '@/lib/preview-fit';
 import type { StopKind } from '@/lib/ride-api';
-import { lineData, NAV_ROUTE_SOURCE_ID } from '@/lib/route-style';
+import { NAV_CASING_WIDTH, NAV_ROUTE_SOURCE_ID, NAV_ROUTE_WIDTH } from '@/lib/route-style';
 import type { NavLine } from '@/lib/stop-ui';
 import { useTheme } from '@/theme/use-theme';
 
@@ -67,14 +68,14 @@ export function PlanMap({
   onMapError,
   onMapPress,
 }: PlanMapProps) {
-  const { colors, scheme, style } = useTheme();
-  const cameraRef = useRef<CameraRef>(null);
+  const { colors } = useTheme();
+  const mapRef = useRef<MapHandle>(null);
   const zoomRef = useRef(initial.zoom);
 
   const points = useMemo(() => (place ? previewFitPoints(line, me, place) : []), [line, me, place]);
   const bounds = useMemo<Bounds | null>(() => fitBoundsFor(points), [points]);
   // The first frame only: later changes to `initial` are ignored on purpose (the camera moves by intents).
-  const [initialView] = useState<InitialViewState>(() => ({ center: [initial.lng, initial.lat], zoom: initial.zoom }));
+  const [initialCamera] = useState(() => ({ center: [initial.lng, initial.lat] as [number, number], zoom: initial.zoom }));
 
   // Intents: what the camera frames or the room around it changed. Not on every GPS tick (`me` only matters
   // for a 'me' intent, whose nonce changes on purpose).
@@ -88,18 +89,18 @@ export function PlanMap({
           ? `place#${intentNonce}|${place?.lat},${place?.lng}|${pad}`
           : `restore#${intentNonce}`;
   useEffect(() => {
-    const cam = cameraRef.current;
+    const cam = mapRef.current;
     if (!cam) return;
     if (intent.kind === 'me') {
-      if (me) cam.easeTo({ center: [me.lng, me.lat], zoom: intent.zoom, padding, duration: FOLLOW_MS, bearing: 0, pitch: 0 });
+      if (me) cam.easeTo({ center: [me.lng, me.lat], zoom: intent.zoom, padding, durationMs: FOLLOW_MS, bearing: 0, pitch: 0 });
     } else if (intent.kind === 'place') {
-      if (place) cam.easeTo({ center: [place.lng, place.lat], zoom: intent.zoom, padding, duration: PLACE_MS, bearing: 0, pitch: 0 });
+      if (place) cam.easeTo({ center: [place.lng, place.lat], zoom: intent.zoom, padding, durationMs: PLACE_MS, bearing: 0, pitch: 0 });
     } else if (intent.kind === 'fit') {
-      if (bounds) cam.fitBounds(bounds, { padding, duration: FIT_MS, bearing: 0, pitch: 0 });
-      else if (place) cam.easeTo({ center: [place.lng, place.lat], zoom: PIN_ONLY_ZOOM, padding, duration: FIT_MS, bearing: 0, pitch: 0 });
+      if (bounds) cam.fitBounds(bounds, { padding, durationMs: FIT_MS });
+      else if (place) cam.easeTo({ center: [place.lng, place.lat], zoom: PIN_ONLY_ZOOM, padding, durationMs: FIT_MS, bearing: 0, pitch: 0 });
     } else if (intent.kind === 'restore') {
       const c = intent.camera;
-      cam.easeTo({ center: [c.lng, c.lat], zoom: c.zoom, padding: { top: 0, right: 0, bottom: 0, left: 0 }, duration: PLACE_MS, bearing: 0, pitch: 0 });
+      cam.easeTo({ center: [c.lng, c.lat], zoom: c.zoom, padding: { top: 0, right: 0, bottom: 0, left: 0 }, durationMs: PLACE_MS, bearing: 0, pitch: 0 });
     }
     // `key` stands for the intent, what it frames and the padding.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,11 +111,11 @@ export function PlanMap({
   const meLng = me?.lng;
   useEffect(() => {
     if (!follow || meLat === undefined || meLng === undefined) return;
-    cameraRef.current?.easeTo({
+    mapRef.current?.easeTo({
       center: [meLng, meLat],
       zoom: zoomRef.current < FOLLOW_MIN_ZOOM ? HOME_ME_ZOOM : undefined,
       padding,
-      duration: FOLLOW_MS,
+      durationMs: FOLLOW_MS,
       bearing: 0,
       pitch: 0,
     });
@@ -122,40 +123,36 @@ export function PlanMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow, meLat, meLng, pad]);
 
-  const onRegionChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
-    if (e.nativeEvent.userInteraction) onUserGesture();
-  };
-  const onRegionDidChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
-    const { center, zoom } = e.nativeEvent;
-    zoomRef.current = zoom;
-    onRegionChange(e);
-    onIdle({ lat: center[1], lng: center[0], zoom });
-  };
-
-  const geo = useMemo(() => lineData(line?.coords ?? []), [line]);
   const dashed = line?.dashed ?? false;
-  const layers = navRouteLayerProps(colors, dashed, faded ? 0.4 : 1);
+  const opacity = faded ? 0.4 : 1;
+  const lines = useMemo<MapLine[]>(() => {
+    const route = { color: colors.navRoute, width: NAV_ROUTE_WIDTH, opacity };
+    const casing = { color: colors.navRouteCasing, width: NAV_CASING_WIDTH, opacity };
+    return [
+      {
+        id: NAV_ROUTE_SOURCE_ID,
+        coords: line?.coords ?? [],
+        dashed,
+        beforeId: colors.routeBeforeId,
+        // The straight-line fallback has no casing (21 §2.3).
+        layers: dashed ? [route] : [casing, route],
+      },
+    ];
+  }, [line, dashed, opacity, colors.navRoute, colors.navRouteCasing, colors.routeBeforeId]);
 
   return (
-    <View style={styles.root} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Map
-        mapStyle={colors.mapStyle}
-        compass={false}
-        touchRotate={false}
-        touchPitch={false}
-        scaleBar={false}
-        logo={false}
-        attribution={false}
+    <View style={styles.root}>
+      <MapLibreMap
+        ref={mapRef}
+        initialCamera={initialCamera}
+        lines={lines}
         onPress={onMapPress}
-        onDidFailLoadingMap={onMapError}
-        onRegionWillChange={onRegionChange}
-        onRegionIsChanging={onRegionChange}
-        onRegionDidChange={onRegionDidChange}>
-        <Camera ref={cameraRef} initialViewState={initialView} />
-        <GeoJSONSource key={`nav-${style}-${scheme}`} id={NAV_ROUTE_SOURCE_ID} data={geo}>
-          {line && !dashed ? <Layer id="nav-route-casing" type="line" beforeId={colors.routeBeforeId} {...layers.casing} /> : null}
-          <Layer key={dashed ? 'dashed' : 'solid'} id="nav-route-line" type="line" beforeId={colors.routeBeforeId} {...layers.line} />
-        </GeoJSONSource>
+        onGesture={onUserGesture}
+        onError={onMapError}
+        onIdle={({ center, zoom }) => {
+          zoomRef.current = zoom;
+          onIdle({ lat: center[1], lng: center[0], zoom });
+        }}>
         {place ? (
           <Marker id="plan-stop" lngLat={[place.lng, place.lat]} anchor="bottom">
             <StopPin kind={place.kind} />
@@ -166,7 +163,7 @@ export function PlanMap({
             <MeMarker variant="map" heading={null} accuracyM={me.accuracyM} lat={me.lat} zoom={15} />
           </Marker>
         ) : null}
-      </Map>
+      </MapLibreMap>
     </View>
   );
 }
