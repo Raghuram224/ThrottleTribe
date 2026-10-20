@@ -194,6 +194,10 @@ bottom-sheet drag handle (it would promise a gesture we don't have).
 
 ## 3. Map tiles
 
+> **Superseded 2026-10-16 by 24 §1:** both styles now share one tuned basemap per scheme (light `tt-liberty`, dark
+> `tt-dark`, bundled); new `routeBeforeId` rule, route widths, `mapPreview*` values and attribution text are in 24.
+> The `mapStyle` / `routeBeforeId` / `mapPreview*` rows of §1.1 and the §4 style hint follow 24.
+
 ### 3.1 Choice
 OpenFreeMap styles available (fetched 2026-10-13, `https://tiles.openfreemap.org/styles/<name>`):
 `liberty`, `bright`, `positron`, `dark`, `fiord`.

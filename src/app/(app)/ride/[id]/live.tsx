@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -78,6 +79,9 @@ import { engineRemaining } from '@/lib/nav-progress';
 import { stopCardText } from '@/lib/nav-route';
 import { sendMessage, toRideError } from '@/lib/ride-api';
 import { sosIsOn } from '@/lib/sos';
+import { StatusBarScrim } from '@/components/status-bar-scrim';
+import { attributionClear, pillLineCount, pillLines } from '@/lib/credits';
+import { DEM_PROVIDER } from '@/lib/flags';
 import { navLineFor, rideStop, suggestedByName } from '@/lib/stop-ui';
 import { useLiveUiStore } from '@/store/live-ui-store';
 import { arrivalForRide, useNavStore } from '@/store/nav-store';
@@ -93,10 +97,8 @@ const ACTION_H = 64;
 /** Floating SOS in full map (19 B): 64 dp circle, bottom-left, clear of the attribution pill. */
 const SOS_FLOAT = 64;
 const SOS_FLOAT_BOTTOM = 36;
-/** "Me" slot (speed bubble / Re-centre) bottom offset from the map overlay: 8 + 20 attribution + 8. */
-const ATTRIBUTION_CLEAR = 36;
-/** In full map the slot sits above the floating SOS instead. */
-const ME_SLOT_BOTTOM_FULL = SOS_FLOAT_BOTTOM + SOS_FLOAT + space.md;
+/** In full map the slot sits above the floating SOS instead (the SOS itself lifts for a two-line credit pill). */
+const meSlotBottomFull = (sosBottom: number) => sosBottom + SOS_FLOAT + space.md;
 
 
 /** Whole km/h for a row; nothing under 3 km/h or when unknown (like the me row). */
@@ -136,6 +138,7 @@ export default function Live() {
   const mapBearing = useLiveUiStore((s) => s.mapBearing);
   const setMapBearing = useLiveUiStore((s) => s.setMapBearing);
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const netOffline = useNetOffline();
   // Full map has no sheet: the map controls stay put instead of riding its top edge.
   const noShift = useSharedValue(0);
@@ -230,6 +233,14 @@ export default function Live() {
     [route, meLL, stopLL, arrived],
   );
   const navLine = useMemo(() => navLineFor({ route, straightLine }), [route, straightLine]);
+  // A road route drawn adds the LocationIQ credit line to the map pill (24 §4.2), Terrain adds its own (25 §5.1): 40, 56 or
+  // 72 of clearance for the me slot and SOS. Mirrors what RideMap draws.
+  const terrainOn = usePrefsStore((s) => s.mapLayer) === 'terrain';
+  const creditLineCount = pillLineCount(
+    pillLines({ kind: 'live', roadRoute: !!navLine && !navLine.dashed, provider: navLine?.provider }, terrainOn, DEM_PROVIDER),
+  );
+  const creditClear = attributionClear(creditLineCount, fontScale);
+  const sosFloatBottom = creditLineCount > 1 ? creditClear : SOS_FLOAT_BOTTOM;
   // The card never decides arrival itself: solo follows the latch (it stays arrived after riding on), a group
   // ride uses the latch's own rule (within 150 m, fix no worse than 100 m), so card and panel cannot disagree.
   const cardArrived =
@@ -576,7 +587,8 @@ export default function Live() {
               topInset={topInset}
               // Full map has no sheet; with the full-height area "me" lands in the lower third.
               bottomInset={fullMap ? 0 : areaH > 0 ? heights[snap] : 0}
-              overlayShift={fullMap ? noShift : overlayShift}
+              // The shift follows the sheet only while one is mounted (it needs a measured area and no full map).
+              overlayShift={fullMap || areaH <= 0 ? noShift : overlayShift}
               // Never hidden by snap: the mapVisH thresholds (20 C1) already hide them when a tall sheet leaves no room.
               controlsHidden={false}
               mapVisH={mapVisH}
@@ -584,7 +596,7 @@ export default function Live() {
               onToggleFullMap={toggleFullMap}
               overlayBottomInset={fullMap ? insets.bottom : 0}
               speedKmh={speedKmh}
-              meSlotBottom={fullMap ? ME_SLOT_BOTTOM_FULL : ATTRIBUTION_CLEAR}
+              meSlotBottom={fullMap ? meSlotBottomFull(sosFloatBottom) : creditClear}
               stop={stop}
               navLine={navLine}
               focusStopNonce={focusStopNonce}
@@ -596,6 +608,9 @@ export default function Live() {
             <View style={[styles.mapPlaceholder, { backgroundColor: colors.surface }]} />
           )}
         </View>
+
+        {/* Full map: the map runs under the status bar. */}
+        {fullMap ? <StatusBarScrim /> : null}
 
         {/* Docked turn banner (sheet mode): full-bleed at the top of the live area, convoy strip under it. */}
         {banner && bannerView && !fullMap ? (
@@ -625,7 +640,7 @@ export default function Live() {
         ) : null}
 
         {fullMap ? (
-          <View style={[styles.floatSos, { bottom: insets.bottom + SOS_FLOAT_BOTTOM }]} pointerEvents="box-none">
+          <View style={[styles.floatSos, { bottom: insets.bottom + sosFloatBottom }]} pointerEvents="box-none">
             {sosButton(SOS_FLOAT)}
           </View>
         ) : null}

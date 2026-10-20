@@ -4,6 +4,7 @@ import {
   headerSearchVisible,
   mapControlVisibility,
   mapVisibleHeight,
+  connectionPill,
   meSlotKind,
   navBannerHeight,
   navTopInset,
@@ -34,6 +35,18 @@ describe('mapControlVisibility', () => {
     expect(v(175)).toMatchObject({ rightColumn: false, meSlot: true });
     expect(v(104).meSlot).toBe(true);
     expect(v(103).meSlot).toBe(false);
+  });
+  it('the me slot needs 104 / 124 / 144 for a one / two / three-line credit pill (25 §5.1)', () => {
+    const v = (mapVisH: number, creditLines: 1 | 2 | 3) => mapControlVisibility({ controlsHidden: false, mapVisH, positionedRiders: 1, creditLines }).meSlot;
+    expect([v(104, 1), v(103, 1)]).toEqual([true, false]);
+    expect([v(124, 2), v(123, 2)]).toEqual([true, false]);
+    expect([v(144, 3), v(143, 3)]).toEqual([true, false]);
+  });
+  it('a bigger system font raises the me slot threshold with the taller pill', () => {
+    const v = (mapVisH: number, fontScale: number) => mapControlVisibility({ controlsHidden: false, mapVisH, positionedRiders: 1, creditLines: 3, fontScale }).meSlot;
+    expect(v(144, 1)).toBe(true);
+    expect(v(144, 1.3)).toBe(false);
+    expect(v(159, 1.3)).toBe(true);
   });
   it('voice toggle: only while navigating and only when fit-all is not in the column (at most two controls, C1)', () => {
     const v = (positionedRiders: number, navActive?: boolean) =>
@@ -117,5 +130,21 @@ describe('navBannerHeight and navTopInset', () => {
   it('leaves the 360x780 reference map 316 dp tall with the Then row (spec 2.5)', () => {
     // area 588, banner + Then 136, solo panel 136
     expect(mapVisibleHeight(588, navTopInset({ navBannerH: 136, convoyH: 0 }), 136)).toBe(316);
+  });
+});
+
+describe('connectionPill (26 L2): the pill and the banner say the same thing', () => {
+  it('healthy: no pill', () => {
+    expect(connectionPill('live', false)).toBeNull();
+    expect(connectionPill('live', true)).toBeNull();
+  });
+  it('connecting is "Connecting"', () => {
+    expect(connectionPill('connecting', false)).toEqual({ icon: 'connecting', labelKey: 'live.connConnecting' });
+  });
+  it('ride channel down with the phone online: "Connecting", never "Offline"', () => {
+    expect(connectionPill('offline', false)).toEqual({ icon: 'connecting', labelKey: 'live.connConnecting' });
+  });
+  it('the phone has no network: "Offline"', () => {
+    expect(connectionPill('offline', true)).toEqual({ icon: 'offline', labelKey: 'live.connOffline' });
   });
 });

@@ -1,5 +1,8 @@
 # 22 — Map home ("Where to?" first, then Start)
 
+> **2026-10-20, see 26 §1:** place rows, the place panel and the route panel drop an address line that only repeats the
+> place name (`distinctAddress`); no hairline under the last row of a list.
+
 Source: user request, 2026-10-14: *"I don't want to see this page as home screen, I want the map page as home
 screen like Google Maps. When the user enters a location, ask the user is it an individual or group ride. Based on
 the preference move further. Follow the Google Maps app flow."* Screenshot of today's Home (Android, Tribe light,
@@ -696,6 +699,13 @@ Not on long-press (undiscoverable, and long-press on the map is reserved for "dr
 ## 4. The home map
 
 ### 4.1 Same map as live, lighter
+> **2026-10-16, see 24:** tiles are the bundled `tt-liberty` / `tt-dark` for both styles (24 §1); search and routes go
+> through Geoapify / LocationIQ (24 §2–3); the attribution pill text, its second line and the route-panel credit row are in 24 §4.
+>
+> **2026-10-20, see 25:** a 56 dp **Map type** circle (Standard / Terrain) sits top-right in all three Home modes (under the
+> chips in browse, under the place bar in place mode, level with the back circle in route mode) and opens the Map type sheet;
+> terrain shading and the new map detail are in 25 §2–4.
+
 - Tiles: `colors.mapStyle` (OpenFreeMap; Tribe positron/dark, Maps liberty/fiord; 17 §3). Re-keys on style change
   (17 §3.3). Riders who want the familiar road-map look pick the Maps style (17); Home does not override it.
 - Markers: `MeMarker variant="map"` (arrow in Tribe, blue dot + halo in Maps), `StopPin`. No other riders on the

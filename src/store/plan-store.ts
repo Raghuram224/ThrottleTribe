@@ -14,7 +14,7 @@ import type { Place } from '@/lib/place-search';
 import { readItem, STORAGE_KEYS, writeItem } from '@/lib/storage';
 
 /** A place picked for planning: the search result minus its distance (recomputed from my fix when shown). */
-export type PlanPlace = Pick<Place, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category'>;
+export type PlanPlace = Pick<Place, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category' | 'source'>;
 
 interface PlanState {
   mode: PlanMode;
@@ -47,6 +47,7 @@ const pick = (p: PlanPlace): PlanPlace => ({
   lat: p.lat,
   lng: p.lng,
   category: p.category,
+  source: p.source,
 });
 
 /** Memory only, except the camera and the first-run flag (22 §2.1). */

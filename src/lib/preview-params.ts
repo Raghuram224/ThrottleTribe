@@ -1,7 +1,7 @@
 // Route params of the route preview (21 §2.2): the picked place travels as plain strings. Pure.
 import type { Place, PlaceCategory } from '@/lib/place-search';
 
-type PreviewPlace = Pick<Place, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category'>;
+type PreviewPlace = Pick<Place, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category' | 'source'>;
 
 const CATEGORIES: readonly PlaceCategory[] = ['cafe', 'fuel', 'restaurant', 'parking', 'toilets', 'other'];
 
@@ -14,6 +14,7 @@ export function previewHref(p: PreviewPlace): string {
     lat: String(p.lat),
     lng: String(p.lng),
     category: p.category,
+    source: p.source,
   });
   return `/route-preview?${q.toString()}`;
 }
@@ -35,5 +36,7 @@ export function parsePreviewParams(params: Record<string, string | string[] | un
     lat,
     lng,
     category: CATEGORIES.includes(category) ? category : 'other',
+    // Links written before spec 24 carry none; those places were Photon's.
+    source: one(params.source) === 'geoapify' ? 'geoapify' : 'photon',
   };
 }

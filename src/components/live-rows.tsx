@@ -404,7 +404,8 @@ const styles = StyleSheet.create({
     paddingLeft: space.lg,
     paddingRight: space.lg,
   },
-  tile: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  // A circle, like the stop card's tile (26 L4).
+  tile: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   infoTexts: { flex: 1, justifyContent: 'center' },
   infoTitle: { fontSize: font.md, lineHeight: 22, fontFamily: family.semibold },
   infoSub: { fontSize: font.sm, lineHeight: 20, fontFamily: family.regular },

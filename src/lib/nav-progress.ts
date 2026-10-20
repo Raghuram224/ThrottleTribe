@@ -372,11 +372,17 @@ export interface RerouteInput {
   now: number;
   /** No network: never fetch. */
   offline?: boolean;
+  /**
+   * Epoch ms: no request before this (a server `retryAfter` on top of the backoff, 24 §3.3: the next attempt is at
+   * `lastFetchAt + max(backoff, retryAfterS)`). Left out: only the backoff applies.
+   */
+  notBefore?: number;
 }
 
 /** A reroute is due: off route, nothing in flight, online, and the backoff gap has passed. */
 export function shouldRerouteNav(a: RerouteInput): boolean {
   if (!a.offRoute || a.inFlight || a.offline) return false;
+  if (a.notBefore !== undefined && a.now < a.notBefore) return false;
   return a.now - a.lastFetchAt >= backoffMs(a.failures);
 }
 
@@ -388,6 +394,7 @@ export function shouldFetchNavRoute(a: RerouteInput & { hasRoute: boolean; lastR
   if (a.now - a.lastRequestAt < REQUEST_MIN_GAP_MS) return false;
   if (!a.hasRoute) {
     if (a.inFlight || a.offline) return false;
+    if (a.notBefore !== undefined && a.now < a.notBefore) return false;
     // No route to lose: the first request is immediate, retries follow the backoff after failures.
     if (a.lastFetchAt === -Infinity) return true;
     return a.now - a.lastFetchAt >= backoffMs(Math.max(0, a.failures - 1));

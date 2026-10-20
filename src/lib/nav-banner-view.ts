@@ -64,7 +64,7 @@ export function describeBanner(model: BannerModel, opts: { place: string; mapBea
     }
     case 'rerouting': {
       const line1 = t('nav.rerouting');
-      const primary = t('nav.reroutingSub');
+      const primary = model.busy ? t('nav.reroutingBusy') : t('nav.reroutingSub');
       return { ...base, tone: 'blue', icon: 'reroute', line1, primary, a11y: `${line1}. ${primary}` };
     }
     case 'offlineOffRoute': {

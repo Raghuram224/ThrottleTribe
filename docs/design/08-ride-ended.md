@@ -1,5 +1,8 @@
 # 08 — Ride ended (`ride/[id]/summary.tsx`)
 
+> **2026-10-20, see 26 §5:** under 50 m the distance reads "< 50 m"; the sheet reaches the footer and the map is
+> clamp(40 % of the window, 300, 400) dp; map buttons 56 dp; footer padding 16; riders card text 16 / 14.
+
 **Purpose:** close the ride calmly: how long, how far, who rode, where people stopped, any SOS.
 **One-second glance:** "Ride over · 2 h 14 min · 86 km" — and that location sharing has stopped.
 

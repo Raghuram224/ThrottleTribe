@@ -10,8 +10,11 @@ import {
 import { useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, View, type NativeSyntheticEvent } from 'react-native';
 
+import { TerrainLayer } from '@/components/map/terrain-layer';
 import type { MapHandle, MapLibreMapProps } from '@/components/map/types';
 import type { Bounds } from '@/lib/map-fit';
+import { copy } from '@/lib/copy';
+import { mapStyleJsonFor } from '@/lib/map-styles';
 import { lineData, NAV_DASH } from '@/lib/route-style';
 import { useTheme } from '@/theme/use-theme';
 
@@ -64,7 +67,8 @@ export function MapLibreMap({
   return (
     <View style={styles.root} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Map
-        mapStyle={colors.mapStyle}
+        accessibilityLabel={copy['map.a11y']}
+        mapStyle={mapStyleJsonFor(colors.mapStyle)}
         compass={false}
         dragPan={interactive}
         touchZoom={interactive}
@@ -79,6 +83,7 @@ export function MapLibreMap({
         onRegionIsChanging={onRegionChange}
         onRegionDidChange={onRegionDidChange}>
         <Camera ref={cameraRef} initialViewState={initialView} />
+        <TerrainLayer />
         {lines.map((line) => (
           // Keyed by style and scheme: a switch re-adds the layers below the new style's labels.
           <GeoJSONSource key={`${line.id}-${style}-${scheme}`} id={line.id} data={lineData(line.coords)}>

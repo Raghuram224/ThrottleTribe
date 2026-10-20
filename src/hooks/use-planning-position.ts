@@ -23,6 +23,12 @@ export interface PlanFix extends LatLng {
   live: boolean;
 }
 
+/** Development only: which source delivered a fix, how old it is, and why a source failed (read in the Metro log). */
+type FixSource = 'last-known' | 'watch' | 'seek' | 'heartbeat';
+const devLog = (msg: string) => {
+  if (__DEV__) console.log(`[planning-position] ${msg}`);
+};
+
 /** How often a still rider's fix is renewed while watching. */
 const HEARTBEAT_MS = 60_000;
 
@@ -100,7 +106,11 @@ export function usePlanningPosition() {
     let cancelled = false;
     let sub: Location.LocationSubscription | null = null;
     // The last-known answer is old: its position is a fine start point, but its speed says nothing about now.
-    const accept = (loc: Location.LocationObject, fromLastKnown: boolean) => {
+    const accept = (loc: Location.LocationObject, fromLastKnown: boolean, source: FixSource) => {
+      devLog(
+        `${source} fix, age ${Math.round((Date.now() - loc.timestamp) / 1000)} s, accuracy ${Math.round(loc.coords.accuracy ?? -1)} m` +
+          `${cancelled || loc.timestamp < lastT.current ? ' (dropped: older than the one shown)' : ''}`,
+      );
       // The slow last-known answer must never replace a newer watch fix.
       if (cancelled || loc.timestamp < lastT.current) return;
       lastT.current = loc.timestamp;
@@ -129,23 +139,29 @@ export function usePlanningPosition() {
       useNavStore.getState().setOrigin({ lat: latitude, lng: longitude });
     };
     Location.getLastKnownPositionAsync({ maxAge: 120_000 })
-      .then((loc) => loc && accept(loc, true))
-      .catch(() => {});
-    Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 10, timeInterval: 5000 }, (loc) => accept(loc, false))
+      .then((loc) => {
+        if (loc) accept(loc, true, 'last-known');
+        else devLog('last-known: none within 2 min');
+      })
+      .catch((e) => devLog(`last-known failed: ${String(e)}`));
+    Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 10, timeInterval: 5000 }, (loc) => accept(loc, false, 'watch'))
       .then((s) => {
         if (cancelled) s.remove();
         else sub = s;
       })
-      .catch(() => {});
+      .catch((e) => devLog(`watch failed: ${String(e)}`));
     // The watch alone can stay silent for minutes on a still phone whose fused cache is old (seen on a moto g64:
     // the 10 m filter never fires and the first fix never comes). A one-shot read asks the provider for a fix
     // now, so seek one at once and keep retrying (rejects or times out indoors/offline) until a live one lands.
     let seekTimer: ReturnType<typeof setTimeout> | null = null;
     const seek = (attempt: number) => {
       if (cancelled || gotLive.current) return;
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-        .then((loc) => accept(loc, false))
-        .catch(() => {
+      // Balanced (network and Wi-Fi) first; after two misses ask for GPS itself, which is all an emulator's `geo fix` or a
+      // phone with no network can give.
+      Location.getCurrentPositionAsync({ accuracy: attempt < 2 ? Location.Accuracy.Balanced : Location.Accuracy.High })
+        .then((loc) => accept(loc, false, 'seek'))
+        .catch((e) => {
+          devLog(`seek ${attempt} failed: ${String(e)}`);
           if (!cancelled && !gotLive.current) seekTimer = setTimeout(() => seek(attempt + 1), firstFixRetryMs(attempt));
         });
     };
@@ -155,7 +171,7 @@ export function usePlanningPosition() {
     // does not (it rejects or times out).
     const heartbeat = setInterval(() => {
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-        .then((loc) => accept(loc, false))
+        .then((loc) => accept(loc, false, 'heartbeat'))
         .catch(() => {});
     }, HEARTBEAT_MS);
     return () => {

@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import Reanimated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BigButton } from '@/components/big-button';
+import { panelEnter } from '@/components/motion-presets';
+import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy } from '@/lib/copy';
 import { elevation, radius, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
@@ -24,11 +27,13 @@ interface SheetProps {
 export function Sheet({ visible, onClose, children, hideClose, onDismiss }: SheetProps) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      // The Modal only fades (scrim and panel); the panel rises 24 dp itself. A sliding window dragged the scrim in (26 E2).
+      animationType={reduceMotion ? 'none' : 'fade'}
       onRequestClose={onClose}
       onDismiss={onDismiss}
       statusBarTranslucent>
@@ -39,7 +44,8 @@ export function Sheet({ visible, onClose, children, hideClose, onDismiss }: Shee
           onPress={onClose}
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlayScrim }]}
         />
-        <View
+        <Reanimated.View
+          entering={panelEnter}
           accessibilityViewIsModal
           style={[
             styles.panel,
@@ -51,7 +57,7 @@ export function Sheet({ visible, onClose, children, hideClose, onDismiss }: Shee
           <View style={[styles.grab, { backgroundColor: colors.border }]} />
           {children}
           {hideClose ? null : <BigButton label={copy['common.close']} variant="secondary" onPress={onClose} />}
-        </View>
+        </Reanimated.View>
       </View>
     </Modal>
   );

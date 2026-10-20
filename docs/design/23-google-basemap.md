@@ -1,4 +1,4 @@
-> **Superseded 2026-10-16: the app stays on OpenStreetMap; see decision note.** Throttle Tribe must stay free, so Google Maps was removed and every platform uses MapLibre + OpenFreeMap with the OSM attribution chip. Kept below for history only; do not implement.
+> **Superseded 2026-10-16: the app stays on OpenStreetMap; see decision note.** Throttle Tribe must stay free, so Google Maps was removed and every platform uses MapLibre + OpenFreeMap with the OSM attribution chip. Kept below for history only; do not implement. The free OSM stack that replaces it is `24-free-osm-stack.md`.
 
 # 23 — Google maps on phones: Map or Satellite
 

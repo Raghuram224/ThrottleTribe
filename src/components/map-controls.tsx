@@ -1,7 +1,8 @@
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type AccessibilityState, type AccessibilityValue, type StyleProp, type ViewStyle } from 'react-native';
 import Reanimated, { FadeIn, FadeOut, ReduceMotion } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
+import type { IconName } from '@/lib/icon-names';
 import { SpeedBubble } from '@/components/speed-bubble';
 import { copy } from '@/lib/copy';
 import type { MapControlVisibility } from '@/lib/live-chrome';
@@ -26,6 +27,56 @@ interface MapControlsProps {
   voiceOn: boolean | null;
   onToggleVoice?: () => void;
   reduceMotion: boolean;
+}
+
+interface MapCircleButtonProps {
+  icon: IconName;
+  /** Glyph colour; default `fabIcon`. */
+  iconColor?: string;
+  /** A 2 dp ring in this colour (`'transparent'` when idle, so the circle never changes size). Left out = no ring. */
+  ring?: string;
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+  accessibilityState?: AccessibilityState;
+  accessibilityValue?: AccessibilityValue;
+  onPress?: () => void;
+  /** Position (Home places its own circle; the live column lays its circles out itself). */
+  style?: StyleProp<ViewStyle>;
+}
+
+/** The 56 dp round map button (20 C1): `fabBg`, a shadow in light and a hairline in dark; shared by the live column and Home. */
+export function MapCircleButton({
+  icon,
+  iconColor,
+  ring,
+  accessibilityLabel,
+  accessibilityHint,
+  accessibilityState,
+  accessibilityValue,
+  onPress,
+  style,
+}: MapCircleButtonProps) {
+  const { colors, scheme } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={accessibilityState}
+      accessibilityValue={accessibilityValue}
+      onPress={onPress}
+      style={[
+        styles.circle,
+        { backgroundColor: colors.fabBg },
+        // Before the ring: in dark `elevate` is a hairline border, which would otherwise replace the 2 dp ring.
+        elevate('e2', scheme),
+        ring !== undefined && styles.ring,
+        ring !== undefined && { borderColor: ring },
+        style,
+      ]}>
+      <Icon name={icon} color={iconColor ?? colors.fabIcon} size={24} />
+    </Pressable>
+  );
 }
 
 /**
@@ -84,43 +135,31 @@ export function MapControls({
         <View style={styles.column} pointerEvents="box-none">
           {vis.voice && voiceOn !== null ? (
             // Top of the column (21 §4.4). Muted = the 2 dp ring + `selected` + the muted icon (rule 1: never colour alone).
-            <Pressable
-              accessibilityRole="button"
+            <MapCircleButton
+              icon={voiceOn ? 'voiceOn' : 'voiceOff'}
+              iconColor={voiceOn ? colors.fabIcon : colors.brandOnBg}
+              ring={voiceOn ? 'transparent' : colors.brandOnBg}
               accessibilityLabel={voiceOn ? copy['nav.a11yVoiceOn'] : copy['nav.a11yVoiceOff']}
               accessibilityHint={voiceOn ? copy['nav.a11yVoiceOnHint'] : copy['nav.a11yVoiceOffHint']}
               accessibilityState={{ selected: !voiceOn }}
               onPress={onToggleVoice}
-              style={[
-                styles.circle,
-                styles.ring,
-                { backgroundColor: colors.fabBg, borderColor: voiceOn ? 'transparent' : colors.brandOnBg },
-                elevate('e2', scheme),
-              ]}>
-              <Icon name={voiceOn ? 'voiceOn' : 'voiceOff'} color={voiceOn ? colors.fabIcon : colors.brandOnBg} size={24} />
-            </Pressable>
+            />
           ) : null}
-          <Pressable
-            accessibilityRole="button"
+          <MapCircleButton
+            icon={fullMap ? 'collapse' : 'expand'}
             accessibilityLabel={fullMap ? copy['live.exitFullMapA11y'] : copy['live.fullMapA11y']}
             onPress={onToggleFullMap}
-            style={[styles.circle, { backgroundColor: colors.fabBg }, elevate('e2', scheme)]}>
-            <Icon name={fullMap ? 'collapse' : 'expand'} color={colors.fabIcon} size={24} />
-          </Pressable>
+          />
           {vis.fitAll ? (
-            <Pressable
-              accessibilityRole="button"
+            // The ring is always 2 dp (transparent when idle) so the circle never changes size.
+            <MapCircleButton
+              icon="fitPage"
+              iconColor={overview ? colors.brandOnBg : colors.fabIcon}
+              ring={overview ? colors.brandOnBg : 'transparent'}
               accessibilityLabel={copy['live.fitAllA11y']}
               accessibilityState={{ selected: overview }}
               onPress={onFitAll}
-              // The ring is always 2 dp (transparent when idle) so the circle never changes size.
-              style={[
-                styles.circle,
-                styles.ring,
-                { backgroundColor: colors.fabBg, borderColor: overview ? colors.brandOnBg : 'transparent' },
-                elevate('e2', scheme),
-              ]}>
-              <Icon name="fitPage" color={overview ? colors.brandOnBg : colors.fabIcon} size={24} />
-            </Pressable>
+            />
           ) : null}
         </View>
       ) : null}

@@ -445,3 +445,19 @@ describe('M1: roundabout exits are passed at the exit, not at the entry', () => 
     expect(trace.map((p) => p.idx)).toEqual([0, 0, 0, 0, 1]);
   });
 });
+
+describe('notBefore: a server retryAfter on top of the backoff (24 §3.3)', () => {
+  const base = { offRoute: true, lastFetchAt: 0, lastRequestAt: 0, failures: 0, inFlight: false, now: 100_000, hasRoute: true };
+  it('holds a due reroute until notBefore', () => {
+    expect(shouldRerouteNav({ ...base, notBefore: 130_000 })).toBe(false);
+    expect(shouldRerouteNav({ ...base, notBefore: 100_000 })).toBe(true);
+    expect(shouldFetchNavRoute({ ...base, notBefore: 130_000 })).toBe(false);
+  });
+  it('holds the first/retried fetch when there is no route', () => {
+    expect(shouldFetchNavRoute({ ...base, hasRoute: false, lastFetchAt: -Infinity, notBefore: 100_001 })).toBe(false);
+    expect(shouldFetchNavRoute({ ...base, hasRoute: false, lastFetchAt: -Infinity, notBefore: 100_000 })).toBe(true);
+  });
+  it('the backoff still applies when notBefore has passed', () => {
+    expect(shouldRerouteNav({ ...base, failures: 1, lastFetchAt: 95_000, notBefore: 90_000 })).toBe(false); // 20 s gap needed
+  });
+});

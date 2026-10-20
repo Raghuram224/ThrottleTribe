@@ -156,3 +156,18 @@ How it works: location pings go over **Broadcast** (fast, not stored in the data
 - [ ] Phone provider on + test phone number added
 - [ ] Anonymous sign-ins on
 - [ ] Redirect URL added
+
+
+---
+
+## Geo function: search and routing (docs/design/24) 🟢
+
+Nothing here is applied automatically. Until it is done the app still works: search uses Photon, routes use the OSRM demo URL.
+
+- [ ] Run `supabase/migrations/0011_geo_usage.sql` (SQL Editor, after 0001 to 0010). Adds the quota counters (`private.geo_usage`) and `public.geo_take` (service role only).
+- [ ] Get keys: Geoapify (free plan) and LocationIQ (free plan). Never put them in `.env` or the app.
+- [ ] `supabase secrets set GEOAPIFY_KEY=... LOCATIONIQ_KEY=... GEO_HASH_SECRET=$(openssl rand -hex 32)` (optional `LOCATIONIQ_REGION=us1|eu1`).
+- [ ] Authentication > Rate Limits: keep the anonymous sign-in limit on, and add CAPTCHA for anonymous sign-ins.
+- [ ] Optional: `supabase test db` runs `supabase/tests/geo_usage.test.sql`.
+- [ ] `supabase functions deploy geo` (JWT verification stays on, the default). See `supabase/functions/geo/README.md`.
+- [ ] Check: Dashboard > Edge Functions > geo > Logs shows op, provider, status and latency only (no coordinates, text or ids).

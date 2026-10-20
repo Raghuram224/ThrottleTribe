@@ -1,4 +1,4 @@
-import { buildSos, buildStops, leftEarly, rideDurationMs, sumDistanceM, type SummaryEvent } from '../summary';
+import { buildSos, buildStops, distanceTooShort, durationTooBrief, leftEarly, rideDurationMs, sumDistanceM, summaryMapHeight, summaryTimeParts, TOO_SHORT_M, type SummaryEvent } from '../summary';
 
 const T0 = Date.parse('2026-01-01T10:00:00Z');
 const iso = (secFromStart: number) => new Date(T0 + secFromStart * 1000).toISOString();
@@ -127,5 +127,38 @@ describe('buildSos', () => {
       ['b', 150, null],
       ['a', 400, null],
     ]);
+  });
+});
+
+describe('too short to measure (26 S1)', () => {
+  it('under 50 m is too short; 50 m and unknown are not', () => {
+    expect(TOO_SHORT_M).toBe(50);
+    expect(distanceTooShort(0)).toBe(true);
+    expect(distanceTooShort(49.9)).toBe(true);
+    expect(distanceTooShort(50)).toBe(false);
+    expect(distanceTooShort(null)).toBe(false);
+  });
+});
+
+describe('summaryMapHeight (26 S2)', () => {
+  it('is 40 % of the window, clamped to 300 to 400 dp', () => {
+    expect(summaryMapHeight(914)).toBe(366);
+    expect(summaryMapHeight(780)).toBe(312);
+    expect(summaryMapHeight(600)).toBe(300);
+    expect(summaryMapHeight(1400)).toBe(400);
+  });
+});
+
+describe('a ride under a minute (26 S1)', () => {
+  const normal = (ms: number) => [{ text: String(Math.floor(ms / 60_000)), unit: false }, { text: ' min', unit: true }];
+  it('reads "< 1 min", not "0 min"', () => {
+    expect(durationTooBrief(59_999)).toBe(true);
+    expect(durationTooBrief(60_000)).toBe(false);
+    expect(durationTooBrief(null)).toBe(false);
+    expect(summaryTimeParts(30_000, normal).map((p) => p.text).join('')).toBe('< 1 min');
+  });
+  it('a minute or more, and unknown, are unchanged', () => {
+    expect(summaryTimeParts(120_000, normal).map((p) => p.text).join('')).toBe('2 min');
+    expect(summaryTimeParts(null, normal)).toEqual([{ text: '—', unit: false }]);
   });
 });

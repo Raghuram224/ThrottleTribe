@@ -1,6 +1,7 @@
 // Pure rules for the live screen's chrome (docs/design/20): which panel, which map controls, what the
 // camera must keep clear. No React.
 import type { ConnectionState } from '@/hooks/use-connection';
+import { meSlotMinMapH, type PillLines } from '@/lib/credits';
 import { size, space } from '@/theme/tokens';
 
 /** Full-map stop chip height; it floats at the top of the map, so the camera counts it (20 C2). */
@@ -11,8 +12,8 @@ export const STOP_CHIP_H = 40;
  * much visible map the column hides.
  */
 export const RIGHT_COLUMN_MIN_MAP_H = 2 * size.mapControl + 3 * space.md + 28;
-/** The bottom-left "me" slot (bubble or Re-centre) hides under this much visible map. */
-export const ME_SLOT_MIN_MAP_H = 104;
+// The bottom-left "me" slot (bubble or Re-centre) hides under `meSlotMinMapH(creditLines, fontScale)` of visible map:
+// 104 / 124 / 144 for a one / two / three-line credit pill (25 §5.1).
 
 /** Solo panel when I am the only active member (or everyone else left); the group sheet otherwise and while loading. */
 export function panelVariant(loaded: boolean, activeCount: number): 'solo' | 'group' {
@@ -45,14 +46,18 @@ export function mapControlVisibility(args: {
   positionedRiders: number;
   /** Navigation is on (the voice toggle has something to govern). */
   navActive?: boolean;
+  /** Lines in the credit pill (a road route, Terrain): the me slot needs more room for each. */
+  creditLines?: PillLines;
+  /** The system font scale: the pill's lines grow with it (to 1.3), and so does the room the me slot needs. */
+  fontScale?: number;
 }): MapControlVisibility {
-  const { controlsHidden, mapVisH, positionedRiders, navActive = false } = args;
+  const { controlsHidden, mapVisH, positionedRiders, navActive = false, creditLines = 1, fontScale = 1 } = args;
   const fitAll = positionedRiders >= 2;
   return {
     rightColumn: !controlsHidden && mapVisH >= RIGHT_COLUMN_MIN_MAP_H,
     fitAll,
     voice: navActive && !fitAll,
-    meSlot: !controlsHidden && mapVisH >= ME_SLOT_MIN_MAP_H,
+    meSlot: !controlsHidden && mapVisH >= meSlotMinMapH(creditLines, fontScale),
   };
 }
 
@@ -102,4 +107,18 @@ export function navBannerHeight(a: { bannerShown: boolean; thenRow: boolean }): 
  */
 export function navTopInset(a: { navBannerH: number; convoyH: number }): number {
   return a.navBannerH + a.convoyH;
+}
+
+/**
+ * The header's connection pill (26 L2): what the phone has decides the wording. The ride channel being down while the
+ * phone has network is "Connecting" (the banner says "Reconnecting"); "Offline" only when the phone itself has no network.
+ * Null = no pill (healthy).
+ */
+export function connectionPill(
+  connection: ConnectionState,
+  netOffline: boolean,
+): { icon: 'connecting' | 'offline'; labelKey: 'live.connConnecting' | 'live.connOffline' } | null {
+  if (connection === 'live') return null;
+  if (connection === 'offline' && netOffline) return { icon: 'offline', labelKey: 'live.connOffline' };
+  return { icon: 'connecting', labelKey: 'live.connConnecting' };
 }

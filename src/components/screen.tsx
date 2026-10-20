@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
@@ -21,6 +21,10 @@ interface ScreenProps {
   backgroundColor?: string;
   /** Content runs under the status and navigation bars (live full map). Same tree, so nothing remounts. */
   edgeToEdge?: boolean;
+  /** Colour of the status-bar inset, when the bar it touches is not `bg` (the ride header is `surfaceRaised`, 26 L3). */
+  insetTopColor?: string;
+  /** Colour of the navigation-bar inset, when the bar it touches is not `bg` (the live action bar, the summary footer). */
+  insetBottomColor?: string;
 }
 
 export function Screen({
@@ -32,8 +36,13 @@ export function Screen({
   padded = true,
   backgroundColor,
   edgeToEdge,
+  insetTopColor,
+  insetBottomColor,
 }: ScreenProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Painting an inset its own colour means drawing it ourselves: the safe-area view then only pads the sides.
+  const paintInsets = !edgeToEdge && (insetTopColor !== undefined || insetBottomColor !== undefined);
   const bodyStyle = padded ? styles.body : styles.bodyBare;
 
   const content = (
@@ -55,8 +64,9 @@ export function Screen({
 
   return (
     <SafeAreaView
-      edges={edgeToEdge ? [] : undefined}
+      edges={edgeToEdge ? [] : paintInsets ? ['left', 'right'] : undefined}
       style={[styles.flex, { backgroundColor: backgroundColor ?? colors.bg }]}>
+      {paintInsets ? <View style={{ height: insets.top, backgroundColor: insetTopColor ?? backgroundColor ?? colors.bg }} /> : null}
       {keyboardAvoiding ? (
         <KeyboardAvoidingView
           style={styles.flex}
@@ -66,6 +76,7 @@ export function Screen({
       ) : (
         content
       )}
+      {paintInsets ? <View style={{ height: insets.bottom, backgroundColor: insetBottomColor ?? backgroundColor ?? colors.bg }} /> : null}
     </SafeAreaView>
   );
 }

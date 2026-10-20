@@ -19,7 +19,8 @@ import { copy } from '@/lib/copy';
 import { setLastAppState } from '@/lib/location/ride-config';
 import { startTrackingRecovery } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
-import { setExcludeRejectedListener } from '@/lib/nav-route';
+import { setExcludeRejectedListener, setRouteRateLimitedListener } from '@/lib/nav-route';
+import { setSearchReport } from '@/lib/place-search';
 import { initTelemetry, reportError, setScreen, track } from '@/lib/telemetry';
 import { useSessionStore } from '@/store/session-store';
 
@@ -30,6 +31,13 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 initTelemetry();
 // The router refusing exclude=motorway is worth knowing about (no props: nothing about where the rider is).
 setExcludeRejectedListener(() => track('nav.exclude_rejected'));
+// Search fallbacks and route rate limits (24 §10): fixed enums only, never text, places or coordinates.
+setRouteRateLimitedListener((scope, context) => track('route.rate_limited', { scope, context }));
+setSearchReport({
+  fallback: (reason, kind) => track('search.fallback', { reason, kind }),
+  failed: (reason, kind) => track('search.failed', { reason, kind }),
+  chipWidened: (found) => track('search.chip_widened', { found }),
+});
 
 // Telemetry: Expo Router renders this when a screen throws while rendering.
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {

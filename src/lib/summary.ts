@@ -25,6 +25,35 @@ export function summaryShareMessage(input: {
     : fill(copy['summary.shareMessageNoKm'], { riders, duration });
 }
 
+/** A ride that moved less than this is "too short to measure": GPS jitter is 5 to 20 m (26 S1). */
+export const TOO_SHORT_M = 50;
+
+export function distanceTooShort(distanceM: number | null): boolean {
+  return distanceM !== null && distanceM < TOO_SHORT_M;
+}
+
+/** A ride shorter than this reads "< 1 min" instead of "0 min" (26 S1, same idea as "< 50 m"). */
+export const TOO_BRIEF_MS = 60_000;
+
+export function durationTooBrief(durationMs: number | null): boolean {
+  return durationMs !== null && durationMs < TOO_BRIEF_MS;
+}
+
+/** The ride time as stat parts, "< 1 min" under a minute. `fallback` draws the normal parts (h / min). */
+export function summaryTimeParts(
+  durationMs: number | null,
+  normal: (ms: number) => { text: string; unit: boolean }[],
+): { text: string; unit: boolean }[] {
+  if (durationMs === null) return [{ text: '—', unit: false }];
+  if (durationTooBrief(durationMs)) return [{ text: '< 1', unit: false }, { text: ' min', unit: true }];
+  return normal(durationMs);
+}
+
+/** Summary map height (26 S2): 40 % of the window, 300 to 400 dp. Computed from the window only, so the fit never jumps. */
+export function summaryMapHeight(windowH: number): number {
+  return Math.min(400, Math.max(300, Math.round(0.4 * windowH)));
+}
+
 /** The hero number: my distance, or the duration when no distance could be computed. */
 export function summaryHeroKind(distanceM: number | null): 'distance' | 'duration' {
   return distanceM !== null ? 'distance' : 'duration';

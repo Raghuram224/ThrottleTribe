@@ -55,9 +55,17 @@ export function StyleThumbnail({ style, scheme, width }: { style: ThemeStyle; sc
         <View style={[styles.map, { backgroundColor: t.mapPreviewLand }]}>
           <View style={[styles.park, { backgroundColor: t.mapPreviewPark }]} />
           <View style={[styles.water, { backgroundColor: t.mapPreviewWater }]} />
-          <View style={[styles.road, { top: 20, left: -10, width: 190, transform: [{ rotate: '8deg' }], backgroundColor: t.mapPreviewRoad }]} />
-          <View style={[styles.road, { top: 62, left: -10, width: 190, transform: [{ rotate: '-6deg' }], backgroundColor: t.mapPreviewRoad }]} />
-          <View style={[styles.road, { top: 40, left: 90, width: 120, height: 3, transform: [{ rotate: '90deg' }], backgroundColor: t.mapPreviewRoad }]} />
+          {/* Each road is a 5 dp edge under a 3 dp fill: white on the pale land alone is 1.05:1 and vanishes (24 §1.7). */}
+          {[
+            { top: 20, left: -10, width: 190, height: 3, rotate: '8deg' },
+            { top: 62, left: -10, width: 190, height: 3, rotate: '-6deg' },
+            { top: 40, left: 90, width: 120, height: 3, rotate: '90deg' },
+          ].map((r) => (
+            <View key={`${r.top}-${r.left}`}>
+              <View style={[styles.road, { top: r.top - 1, left: r.left, width: r.width, height: 5, transform: [{ rotate: r.rotate }], backgroundColor: t.mapPreviewRoadEdge }]} />
+              <View style={[styles.road, { top: r.top, left: r.left, width: r.width, height: r.height, transform: [{ rotate: r.rotate }], backgroundColor: t.mapPreviewRoad }]} />
+            </View>
+          ))}
           <View style={[styles.major, { backgroundColor: t.mapPreviewMajor }]} />
           <View style={[styles.route, { height: 8, backgroundColor: t.routeCasing }]} />
           <View style={[styles.route, { height: 5, top: 49, backgroundColor: t.routeLine }]} />

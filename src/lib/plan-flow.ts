@@ -1,5 +1,6 @@
 // Pure decisions of the map home (docs/design/22): the mode machine, back stack, sheet content, me slot,
 // when the map is mounted, how a route's two actions branch. No React, no router, no native modules.
+import { attributionClear, pillHeight, type PillLines } from '@/lib/credits';
 import { copy, t } from '@/lib/copy';
 import { formatDistance } from '@/lib/format';
 import type { LatLng } from '@/lib/geo';
@@ -35,8 +36,8 @@ export const HOME_ME_ZOOM = 15;
 export const HOME_PLACE_ZOOM = 15;
 export const HOME_CAMERA_SAVE_MS = 5000;
 export const PEEK_TWO_ROWS_MIN_H = 760;
-/** Bottom-left controls clear the attribution pill (22 §3.1.1 item 5). */
-export const ATTRIBUTION_CLEAR = 36;
+/** Bottom-left controls clear the credit pill (22 §3.1.1 item 5, 24 §4.2): 40 for one line, 56 for two. */
+export { attributionClear };
 
 // ---------------------------------------------------------------- back stack (22 §2.1, §5.1)
 
@@ -393,17 +394,38 @@ export function chipsTop(insetTop: number, bannerH: number): number {
   return insetTop + bannerH + 8 + BAR_H + 8;
 }
 
+/**
+ * Top of Home's map type circle (25 §2.1): browse = under the chip row (or under the bar when the chips are hidden),
+ * place = under the place bar, route = level with the floating back circle. Always the
+ * offline banner lower.
+ */
+export function mapTypeTop(o: { mode: PlanMode; insetTop: number; bannerH: number; chipsShown: boolean }): number {
+  const barTop = o.insetTop + o.bannerH + 8;
+  if (o.mode === 'route') return barTop;
+  // The bar's bottom + 8; browse with the chip row shown: the chips' bottom + 8 (152 at 360 x 780, status bar 24).
+  return barTop + BAR_H + 8 + (o.mode === 'browse' && o.chipsShown ? CHIPS_H + 8 : 0);
+}
+
 /** Browse: everything floating counts: banner, bar, chips (when shown), then the visible sheet and the attribution. */
-export function browsePadding(o: { insetTop: number; bannerH: number; chipsShown: boolean; sheetH: number }): PlanPadding {
+export function browsePadding(o: {
+  insetTop: number;
+  bannerH: number;
+  chipsShown: boolean;
+  sheetH: number;
+  /** Lines in the credit pill (2 with Terrain on, 25 §5.1); default 1. */
+  creditLines?: PillLines;
+  fontScale?: number;
+}): PlanPadding {
   return {
     top: o.insetTop + o.bannerH + 8 + BAR_H + (o.chipsShown ? 8 + CHIPS_H : 0) + 16,
-    bottom: o.sheetH + ATTRIBUTION_CLEAR,
+    bottom: o.sheetH + attributionClear(o.creditLines ?? 1, o.fontScale),
     left: 16,
     right: 16,
   };
 }
 
 /** Place: the bar on top, the panel and the attribution below; sides 48. `insetTop` includes the banner. */
-export function placePadding(insetTop: number, panelH: number): PlanPadding {
-  return { top: insetTop + 8 + BAR_H + 24, bottom: panelH + 24 + 28, left: 48, right: 48 };
+export function placePadding(insetTop: number, panelH: number, creditLines: PillLines = 1, fontScale = 1): PlanPadding {
+  // 28 for the one-line pill (24 + 4); a taller pill (Terrain, the search provider line, a big font) grows it.
+  return { top: insetTop + 8 + BAR_H + 24, bottom: panelH + 24 + pillHeight(creditLines, fontScale) + 4, left: 48, right: 48 };
 }

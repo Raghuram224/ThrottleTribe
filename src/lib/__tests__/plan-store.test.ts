@@ -22,7 +22,7 @@ beforeEach(() => {
   });
 });
 
-const palace = { id: 'p1', name: 'Mysuru Palace', address: 'Sayyaji Rao Rd', lat: 12.3, lng: 76.6, category: 'other' as const, distanceM: 5000 };
+const palace = { id: 'p1', name: 'Mysuru Palace', address: 'Sayyaji Rao Rd', lat: 12.3, lng: 76.6, category: 'other' as const, source: 'photon' as const, distanceM: 5000 };
 
 describe('plan store (22 §2.1)', () => {
   it('a searched place opens the place sheet and keeps the query; the distance is not stored', () => {

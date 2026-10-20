@@ -3,15 +3,18 @@ import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, StyleS
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BigButton } from '@/components/big-button';
+import { CreditRow } from '@/components/credit-row';
 import { Icon } from '@/components/icon';
 import { Skeleton } from '@/components/skeleton';
 import { useNow } from '@/hooks/use-now';
 import type { LocationPerm } from '@/hooks/use-planning-position';
 import type { PreviewRouteState } from '@/hooks/use-preview-route';
 import { copy, spokenDistance, spokenDuration, t } from '@/lib/copy';
+import { CREDIT_URLS, routeCreditLink } from '@/lib/credits';
 import { ROUTING_SUPPORTS_EXCLUDE } from '@/lib/flags';
 import { formatClockTime, formatDistance, formatDuration } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { distinctAddress } from '@/lib/place-search';
 import { routeActions, type GoingKind } from '@/lib/plan-flow';
 import { track } from '@/lib/telemetry';
 import { usePrefsStore } from '@/store/prefs-store';
@@ -73,6 +76,8 @@ export function RoutePanel({
   const updating = state.status === 'updating';
   const route = state.status === 'ok' || updating ? state.route : null;
   const settledRoute = state.status === 'ok' ? state.route : null;
+  // The credit names whoever computed this route (LocationIQ, or the OSRM demo in a dev / transition build).
+  const routeCredit = routeCreditLink(route?.provider);
   const durationText = route ? formatDuration(route.durationS * 1000) : null;
   const distanceText = route ? formatDistance(route.distanceM) : straightM != null ? formatDistance(straightM) : null;
   const noLocation = permission.status !== 'granted' && permission.status !== 'unknown';
@@ -88,10 +93,11 @@ export function RoutePanel({
   }, [place.id]);
 
   const summaryA11y = route
-    ? t('preview.a11ySummary', {
+    ? t('preview.a11ySummaryArrive', {
         duration: spokenDuration(route.durationS * 1000),
         distance: spokenDistance(formatDistance(route.distanceM)),
         name: place.name,
+        time: formatClockTime(now + route.durationS * 1000),
       })
     : place.name;
 
@@ -116,7 +122,9 @@ export function RoutePanel({
             : copy['preview.noRoute']
           : state.status === 'failed'
             ? copy['preview.routeFailed']
-            : state.status === 'locating'
+            : state.status === 'rate_limited'
+              ? copy['preview.routeBusy']
+              : state.status === 'locating'
               ? copy['preview.noFix']
               : copy['preview.loading'];
 
@@ -126,44 +134,45 @@ export function RoutePanel({
       onLayout={(e: LayoutChangeEvent) => onLayout(e.nativeEvent.layout.height)}
       style={[styles.panel, { backgroundColor: colors.surfaceRaised, paddingBottom: space.lg + insets.bottom }, elevate('e3', scheme)]}>
       <View ref={summaryRef} accessible accessibilityLabel={summaryA11y} style={styles.group}>
-        {/* Line 1: the glance. */}
-        {state.status === 'ok' || state.status === 'no_route' || state.status === 'failed' ? (
-          <View style={styles.line1}>
-            {durationText ? (
-              <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.duration, styles.keep, { color: colors.text }]}>
-                {durationText}
-              </Text>
-            ) : null}
-            {distanceText ? (
-              <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[durationText ? styles.distance : styles.duration, styles.shrink, { color: colors.text }]}>
-                {durationText ? ` ${t('preview.distanceSpan', { km: distanceText })}` : t('stop.cardDistanceApprox', { km: distanceText })}
-              </Text>
-            ) : null}
-          </View>
-        ) : state.status === 'loading' || updating ? (
-          <View style={styles.line1}>
-            <Skeleton height={28} width={160} />
-          </View>
-        ) : (
-          <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.placeHeading, { color: colors.text }]}>
-            {place.name}
-          </Text>
-        )}
+        {/* Trip group (26 R1): the duration alone is the glance; distance and arrive time share line 2. */}
+        <View style={styles.trip}>
+          {state.status === 'ok' || state.status === 'no_route' || state.status === 'failed' || state.status === 'rate_limited' ? (
+            <>
+              {durationText || distanceText ? (
+                <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.duration, { color: colors.text }]}>
+                  {durationText ?? t('stop.cardDistanceApprox', { km: distanceText ?? '' })}
+                </Text>
+              ) : null}
+              {route && distanceText ? (
+                <Text numberOfLines={2} maxFontSizeMultiplier={1.3} style={[styles.tripLine, fontNumeric, { color: colors.text }]}>
+                  {t('preview.tripLine', { km: distanceText, time: formatClockTime(now + route.durationS * 1000) })}
+                </Text>
+              ) : null}
+            </>
+          ) : state.status === 'loading' || updating ? (
+            <>
+              <Skeleton height={28} width={160} />
+              <Skeleton height={16} width={200} />
+            </>
+          ) : (
+            <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.placeHeading, { color: colors.text }]}>
+              {place.name}
+            </Text>
+          )}
+        </View>
+        {/* Place group: the name, and an address line only when it tells something the name does not (26 H1). */}
         {state.status === 'locating' ? null : (
-          <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.name, { color: colors.text }]}>
-            {place.name}
-          </Text>
+          <View style={styles.placeGroup}>
+            <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.name, { color: colors.text }]}>
+              {place.name}
+            </Text>
+            {distinctAddress(place.name, place.address) ? (
+              <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.address, { color: colors.textMuted }]}>
+                {distinctAddress(place.name, place.address)}
+              </Text>
+            ) : null}
+          </View>
         )}
-        {place.address ? (
-          <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.address, { color: colors.textMuted }]}>
-            {place.address}
-          </Text>
-        ) : null}
-        {route ? (
-          <Text maxFontSizeMultiplier={1.3} style={[styles.address, fontNumeric, { color: colors.textMuted }]}>
-            {t('preview.arrive', { time: formatClockTime(now + route.durationS * 1000) })}
-          </Text>
-        ) : null}
       </View>
 
       <View style={styles.noteRow}>
@@ -183,7 +192,7 @@ export function RoutePanel({
           onPress={onAllowLocation}
         />
       ) : null}
-      {state.status === 'failed' ? <BigButton label={copy['common.tryAgain']} variant="ghost" onPress={onRetry} /> : null}
+      {state.status === 'failed' || state.status === 'rate_limited' ? <BigButton label={copy['common.tryAgain']} variant="ghost" onPress={onRetry} /> : null}
 
       {/* Expressways: off by default (two-wheeler bans), the choice is remembered on this phone. Only shown
           when the router can honour it (flags); the public demo cannot, so it would do nothing. */}
@@ -212,6 +221,18 @@ export function RoutePanel({
             <Switch value={allowExpressways} trackColor={{ false: colors.borderStrong, true: colors.brand.primary }} thumbColor={colors.surfaceRaised} />
           </View>
         </Pressable>
+      ) : null}
+
+      {/* LocationIQ asks for a visible link where its routes are shown; the dashed fallback shows none of their data (24 §4.3). */}
+      {route && routeCredit ? (
+        <View style={[styles.creditRow, { borderTopColor: colors.border }]}>
+          <CreditRow
+            links={[
+              { label: copy[routeCredit.labelKey], url: routeCredit.url, site: routeCredit.site },
+              { label: copy['credit.osm'], url: CREDIT_URLS.osm, site: 'openstreetmap.org' },
+            ]}
+          />
+        </View>
       ) : null}
 
       <View style={styles.actions}>
@@ -251,12 +272,11 @@ const styles = StyleSheet.create({
     gap: space.xs,
   },
   group: { gap: space.xs },
-  line1: { flexDirection: 'row', alignItems: 'center', minHeight: type.glance.line },
-  // 28 bold tabular for the duration; the distance (20 semibold) shrinks first.
+  trip: { gap: space.xs },
+  placeGroup: { gap: 0, marginTop: space.sm },
+  // 28 bold tabular, alone on line 1; line 2 is 16 regular and wraps.
   duration: { ...fontNumeric, fontSize: type.glance.size, lineHeight: type.glance.line, fontFamily: family.bold },
-  distance: { ...fontNumeric, fontSize: font.lg, lineHeight: type.heading.line, fontFamily: family.semibold },
-  keep: { flexShrink: 0 },
-  shrink: { flexShrink: 1 },
+  tripLine: { fontSize: font.md, lineHeight: 24, fontFamily: family.regular },
   placeHeading: { fontSize: font.lg, lineHeight: type.heading.line, fontFamily: family.semibold },
   name: { fontSize: font.md, lineHeight: 22, fontFamily: family.semibold },
   address: { fontSize: font.sm, lineHeight: 20, fontFamily: family.regular },
@@ -266,5 +286,6 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.5 },
   stateWord: { fontSize: font.sm, lineHeight: 20, fontFamily: family.semibold },
   switchLabel: { flex: 1, fontSize: font.md, lineHeight: 22, fontFamily: family.semibold },
+  creditRow: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: space.sm },
   actions: { paddingTop: space.md, gap: space.sm },
 });

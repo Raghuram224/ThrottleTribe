@@ -40,7 +40,10 @@ export function HomeSearchBar({ top, label, a11yLabel, onPress, avatar }: HomeSe
           haptic('select');
           onPress();
         }}
-        style={({ pressed }) => [styles.main, pressed && { backgroundColor: colors.surfacePressed }]}>
+        // A ripple, not a `pressed` fill: that fill could stay painted on the bar's main area (grey beside the white avatar
+        // zone) when the press ended on another screen.
+        android_ripple={{ color: colors.surfacePressed }}
+        style={styles.main}>
         <Image
           source={
             scheme === 'dark'
@@ -105,7 +108,8 @@ export function PlaceBar({ top, name, onBack, onSearchAgain }: PlaceBarProps) {
           haptic('select');
           onSearchAgain();
         }}
-        style={({ pressed }) => [styles.placeMain, pressed && { backgroundColor: colors.surfacePressed }]}>
+        android_ripple={{ color: colors.surfacePressed }}
+        style={styles.placeMain}>
         <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.placeName, { color: colors.text }]}>
           {name}
         </Text>
@@ -147,9 +151,7 @@ export function HomeChips({ top, onChip }: HomeChipsProps) {
               { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceRaised },
               elevate('e2', scheme),
             ]}>
-            <Text allowFontScaling={false} style={styles.chipGlyph}>
-              {c.glyph}
-            </Text>
+            <Icon name={c.icon} color={colors.text} size={22} />
             <Text maxFontSizeMultiplier={1.3} style={[styles.chipLabel, { color: colors.text }]}>
               {label}
             </Text>
@@ -214,6 +216,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderRadius: radius.pill,
   },
-  chipGlyph: { fontSize: font.lg },
   chipLabel: { fontSize: font.md, fontFamily: family.semibold },
 });

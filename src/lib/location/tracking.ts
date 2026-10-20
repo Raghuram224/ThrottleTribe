@@ -2,7 +2,9 @@ import * as Location from 'expo-location';
 import { AppState, Platform } from 'react-native';
 
 import { t } from '@/lib/copy';
+import { parseMapLayer } from '@/lib/dem';
 import { navSession } from '@/lib/nav-session';
+import { readItem, STORAGE_KEYS } from '@/lib/storage';
 import { reportError, track } from '@/lib/telemetry';
 
 import { LOCATION_TASK } from './background-task';
@@ -148,7 +150,7 @@ export async function startRideTracking(rideId: string): Promise<StartResult> {
     };
   }
   const backgroundGranted = perm.background;
-  track('tracking.started', { background: backgroundGranted });
+  track('tracking.started', { background: backgroundGranted, terrain: parseMapLayer(readItem(STORAGE_KEYS.mapLayer)) === 'terrain' });
   return { ok: true, backgroundGranted };
 }
 

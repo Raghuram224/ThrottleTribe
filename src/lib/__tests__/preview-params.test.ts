@@ -1,6 +1,6 @@
 import { parsePreviewParams, previewHref } from '../preview-params';
 
-const place = { id: 'N123', name: 'Café & Bar, MG Road', address: 'MG Road, Bengaluru', lat: 12.9716, lng: 77.5946, category: 'cafe' as const };
+const place = { id: 'N123', name: 'Café & Bar, MG Road', address: 'MG Road, Bengaluru', lat: 12.9716, lng: 77.5946, category: 'cafe' as const, source: 'geoapify' as const };
 
 describe('preview params', () => {
   it('round-trips a place, including characters that need escaping', () => {

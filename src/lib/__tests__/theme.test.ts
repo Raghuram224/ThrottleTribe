@@ -42,8 +42,8 @@ describe('theme resolution', () => {
   });
 
   it('tribe dark uses a dark basemap and the route colours from the spec', () => {
-    expect(palettes.tribe.dark.mapStyle).toMatch(/styles\/dark$/);
-    expect(palettes.tribe.light.mapStyle).toMatch(/styles\/positron$/);
+    expect(palettes.tribe.dark.mapStyle).toBe('tt-dark');
+    expect(palettes.tribe.light.mapStyle).toBe('tt-liberty');
     expect(palettes.tribe.light.routeLine).toBe('#F97316');
     expect(palettes.tribe.dark.routeCasing).toBe('#0B0F14');
     expect(palettes.tribe.dark.routeBeforeId).toBe('highway_name_other');
@@ -74,13 +74,13 @@ describe('Maps style (17)', () => {
     }
   });
 
-  it('uses the blue accent, liberty / fiord basemaps and their verified route insert layers', () => {
+  it('uses the blue accent, tuned liberty / dark basemaps and their verified route insert layers', () => {
     expect(palettes.maps.light.accent).toBe('#1A73E8');
     expect(palettes.maps.dark.accent).toBe('#8AB4F8');
-    expect(palettes.maps.light.mapStyle).toMatch(/styles\/liberty$/);
-    expect(palettes.maps.dark.mapStyle).toMatch(/styles\/fiord$/);
-    expect(palettes.maps.light.routeBeforeId).toBe('waterway_line_label');
-    expect(palettes.maps.dark.routeBeforeId).toBe('water_name');
+    expect(palettes.maps.light.mapStyle).toBe('tt-liberty');
+    expect(palettes.maps.dark.mapStyle).toBe('tt-dark');
+    expect(palettes.maps.light.routeBeforeId).toBe('highway-name-path');
+    expect(palettes.maps.dark.routeBeforeId).toBe('highway_name_other');
     expect(palettes.maps.light.convoyBand).not.toBe('transparent');
     expect(palettes.tribe.light.convoyBand).toBe('transparent');
   });

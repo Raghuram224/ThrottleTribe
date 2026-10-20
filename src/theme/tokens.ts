@@ -1,5 +1,7 @@
 import { StyleSheet, type TextStyle } from 'react-native';
 
+import type { MapStyleId } from '@/lib/map-style-tune';
+
 import { getCurrentStyle } from './current-style';
 
 /** Design tokens. The only place raw colours and sizes are allowed. */
@@ -83,9 +85,12 @@ export interface Tokens {
   overlayScrim: string;
   sosOnBg: string;
   // Map
-  mapStyle: string;
+  /** Id of a bundled tuned OpenFreeMap style (lib/map-styles.ts `mapStyleFor`, spec 24 §1.1). */
+  mapStyle: MapStyleId;
   /** Style layer the route is inserted below (native `beforeId`; the web computes it). */
   routeBeforeId: string;
+  /** Style layer the Terrain hillshade is inserted below: above the land fills, under water, roads and labels (25 §3.2). */
+  hillshadeBeforeId: string;
   routeLine: string;
   routeCasing: string;
   /** Already-crossed part of the leader trail: a neutral, faded line (opacity PASSED_OPACITY). */
@@ -139,6 +144,10 @@ export interface Tokens {
   mapPreviewWater: string;
   mapPreviewRoad: string;
   mapPreviewMajor: string;
+  /** The thin edge under the thumbnail's roads, so white roads on a pale land stay visible (24 §1.7). */
+  mapPreviewRoadEdge: string;
+  /** Map type thumbnail: the two ridge bands Terrain adds (25 §2.2). */
+  mapPreviewRelief: string;
 }
 
 const tribeLight: Tokens = {
@@ -168,8 +177,9 @@ const tribeLight: Tokens = {
   onOfflineTint: '#374151', // 9.2:1 on surface
   overlayScrim: 'rgba(17,24,39,0.6)',
   sosOnBg: '#B91C1C', // 6.5:1 on white
-  mapStyle: 'https://tiles.openfreemap.org/styles/positron',
-  routeBeforeId: 'waterway_line_label',
+  mapStyle: 'tt-liberty',
+  routeBeforeId: 'highway-name-path',
+  hillshadeBeforeId: 'waterway_tunnel',
   routeLine: '#F97316',
   routeCasing: '#9A3412',
   trailPassed: '#6B7280',
@@ -204,11 +214,13 @@ const tribeLight: Tokens = {
   pinStartFg: '#FFFFFF',
   pinEndBg: '#F97316',
   pinEndFg: '#111827',
-  mapPreviewLand: '#F2F3F0',
-  mapPreviewPark: '#E6E9E5',
-  mapPreviewWater: '#C2C8CA',
+  mapPreviewLand: '#F8F4F0',
+  mapPreviewPark: '#D8E8C8',
+  mapPreviewWater: '#9EBDFF',
   mapPreviewRoad: '#FFFFFF',
-  mapPreviewMajor: '#FFFFFF',
+  mapPreviewMajor: '#FFEEAA',
+  mapPreviewRoadEdge: '#CFCDCA',
+  mapPreviewRelief: 'rgba(84,70,52,0.28)',
 };
 
 const tribeDark: Tokens = {
@@ -237,8 +249,9 @@ const tribeDark: Tokens = {
   onOfflineTint: '#C2C8D0',
   overlayScrim: 'rgba(0,0,0,0.7)',
   sosOnBg: '#FCA5A5', // 8.9:1
-  mapStyle: 'https://tiles.openfreemap.org/styles/dark',
+  mapStyle: 'tt-dark',
   routeBeforeId: 'highway_name_other',
+  hillshadeBeforeId: 'waterway',
   routeLine: '#FB923C',
   routeCasing: '#0B0F14',
   trailPassed: '#9CA3AF',
@@ -276,8 +289,10 @@ const tribeDark: Tokens = {
   mapPreviewLand: '#0C0C0C',
   mapPreviewPark: '#202020',
   mapPreviewWater: '#1B1B1D',
-  mapPreviewRoad: '#2A2A2A',
-  mapPreviewMajor: '#3C3C3C',
+  mapPreviewRoad: '#181818',
+  mapPreviewMajor: '#121212',
+  mapPreviewRoadEdge: '#3C3C3C',
+  mapPreviewRelief: 'rgba(255,255,255,0.10)',
 };
 
 // Maps: the familiar road-map look (17). Status, SOS, rider and identity tokens are inherited unchanged
@@ -301,8 +316,9 @@ const mapsLight: Tokens = {
   onAccent: '#FFFFFF',
   meMarker: '#1A73E8',
   overlayScrim: 'rgba(32,33,36,0.6)',
-  mapStyle: 'https://tiles.openfreemap.org/styles/liberty',
-  routeBeforeId: 'waterway_line_label',
+  mapStyle: 'tt-liberty',
+  routeBeforeId: 'highway-name-path',
+  hillshadeBeforeId: 'waterway_tunnel',
   routeLine: '#1A73E8',
   routeCasing: '#185ABC',
   trailPassed: '#5F6368',
@@ -334,6 +350,8 @@ const mapsLight: Tokens = {
   mapPreviewWater: '#9EBDFF',
   mapPreviewRoad: '#FFFFFF',
   mapPreviewMajor: '#FFEEAA',
+  mapPreviewRoadEdge: '#CFCDCA',
+  mapPreviewRelief: 'rgba(84,70,52,0.28)',
 };
 
 const mapsDark: Tokens = {
@@ -355,8 +373,9 @@ const mapsDark: Tokens = {
   onAccent: '#202124',
   meMarker: '#8AB4F8',
   overlayScrim: 'rgba(0,0,0,0.7)',
-  mapStyle: 'https://tiles.openfreemap.org/styles/fiord',
-  routeBeforeId: 'water_name',
+  mapStyle: 'tt-dark',
+  routeBeforeId: 'highway_name_other',
+  hillshadeBeforeId: 'waterway',
   routeLine: '#8AB4F8',
   routeCasing: '#1B3A6B',
   trailPassed: '#9AA0A6',
@@ -383,11 +402,13 @@ const mapsDark: Tokens = {
   pinStartFg: '#202124',
   pinEndBg: '#8AB4F8',
   pinEndFg: '#062E6F',
-  mapPreviewLand: '#45516E',
-  mapPreviewPark: '#4A5D6B',
-  mapPreviewWater: '#38435C',
-  mapPreviewRoad: '#5A6A8C',
-  mapPreviewMajor: '#3C4357',
+  mapPreviewLand: '#0C0C0C',
+  mapPreviewPark: '#202020',
+  mapPreviewWater: '#1B1B1D',
+  mapPreviewRoad: '#181818',
+  mapPreviewMajor: '#121212',
+  mapPreviewRoadEdge: '#3C3C3C',
+  mapPreviewRelief: 'rgba(255,255,255,0.10)',
 };
 
 /**
@@ -501,7 +522,7 @@ export const size = {
   chip: 48, // suggestion chips (13 §4)
   rowMember: 64, // lobby row
   actionBar: 72, // bottom ride controls
-  header: 64, // ride header
+  header: 60, // ride header (20 wireframes)
   codeBox: { w: 48, h: 64 },
   navBanner: 96, // turn banner main row (21 §8)
   navThenRow: 40, // "Then" row under it

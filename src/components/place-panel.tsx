@@ -6,6 +6,7 @@ import { BigButton } from '@/components/big-button';
 import { Icon } from '@/components/icon';
 import { copy, t } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
+import { distinctAddress } from '@/lib/place-search';
 import { placeSubline, placeSummaryA11y } from '@/lib/plan-flow';
 import type { PlanPlace } from '@/store/plan-store';
 import { elevate, family, font, fontNumeric, radius, space, touchTarget, type } from '@/theme/tokens';
@@ -45,7 +46,7 @@ export function PlacePanel({ place, distanceM, onClose, onDirections, onEscape, 
       onAccessibilityEscape={onEscape}
       onLayout={(e: LayoutChangeEvent) => onLayout(e.nativeEvent.layout.height)}
       style={[styles.panel, { backgroundColor: colors.surfaceRaised, paddingBottom: space.lg + insets.bottom }, elevate('e3', scheme)]}>
-      <View ref={groupRef} accessible accessibilityLabel={placeSummaryA11y(place.name, place.address, distanceM)} style={styles.texts}>
+      <View ref={groupRef} accessible accessibilityLabel={placeSummaryA11y(place.name, distinctAddress(place.name, place.address), distanceM)} style={styles.texts}>
         <View style={styles.titleRow}>
           <Text numberOfLines={2} maxFontSizeMultiplier={1.3} style={[styles.name, { color: colors.text }]}>
             {place.name}
@@ -55,9 +56,9 @@ export function PlacePanel({ place, distanceM, onClose, onDirections, onEscape, 
         <Text numberOfLines={2} maxFontSizeMultiplier={1.3} style={[styles.sub, fontNumeric, { color: colors.text }]}>
           {placeSubline(distanceM, place.category)}
         </Text>
-        {place.address ? (
+        {distinctAddress(place.name, place.address) ? (
           <Text numberOfLines={2} maxFontSizeMultiplier={1.3} style={[styles.address, { color: colors.textMuted }]}>
-            {place.address}
+            {distinctAddress(place.name, place.address)}
           </Text>
         ) : null}
       </View>

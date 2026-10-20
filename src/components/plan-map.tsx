@@ -1,4 +1,4 @@
-import { Marker } from '@maplibre/maplibre-react-native';
+import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -40,6 +40,11 @@ export interface PlanMapProps {
   onMapPress?: () => void;
 }
 
+/** One point where the pin's tip is, as GeoJSON for the label-collision symbol. */
+function stopBox(p: { lat: number; lng: number }): GeoJSON.Feature<GeoJSON.Point> {
+  return { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } };
+}
+
 const FIT_MS = 400;
 const PLACE_MS = 400;
 const FOLLOW_MS = 450;
@@ -68,7 +73,7 @@ export function PlanMap({
   onMapError,
   onMapPress,
 }: PlanMapProps) {
-  const { colors } = useTheme();
+  const { colors, scheme, style } = useTheme();
   const mapRef = useRef<MapHandle>(null);
   const zoomRef = useRef(initial.zoom);
 
@@ -123,6 +128,7 @@ export function PlanMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [follow, meLat, meLng, pad]);
 
+  const boxData = useMemo(() => (place ? stopBox(place) : null), [place]);
   const dashed = line?.dashed ?? false;
   const opacity = faded ? 0.4 : 1;
   const lines = useMemo<MapLine[]>(() => {
@@ -153,6 +159,19 @@ export function PlanMap({
           zoomRef.current = zoom;
           onIdle({ lat: center[1], lng: center[0], zoom });
         }}>
+        {place && boxData ? (
+          // The pin is a native view, so basemap labels cannot see it and the place's own name (the town) ended up under it.
+          // This invisible symbol, on top of the style so it is placed first, takes the pin's box in the label collision
+          // pass: any label that would touch the pin is dropped instead. Sprite `circle_11` at 4x is about the pin's 44 dp.
+          <GeoJSONSource key={`plan-stop-box-${style}-${scheme}`} id="plan-stop-box" data={boxData}>
+            <Layer
+              id="plan-stop-box"
+              type="symbol"
+              layout={{ 'icon-image': 'circle_11', 'icon-size': 4, 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false }}
+              paint={{ 'icon-opacity': 0 }}
+            />
+          </GeoJSONSource>
+        ) : null}
         {place ? (
           <Marker id="plan-stop" lngLat={[place.lng, place.lat]} anchor="bottom">
             <StopPin kind={place.kind} />

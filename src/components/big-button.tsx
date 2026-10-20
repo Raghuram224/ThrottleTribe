@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
 import { PressableScale } from '@/components/pressable-scale';
+import { buttonA11yLabel, buttonText } from '@/lib/button-label';
 import { haptic } from '@/lib/haptics';
 import { family, radius, space, touchTarget, type } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
@@ -26,6 +27,8 @@ interface BigButtonProps {
   fixedShape?: boolean;
   /** Screen-reader label when it should say more than the visible label ("Start riding to Mysuru Palace"). */
   accessibilityLabel?: string;
+  /** What the label says while `loading` ("Ending ride…"); default the label. The button never goes silent (26 E1). */
+  loadingLabel?: string;
 }
 
 export function BigButton({
@@ -40,6 +43,7 @@ export function BigButton({
   trailingIcon,
   fixedShape,
   accessibilityLabel,
+  loadingLabel,
 }: BigButtonProps) {
   const { colors, scheme, traits } = useTheme();
   const inactive = disabled || loading;
@@ -65,8 +69,8 @@ export function BigButton({
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: inactive, busy: loading }}
+      accessibilityLabel={buttonA11yLabel({ label, loading, loadingLabel, accessibilityLabel })}
+      accessibilityState={{ disabled: inactive, busy: !!loading }}
       disabled={inactive}
       onPress={() => {
         haptic('select');
@@ -87,22 +91,20 @@ export function BigButton({
         { backgroundColor: palette(pressed).bg },
         variant === 'outline' && { borderWidth: 1, borderColor: colors.borderStrong },
       ]}>
-      {(pressed) =>
-        loading ? (
-          <ActivityIndicator color={palette(false).fg} />
-        ) : (
-          <View style={styles.content}>
-            {leading ?? (icon ? <Icon name={icon} color={palette(pressed).fg} size={20} /> : null)}
-            <Text
-              style={[styles.label, { color: palette(pressed).fg }]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={1.6}>
-              {label}
-            </Text>
-            {trailingIcon ? <Icon name={trailingIcon} color={palette(pressed).fg} size={20} /> : null}
-          </View>
-        )
-      }
+      {(pressed) => (
+        // Loading keeps the layout: the spinner takes the icon slot and the words stay, on the normal fill (26 E1).
+        <View style={styles.content}>
+          {loading ? (
+            <ActivityIndicator size="small" color={palette(false).fg} style={styles.spinner} />
+          ) : (
+            (leading ?? (icon ? <Icon name={icon} color={palette(pressed).fg} size={20} /> : null))
+          )}
+          <Text style={[styles.label, { color: palette(pressed).fg }]} numberOfLines={1} maxFontSizeMultiplier={1.6}>
+            {buttonText({ label, loading, loadingLabel })}
+          </Text>
+          {trailingIcon && !loading ? <Icon name={trailingIcon} color={palette(pressed).fg} size={20} /> : null}
+        </View>
+      )}
     </PressableScale>
   );
 }
@@ -116,6 +118,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   prominent: { minHeight: 60 },
+  spinner: { width: 20, height: 20 },
   content: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   // 16/22 semibold: 20/700 on every button was the loudest "cheap" signal (14 §0.2).
   label: {

@@ -1,7 +1,7 @@
 // Recent places for "Where to?" (docs/design/21 §2.2). Pure list logic, no storage and no React.
 // The list lives on this device only (see store/recents-store.ts).
 import { haversineM } from '@/lib/geo';
-import type { PlaceCategory } from '@/lib/place-search';
+import type { PlaceCategory, PlaceSource } from '@/lib/place-search';
 
 export interface RecentPlace {
   id: string;
@@ -10,6 +10,8 @@ export interface RecentPlace {
   lat: number;
   lng: number;
   category: PlaceCategory;
+  /** Who found it (the credit line, 24 §2.4); entries saved before Geoapify have none and read as Photon. */
+  source: PlaceSource;
   /** ms since epoch of the last time navigation started to this place. */
   usedAt: number;
 }
@@ -39,12 +41,18 @@ export function addRecent(
     lat: place.lat,
     lng: place.lng,
     category: place.category,
+    source: place.source,
     usedAt: now,
   };
   return [entry, ...kept].slice(0, MAX_RECENTS);
 }
 
-function isRecent(v: unknown): v is RecentPlace {
+const SOURCES: readonly PlaceSource[] = ['geoapify', 'photon'];
+
+/** An entry as stored: `source` may be missing (written before spec 24). */
+type StoredRecent = Omit<RecentPlace, 'source'> & { source?: unknown };
+
+function isRecent(v: unknown): v is StoredRecent {
   if (!v || typeof v !== 'object') return false;
   const r = v as Record<string, unknown>;
   return (
@@ -60,7 +68,8 @@ function isRecent(v: unknown): v is RecentPlace {
     Math.abs(r.lat) <= 90 &&
     Math.abs(r.lng) <= 180 &&
     CATEGORIES.includes(r.category as PlaceCategory) &&
-    typeof r.usedAt === 'number'
+    typeof r.usedAt === 'number' &&
+    (r.source === undefined || SOURCES.includes(r.source as PlaceSource))
   );
 }
 
@@ -72,6 +81,7 @@ export function parseRecents(raw: string | null | undefined): RecentPlace[] {
     if (!Array.isArray(json)) return [];
     return json
       .filter(isRecent)
+      .map((r): RecentPlace => ({ ...r, source: r.source === 'geoapify' ? 'geoapify' : 'photon' }))
       .sort((a, b) => b.usedAt - a.usedAt)
       .slice(0, MAX_RECENTS);
   } catch {

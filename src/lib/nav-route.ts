@@ -1,7 +1,10 @@
-// Route from my position to the shared next stop (docs/design/19 "Route to the stop"). OSRM demo
-// server, drawn only on my phone. Pure helpers plus one fetch wrapper; no React.
+// Route from my position to the shared next stop (docs/design/19 "Route to the stop", 24 §3). Requests go through the
+// `geo` Edge Function (LocationIQ Directions, OSRM-shaped JSON); drawn only on my phone. Pure helpers plus one fetch
+// wrapper; no React.
 import { t } from '@/lib/copy';
-import { ROUTING_SUPPORTS_EXCLUDE, ROUTING_URL } from '@/lib/flags';
+import { ROUTING_DIRECT, ROUTING_FALLBACK_ALLOWED, ROUTING_SUPPORTS_EXCLUDE, ROUTING_URL } from '@/lib/flags';
+import { createOncePerWindow, geoCall } from '@/lib/geo-api';
+import { pauseRemainingS, ROUTING_DAY_PAUSE_MS, type RateScope } from '@/lib/route-limits';
 import { formatDistance, formatDuration } from '@/lib/format';
 import { buildPlainTrail, buildTrail, haversineM, projectOntoTrail, type LatLng, type Trail } from '@/lib/geo';
 import { parseSteps, type NavStep } from '@/lib/nav-steps';
@@ -19,6 +22,9 @@ export const REROUTE_FAR_INTERVAL_MS = 5_000;
 /** Within this of the stop counts as arrived. */
 export const ARRIVED_WITHIN_M = 150;
 
+/** Who computed a route: the credit shown with it names this (24 §4). */
+export type RouteProvider = 'locationiq' | 'osrm';
+
 export interface NavRoute {
   /** Road geometry, start to stop. */
   coords: LatLng[];
@@ -29,6 +35,8 @@ export interface NavRoute {
    * it was asked for but the server rejected it (this route may use expressways), undefined = not asked for.
    */
   avoidedMotorways?: boolean;
+  /** The service that produced it; the credit follows. Undefined only for routes built outside a fetch. */
+  provider?: RouteProvider;
   /** Turn steps (21 §3.2); undefined when the route was fetched without `steps=true`. */
   steps?: NavStep[];
 }
@@ -45,6 +53,8 @@ export interface NavRouteOptions {
    * route cached for an origin up to ~100 m behind me). Not part of the request or the cache key.
    */
   noCache?: boolean;
+  /** Who asks, for the `route.rate_limited` telemetry only (not part of the request or the cache key). */
+  context?: 'preview' | 'nav' | 'stop';
 }
 
 export function buildOsrmUrl(from: LatLng, to: LatLng, o: NavRouteOptions = {}): string {
@@ -127,6 +137,9 @@ export function setExcludeRejectedListener(fn: (() => void) | null): void {
 /** Test helper. */
 export function resetRoutingMemo(): void {
   excludeUnsupportedAt = null;
+  routingPausedUntil = null;
+  geoNotConfiguredAt = null;
+  rateLimitedGate = createOncePerWindow(10 * 60_000);
   cache.length = 0;
 }
 
@@ -134,10 +147,35 @@ export function resetRoutingMemo(): void {
 
 export type NavRouteResult =
   | { status: 'ok'; route: NavRoute }
-  /** OSRM answered but there is no road between the points. */
+  /** The router answered but there is no road between the points. */
   | { status: 'no_route' }
   /** Offline, timeout, server error or an unreadable answer. */
-  | { status: 'failed' };
+  | { status: 'failed' }
+  /** A rate limit (24 §3.3): the caller waits `retryAfterS` (see lib/route-limits.ts for the rules). */
+  | { status: 'rate_limited'; scope: RateScope; retryAfterS: number };
+
+// ---------------------------------------------------------------- limits and fallback memos (module state)
+
+/** A daily limit pauses every route request until then (24 §3.3); then one probe goes out. */
+let routingPausedUntil: number | null = null;
+/** The `geo` function said routing is not configured: use the OSRM URL without asking again for a while. */
+export const GEO_NOT_CONFIGURED_MEMO_MS = 10 * 60_000;
+let geoNotConfiguredAt: number | null = null;
+let rateLimitedGate = createOncePerWindow(10 * 60_000);
+let rateLimitedListener: ((scope: RateScope, context: 'preview' | 'nav' | 'stop') => void) | null = null;
+
+/** Epoch ms until which routing is paused by a daily limit; null when it is not. */
+export function routingPausedUntilMs(now: number): number | null {
+  return routingPausedUntil !== null && now < routingPausedUntil ? routingPausedUntil : null;
+}
+
+/**
+ * Told when a route request was rate limited, at most once per scope and context per 10 minutes (the root layout wires
+ * it to telemetry; this module stays free of app services).
+ */
+export function setRouteRateLimitedListener(fn: typeof rateLimitedListener): void {
+  rateLimitedListener = fn;
+}
 
 /** In-memory cache (21 §3.1): key `round(from,3)|to|opts`, 5 min, 4 entries. A back-and-forth does not refetch. */
 const CACHE_MAX = 4;
@@ -177,6 +215,9 @@ interface Answer {
   ok: boolean;
   status: number;
   body: unknown;
+  provider?: RouteProvider;
+  /** Set when the answer is a rate limit (no body to read). */
+  limited?: { scope: RateScope; retryAfterS: number };
 }
 
 /**
@@ -202,7 +243,45 @@ export async function fetchNavRouteResult(
     if (signal.aborted) controller.abort();
     else signal.addEventListener('abort', onAbort, { once: true });
   }
+  const limited = (scope: RateScope, retryAfterS: number): Answer => {
+    const context = opts.context ?? 'nav';
+    if (rateLimitedGate(`${scope}:${context}`, Date.now())) rateLimitedListener?.(scope, context);
+    return { ok: false, status: 429, body: null, limited: { scope, retryAfterS } };
+  };
   const request = async (o: NavRouteOptions): Promise<Answer> => {
+    if (!ROUTING_DIRECT) {
+      const now = Date.now();
+      const paused = pauseRemainingS(routingPausedUntil, now);
+      if (paused > 0) return limited('day', paused);
+      const memoActive = geoNotConfiguredAt !== null && now - geoNotConfiguredAt < GEO_NOT_CONFIGURED_MEMO_MS;
+      // A not-configured function in a build that may not use the demo: no request at all until the memo lapses.
+      if (memoActive && !ROUTING_FALLBACK_ALLOWED) return { ok: false, status: 503, body: null };
+      if (!memoActive) {
+        const r = await geoCall(
+          {
+            op: 'route',
+            from,
+            to,
+            steps: !!o.steps,
+            ...(o.bearingDeg != null && Number.isFinite(o.bearingDeg) ? { bearingDeg: o.bearingDeg } : {}),
+          },
+          { timeoutMs: ROUTE_TIMEOUT_MS, signal: controller.signal },
+        );
+        if (r.ok) return { ok: true, status: 200, body: r.data, provider: 'locationiq' };
+        const f = r.failure;
+        if (f.kind === 'rate_limited') {
+          if (f.scope === 'day') routingPausedUntil = Date.now() + ROUTING_DAY_PAUSE_MS;
+          return limited(f.scope, f.retryAfterS);
+        }
+        // Not configured (no LocationIQ key, or `geo` not deployed): the OSRM URL below, but only in a dev build or behind
+        // EXPO_PUBLIC_ROUTING_DEMO_FALLBACK=1 (deviation from spec 24 S10). Otherwise, and for any other failure
+        // (counters down, 5xx, timeout), it is a failed route.
+        if (f.kind === 'not_configured') {
+          geoNotConfiguredAt = Date.now();
+          if (!ROUTING_FALLBACK_ALLOWED) return { ok: false, status: 503, body: null };
+        } else return { ok: false, status: f.kind === 'timeout' ? 504 : 502, body: null };
+      }
+    }
     const res = await fetch(buildOsrmUrl(from, to, o), { signal: controller.signal, headers: routingHeaders() });
     let body: unknown = null;
     try {
@@ -210,15 +289,19 @@ export async function fetchNavRouteResult(
     } catch {
       // An unreadable body is a failure below (status decides).
     }
-    return { ok: res.ok, status: res.status, body };
+    return { ok: res.ok, status: res.status, body, provider: 'osrm' };
   };
   const finish = (a: Answer, avoided: boolean | undefined): NavRouteResult => {
+    if (a.limited) return { status: 'rate_limited', scope: a.limited.scope, retryAfterS: a.limited.retryAfterS };
     const code = (a.body as { code?: unknown } | null)?.code;
     if (code === 'NoRoute') return { status: 'no_route' };
     if (!a.ok) return { status: 'failed' };
     const route = parseOsrmResponse(a.body);
     if (!route) return { status: Array.isArray((a.body as { routes?: unknown } | null)?.routes) ? 'no_route' : 'failed' };
-    const full = avoided === undefined ? route : { ...route, avoidedMotorways: avoided };
+    // A route from `geo` (LocationIQ) never carries `exclude`: it must not claim to have avoided expressways.
+    const claim = a.provider === 'locationiq' ? undefined : avoided;
+    const withProvider = a.provider ? { ...route, provider: a.provider } : route;
+    const full = claim === undefined ? withProvider : { ...withProvider, avoidedMotorways: claim };
     // Keyed again now: a rejection just remembered by the memo changes what the key means.
     if (!opts.noCache) cacheSet(routeCacheKey(from, to, opts), full, Date.now());
     return { status: 'ok', route: full };
@@ -233,6 +316,7 @@ export async function fetchNavRouteResult(
       return finish(await request({ ...opts, avoidMotorways: false }), false);
     }
     const first = await request(opts);
+    if (first.limited) return finish(first, undefined);
     if (excludeRejected(first.status, first.body, true)) {
       excludeUnsupportedAt = Date.now();
       excludeRejectedListener?.();

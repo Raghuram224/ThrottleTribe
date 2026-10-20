@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, BackHandler, Easing, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Animated, BackHandler, Easing, Pressable, ScrollView, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import ReanimatedView from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -34,20 +34,23 @@ import {
   buildRideLog,
   buildSos,
   buildStops,
+  distanceTooShort,
+  durationTooBrief,
+  summaryTimeParts,
   filterSamples,
   formatRideRange,
   leftEarly,
   rideDurationMs,
   summaryShareMessage,
+  summaryMapHeight,
   summaryShareVisible,
   sumDistanceM,
   type SummarySample,
 } from '@/lib/summary';
 import { useRideStore } from '@/store/ride-store';
-import { elevate, elevation, family, font, motion, radius, space } from '@/theme/tokens';
+import { elevate, elevation, family, font, motion, radius, size, space, type } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
-const MAP_H = 300;
 const SHEET_OVERLAP = 24;
 
 type Load =
@@ -64,7 +67,10 @@ type Load =
 
 /** Ride ended (08, 13 §9, 16 §4): route map hero, stats, ride log, riders. Calm, never gamified. */
 export default function Summary() {
-  const { colors, scheme } = useTheme();
+  const { colors, scheme, traits } = useTheme();
+  const { height: windowH } = useWindowDimensions();
+  // From the window only (never from the data), so the route fit does not jump when the ride loads.
+  const mapH = summaryMapHeight(windowH);
   const insets = useSafeAreaInsets();
   const { rideId } = useRideActions();
   const ride = useRideStore((s) => s.ride);
@@ -143,14 +149,18 @@ export default function Summary() {
     useRideStore.getState().reset();
   }, []);
 
-  // Android back = Back to home.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      goHome();
-      return true;
-    });
-    return () => sub.remove();
-  }, [goHome]);
+  // Android back = Back to home. Registered per focus (as the live and Home screens do), so the handler is on top of the
+  // stack whenever the summary is the screen in front, whatever mounted or unmounted around it; if none handles Back,
+  // Android closes the app.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        goHome();
+        return true;
+      });
+      return () => sub.remove();
+    }, [goHome]),
+  );
 
   const riders = useMemo(
     () =>
@@ -163,19 +173,21 @@ export default function Summary() {
   );
 
   const durationMs = rideDurationMs(startedAt, endedAt);
-  const durationText = durationMs !== null ? formatDuration(durationMs) : '—';
+  const durationText = durationMs === null ? '—' : durationTooBrief(durationMs) ? copy['summary.underMinute'] : formatDuration(durationMs);
   const ready = load.status === 'ready';
   const distanceM = load.status === 'ready' ? load.distanceM : null;
   const route = load.status === 'ready' ? load.route : null;
   const showMap = !cancelled && !!route;
   const early = riders.filter((m) => leftEarly(m.leftAt, endedAt)).length;
-  const avg = averageKmh(distanceM, durationMs);
+  // Under 50 m is "too short to measure" (26 S1): no hero distance, no average, no km in the share text.
+  const tooShort = distanceTooShort(distanceM);
+  const avg = tooShort ? null : averageKmh(distanceM, durationMs);
 
   // Share ride (P1): never after an SOS, never for a cancelled ride. No names, no location.
   const canShare = summaryShareVisible({ cancelled, ready, sosCount: load.status === 'ready' ? load.sosCount : 0 });
   const shareRide = () => {
     void Share.share({
-      message: summaryShareMessage({ distanceM, riders: riders.length, durationMs }),
+      message: summaryShareMessage({ distanceM: tooShort ? null : distanceM, riders: riders.length, durationMs }),
     }).catch(() => {});
   };
 
@@ -224,7 +236,7 @@ export default function Summary() {
       {/* The map bleeds under the status bar: the layout's safe-area padding is pulled back out. */}
       <ScrollView style={{ marginTop: -insets.top }} contentContainerStyle={styles.body}>
         {showMap && route ? (
-          <ReanimatedView.View entering={mapEnter} style={styles.map}>
+          <ReanimatedView.View entering={mapEnter} style={[styles.map, { height: mapH }]}>
             <SummaryRouteMap points={route} fitNonce={fitNonce} />
             <ScrimTop />
             <View style={[styles.floatRow, { top: insets.top + space.sm }]} pointerEvents="box-none">
@@ -237,7 +249,7 @@ export default function Summary() {
             <Hero
               cancelled={cancelled}
               meta={heroMeta}
-              heroKind={distanceM !== null ? 'distance' : 'duration'}
+              heroKind={distanceM !== null && !tooShort ? 'distance' : 'duration'}
               loading={!cancelled && load.status === 'loading'}
               distanceM={distanceM}
               durationText={durationText}
@@ -285,7 +297,7 @@ export default function Summary() {
           ) : (
             <>
               {distanceM !== null ? (
-                <Stats distanceM={distanceM} durationMs={durationMs} avg={avg} reduce={reduce} />
+                <Stats distanceM={distanceM} durationMs={durationMs} avg={avg} reduce={reduce} tooShort={tooShort} />
               ) : null}
               <RideLog entries={load.log} />
             </>
@@ -308,7 +320,7 @@ export default function Summary() {
             accessibilityRole="button"
             accessibilityLabel={copy['summary.share']}
             onPress={shareRide}
-            style={(pressed) => [styles.shareBtn, { backgroundColor: pressed ? colors.surfacePressed : colors.surface }]}>
+            style={(pressed) => [styles.shareBtn, { borderRadius: traits.buttonRadius, backgroundColor: pressed ? colors.surfacePressed : colors.surface }]}>
             <Icon name="share" color={colors.text} size={22} />
           </PressableScale>
         ) : null}
@@ -326,19 +338,22 @@ function Stats({
   durationMs,
   avg,
   reduce,
+  tooShort,
 }: {
   distanceM: number;
   durationMs: number | null;
   avg: number | null;
   reduce: boolean;
+  /** Under 50 m: "< 50 m", no count-up, no average (26 S1). */
+  tooShort: boolean;
 }) {
-  const progress = useCountUp(true, reduce);
-  const [num, unit] = countUpDistanceText(distanceM, progress).split(' ');
+  const progress = useCountUp(!tooShort, reduce);
+  const [num, unit] = tooShort ? ['< 50', 'm'] : countUpDistanceText(distanceM, progress).split(' ');
   const distParts: StatPart[] = [
     { text: num, unit: false },
     { text: ` ${unit}`, unit: true },
   ];
-  const timeParts = durationMs !== null ? saddleParts(durationMs) : [{ text: '—', unit: false }];
+  const timeParts = summaryTimeParts(durationMs, saddleParts);
   const items = [
     { parts: distParts, label: copy['summary.youRode'], big: true },
     { parts: timeParts, label: copy['summary.time'] },
@@ -348,10 +363,15 @@ function Stats({
   ];
   const spoken = t('summary.a11yStats', {
     distance: formatDistance(distanceM),
-    duration: durationMs !== null ? formatDuration(durationMs) : 'unknown time',
+    duration: durationMs !== null ? (durationTooBrief(durationMs) ? copy['summary.a11yUnderMinute'] : formatDuration(durationMs)) : 'unknown time',
     speed: avg ?? 0,
   });
-  return <StatRow items={items} accessibilityLabel={avg !== null ? spoken : `${formatDistance(distanceM)} you rode`} />;
+  const label = tooShort
+    ? `${copy['summary.a11yUnder50']}${durationMs !== null ? `, ${durationTooBrief(durationMs) ? copy['summary.a11yUnderMinute'] : formatDuration(durationMs)}` : ''}`
+    : avg !== null
+      ? spoken
+      : `${formatDistance(distanceM)} you rode`;
+  return <StatRow items={items} accessibilityLabel={label} />;
 }
 
 /** 80 dp scrim at the top of the map so the status bar stays legible: bg at 0.9 fading out. */
@@ -375,7 +395,7 @@ function MapButton({ icon, label, onPress }: { icon: IconName; label: string; on
       accessibilityLabel={label}
       onPress={onPress}
       style={[styles.mapBtn, { backgroundColor: colors.fabBg }, elevate('e2', scheme)]}>
-      <Icon name={icon} color={colors.fabIcon} size={22} />
+      <Icon name={icon} color={colors.fabIcon} size={24} />
     </PressableScale>
   );
 }
@@ -561,12 +581,13 @@ const RiderLine = memo(function RiderLine({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  body: { paddingBottom: space.lg },
-  map: { height: MAP_H, overflow: 'hidden' },
+  // flexGrow: the content sheet reaches the footer (no dead band, 26 S2).
+  body: { flexGrow: 1, paddingBottom: 0 },
+  map: { overflow: 'hidden' },
   scrim: { position: 'absolute', top: 0, left: 0, right: 0 },
   floatRow: { position: 'absolute', left: space.lg, right: space.lg, flexDirection: 'row', justifyContent: 'space-between' },
-  mapBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  sheet: { padding: space.lg, gap: space.lg },
+  mapBtn: { width: size.mapControl, height: size.mapControl, borderRadius: size.mapControl / 2, alignItems: 'center', justifyContent: 'center' },
+  sheet: { flexGrow: 1, padding: space.lg, paddingBottom: space.lg, gap: space.lg },
   sheetOverlap: {
     marginTop: -SHEET_OVERLAP,
     borderTopLeftRadius: radius.xl,
@@ -586,12 +607,12 @@ const styles = StyleSheet.create({
   block: { gap: space.sm },
   ridersHead: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md },
   stack: { flexDirection: 'row', alignItems: 'center' },
-  ridersTitle: { fontSize: 15, lineHeight: 22, fontFamily: family.semibold },
-  ridersSub: { fontSize: 13, lineHeight: 18, fontFamily: family.regular },
+  ridersTitle: { fontSize: type.bodyStrong.size, lineHeight: type.bodyStrong.line, fontFamily: family.semibold },
+  ridersSub: { fontSize: type.caption.size, lineHeight: type.caption.line, fontFamily: family.regular },
   ridersList: { paddingHorizontal: space.md, paddingBottom: space.md },
   rider: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   riderName: { flexShrink: 1, fontFamily: family.semibold },
   bold: { fontFamily: family.bold },
-  footer: { padding: space.md, flexDirection: 'row', gap: space.md },
-  shareBtn: { width: 56, height: 56, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  footer: { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md, flexDirection: 'row', gap: space.md },
+  shareBtn: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
 });

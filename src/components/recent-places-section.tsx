@@ -52,7 +52,7 @@ export function RecentPlacesSection({ me, onPick, onClear, limit, skip = 0, head
           ) : null}
         </View>
       ) : null}
-      {shown.map((r) => {
+      {shown.map((r, i) => {
         const place = asPlace(r);
         return (
           <PlaceRow
@@ -63,6 +63,7 @@ export function RecentPlacesSection({ me, onPick, onClear, limit, skip = 0, head
             distanceM={place.distanceM}
             leading={<Icon name="history" color={colors.textMuted} size={20} />}
             recentLabel={!header}
+            divider={i < shown.length - 1}
             onPress={() => onPick(place)}
           />
         );

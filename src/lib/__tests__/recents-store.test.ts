@@ -14,7 +14,7 @@ beforeEach(() => {
   useRecentsStore.setState({ recents: [] });
 });
 
-const place = (id: string, lat: number) => ({ id, name: `P${id}`, address: '', lat, lng: 77, category: 'other' as const });
+const place = (id: string, lat: number) => ({ id, name: `P${id}`, address: '', lat, lng: 77, category: 'other' as const, source: 'photon' as const });
 
 describe('recents store', () => {
   it('adds newest first, persists, and dedupes by id', () => {

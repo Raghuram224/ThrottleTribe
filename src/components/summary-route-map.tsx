@@ -1,15 +1,18 @@
 import { Marker } from '@maplibre/maplibre-react-native';
 import { useEffect, useMemo, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { MapCreditPill } from '@/components/map-credit-pill';
 import { MapLibreMap } from '@/components/map/maplibre-map';
 import type { MapHandle, MapLine } from '@/components/map/types';
 import { RoutePin } from '@/components/route-pin';
+import { useTerrainOn } from '@/hooks/use-terrain-on';
 import { copy } from '@/lib/copy';
+import { pillLines } from '@/lib/credits';
+import { DEM_PROVIDER } from '@/lib/flags';
 import type { LatLng } from '@/lib/geo';
 import { fitBoundsFor } from '@/lib/map-fit';
 import { CASING_WIDTH, ROUTE_WIDTH } from '@/lib/route-style';
-import { family, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
 /** Camera padding (16 §4): room for the status bar buttons above and the sheet overlap below. */
@@ -29,6 +32,7 @@ interface SummaryRouteMapProps {
  */
 export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
   const { colors } = useTheme();
+  const terrain = useTerrainOn();
   const mapRef = useRef<MapHandle>(null);
   const bounds = useMemo(() => fitBoundsFor(points, FIT_MIN_SPAN_M), [points]);
   const initialCamera = useMemo(
@@ -67,16 +71,8 @@ export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
           <RoutePin kind="end" />
         </Marker>
       </MapLibreMap>
-      <View pointerEvents="none" style={styles.attribution}>
-        <Text maxFontSizeMultiplier={1.2} style={[styles.attributionText, { color: colors.textMuted }]}>
-          {copy['live.attribution']}
-        </Text>
-      </View>
+      <MapCreditPill lines={pillLines({ kind: 'plain' }, terrain, DEM_PROVIDER).map((k) => copy[k])} style={{ bottom: 30 }} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  attribution: { position: 'absolute', left: space.sm, bottom: 30 },
-  attributionText: { fontSize: 10, lineHeight: 14, fontFamily: family.regular },
-});

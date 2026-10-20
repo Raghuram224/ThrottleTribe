@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibregl, { type LngLatBoundsLike, type Map as MlMap } from 'maplibre-gl';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Reanimated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
 import { Icon } from '@/components/icon';
@@ -16,7 +16,14 @@ import { StopPin } from '@/components/stop-pin';
 import { MapControls } from '@/components/map-controls';
 import { useNavCamera, type CameraAdapter } from '@/hooks/use-nav-camera';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
+import { useTerrainOn } from '@/hooks/use-terrain-on';
+import { mapStyleFor } from '@/lib/map-styles';
+import { MapCreditPill } from '@/components/map-credit-pill';
 import { copy } from '@/lib/copy';
+import { pillLineCount, pillLines, pillMaxWidth } from '@/lib/credits';
+import { DEM_PROVIDER } from '@/lib/flags';
+import { runWhenStyleReady } from '@/lib/map-ready-web';
+import { syncHillshade } from '@/lib/hillshade-web';
 import { mapControlVisibility, meSlotKind } from '@/lib/live-chrome';
 import type { Trail } from '@/lib/geo';
 import { fitBoundsFor, type Bounds } from '@/lib/map-fit';
@@ -293,12 +300,17 @@ export function RideMap({
     [navLine, meLat, meLng],
   );
   const navDashed = navLine?.dashed ?? false;
-  // OSRM must be credited wherever a road route is drawn (21 §5.1); the dashed fallback is no OSRM data.
-  const attribution = navLine && !navLine.dashed ? copy['live.attributionRoute'] : copy['live.attribution'];
+  // A road route drawn means LocationIQ data: the pill names it on a second line (24 §4.2). The dashed line is no route data.
+  const roadRoute = !!navLine && !navLine.dashed;
+  // Terrain adds its own last line while the hillshade is mounted (25 §5.1).
+  const terrain = useTerrainOn();
+  const pillKeys = pillLines({ kind: 'live', roadRoute, provider: navLine?.provider }, terrain, DEM_PROVIDER);
+  const creditLines = pillLineCount(pillKeys);
 
   // The trail first, then my route, so the route layers always end up above it.
   const syncTrail = useCallback(
     (m: MlMap) => {
+      syncHillshade(m, { on: terrain, scheme, beforeId: colors.hillshadeBeforeId, provider: DEM_PROVIDER });
       syncLeaderTrailLayers(m, trailRef.current, {
         routeLine: colors.routeLine,
         routeCasing: colors.routeCasing,
@@ -309,7 +321,7 @@ export function RideMap({
         navRouteCasing: colors.navRouteCasing,
       });
     },
-    [colors.routeLine, colors.routeCasing, colors.trailPassed, colors.navRoute, colors.navRouteCasing],
+    [colors.routeLine, colors.routeCasing, colors.trailPassed, colors.navRoute, colors.navRouteCasing, colors.hillshadeBeforeId, terrain, scheme],
   );
   const syncTrailRef = useRef(syncTrail);
   useEffect(() => {
@@ -325,7 +337,7 @@ export function RideMap({
     const initialBounds = fitBoundsFor(first);
     const m = new maplibregl.Map({
       container,
-      style: styleUrl.current,
+      style: mapStyleFor(styleUrl.current) as unknown as maplibregl.StyleSpecification,
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
@@ -374,13 +386,14 @@ export function RideMap({
   useEffect(() => {
     if (!map || styleUrl.current === colors.mapStyle) return;
     styleUrl.current = colors.mapStyle;
-    map.setStyle(colors.mapStyle);
+    // No diff: a diffed swap keeps the layers we added (route, hillshade) out of `style.load`, so they would never be re-added.
+    map.setStyle(mapStyleFor(colors.mapStyle) as unknown as maplibregl.StyleSpecification, { diff: false });
   }, [map, colors.mapStyle]);
 
   useEffect(() => {
     trailRef.current = trailData;
     navRef.current = { data: navGeoJson, dashed: navDashed };
-    if (map) syncTrail(map);
+    if (map) runWhenStyleReady(map, () => syncTrail(map));
   }, [map, trailData, navGeoJson, navDashed, syncTrail]);
 
   const markPress = useCallback(() => {
@@ -393,7 +406,8 @@ export function RideMap({
   const trailStart = trail.points.length >= 2 ? trail.points[0] : null;
   const hasRiders = riders.length > 0;
   const overview = nav.mode === 'overview';
-  const vis = mapControlVisibility({ controlsHidden, mapVisH, positionedRiders: riders.length, navActive: !!voice });
+  const { width: windowW, fontScale } = useWindowDimensions();
+  const vis = mapControlVisibility({ controlsHidden, mapVisH, positionedRiders: riders.length, navActive: !!voice, creditLines, fontScale });
   const controlsStyle = useAnimatedStyle(() => ({ transform: [{ translateY: overlayShift.value }] }));
 
   const onClusterPress = (members: MapRider[]) => {
@@ -498,11 +512,10 @@ export function RideMap({
       <Reanimated.View
         pointerEvents="box-none"
         style={[styles.overlay, { bottom: overlayBottomInset }, controlsStyle]}>
-        <View pointerEvents="none" style={[styles.attribution, { backgroundColor: colors.surfaceRaised }]}>
-          <Text maxFontSizeMultiplier={1.3} style={[styles.attributionText, { color: colors.text }]}>
-            {attribution}
-          </Text>
-        </View>
+        <MapCreditPill
+          lines={pillKeys.map((k) => copy[k])}
+          maxWidth={pillMaxWidth(windowW, vis.rightColumn)}
+        />
         <MapControls
           vis={vis}
           meSlot={meSlotKind(nav.mode, speedKmh)}
@@ -688,15 +701,5 @@ const styles = StyleSheet.create({
   },
   waitingText: { fontSize: font.sm, fontFamily: family.semibold },
   overlay: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 0 },
-  attribution: {
-    position: 'absolute',
-    left: space.sm,
-    bottom: space.sm,
-    borderRadius: 8,
-    paddingHorizontal: space.sm,
-    paddingVertical: 2,
-    opacity: 0.85,
-  },
-  attributionText: { fontSize: font.xs, fontFamily: family.regular },
   startDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 3 },
 });

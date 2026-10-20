@@ -1,11 +1,15 @@
 import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
+import { parseMapLayer, type MapLayer } from '@/lib/dem';
 import { setHapticsEnabled } from '@/lib/haptics';
 import { setCurrentStyle } from '@/theme/current-style';
 import { parseThemeStyle, type ThemeStyle } from '@/theme/tokens';
 import type { SheetSnap } from '@/lib/live-sheet';
 import { readItem, STORAGE_KEYS, writeItem } from '@/lib/storage';
+import { track } from '@/lib/telemetry';
+
+export { parseMapLayer, type MapLayer };
 
 export type ThemePref = 'auto' | 'light' | 'dark';
 export const STOP_THRESHOLDS_S = [60, 180, 300] as const;
@@ -50,6 +54,10 @@ interface PrefsState {
    */
   allowExpressways: boolean;
   setAllowExpressways: (on: boolean) => void;
+  /** Map type (25 T2): Standard or Terrain (hillshade). Applies to Home, live and the summary; default Standard. */
+  mapLayer: MapLayer;
+  /** `from` is for telemetry only: which screen the rider changed it on. */
+  setMapLayer: (layer: MapLayer, from: 'home' | 'profile') => void;
   setThemePref: (pref: ThemePref) => void;
   setStopThresholdS: (seconds: number) => void;
 }
@@ -88,6 +96,13 @@ export const usePrefsStore = create<PrefsState>((set) => ({
   setAllowExpressways: (on) => {
     writeItem(STORAGE_KEYS.allowExpressways, on ? '1' : '0');
     set({ allowExpressways: on });
+  },
+  mapLayer: parseMapLayer(readItem(STORAGE_KEYS.mapLayer)),
+  setMapLayer: (layer, from) => {
+    if (layer === usePrefsStore.getState().mapLayer) return;
+    writeItem(STORAGE_KEYS.mapLayer, layer);
+    set({ mapLayer: layer });
+    track('map.layer_changed', { layer, from });
   },
   setThemePref: (pref) => {
     writeItem(STORAGE_KEYS.themePref, pref);

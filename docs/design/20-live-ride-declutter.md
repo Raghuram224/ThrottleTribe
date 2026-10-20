@@ -1,5 +1,8 @@
 # 20 — Live ride declutter
 
+> **2026-10-20, see 26 §3–4:** header pill follows the banner ("Connecting" / "Offline"); status- and nav-bar bands take
+> the header / action-bar colour; sheet info tiles are all circles; "Share code" leaves the live ⋯ menu (pending the user).
+
 Source: user feedback "the live-ride screen looks congested" + QA screenshot (Android emulator, Maps style,
 light, solo ride, destination set, sheet at `half`, camera free after framing the stop). Builds on 06, 07,
 13, 14, 16, 17, 19. Code read: `src/app/(app)/ride/[id]/{live,_layout}.tsx`, `live-sheet.tsx`,
@@ -209,7 +212,8 @@ Every value comes from `src/theme/tokens.ts`. New tokens are in §3.
   **Amendment (review):** the screen no longer passes `controlsHidden` for `expanded`. A tall sheet can
   still leave plenty of map (e.g. 224 dp), and the two `mapVisH` thresholds already hide the controls when
   there is not enough; the `controlsHidden` prop stays in the pure rule but is always `false` on this screen.
-- Attribution unchanged (bottom-left, 12 regular, `surfaceRaised` @ 0.85).
+- Attribution unchanged (bottom-left, 12 regular, `surfaceRaised` @ 0.85). **Text and a second line (route credit)
+  changed by 24 §4.2; `ATTRIBUTION_CLEAR` becomes `attributionClear(lines)` = 40 / 56.**
 - Files: `ride-map.tsx`, `ride-map.web.tsx` (same changes), `live.tsx` (pass `riderCount`/`fitAllShown`
   and `mapVisH` or the hide flags), `tokens.ts`.
 

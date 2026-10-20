@@ -15,6 +15,7 @@ import {
   Easing,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -25,13 +26,19 @@ import { MeMarker } from '@/components/me-marker';
 import { RiderAvatar } from '@/components/rider-avatar';
 import { StopPin } from '@/components/stop-pin';
 import { MapControls } from '@/components/map-controls';
+import { TerrainLayer } from '@/components/map/terrain-layer';
 import { navRouteLayerProps } from '@/components/route-layers';
+import { useTerrainOn } from '@/hooks/use-terrain-on';
 import { useNavCamera, type CameraAdapter } from '@/hooks/use-nav-camera';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
+import { MapCreditPill } from '@/components/map-credit-pill';
 import { copy } from '@/lib/copy';
+import { pillLineCount, pillLines, pillMaxWidth } from '@/lib/credits';
+import { DEM_PROVIDER } from '@/lib/flags';
 import { mapControlVisibility, meSlotKind } from '@/lib/live-chrome';
 import type { Trail } from '@/lib/geo';
 import { fitBoundsFor } from '@/lib/map-fit';
+import { mapStyleJsonFor } from '@/lib/map-styles';
 import { CLUSTER_DP, drawOrder, meCoversCluster, spreadDp } from '@/lib/marker-cluster';
 import { centerPadding, followPitch, normalizeDeg } from '@/lib/nav-camera';
 import { markerLiftStyle } from '@/components/marker-lift';
@@ -267,8 +274,12 @@ export function RideMap({
   );
   const stopLngLat = useMemo<[number, number] | null>(() => (stop ? [stop.lng, stop.lat] : null), [stop]);
   const navLayers = navRouteLayerProps(colors, navLine?.dashed ?? false);
-  // OSRM must be credited wherever a road route is drawn (21 §5.1); the dashed fallback is no OSRM data.
-  const attribution = navLine && !navLine.dashed ? copy['live.attributionRoute'] : copy['live.attribution'];
+  // A road route drawn means LocationIQ data: the pill names it on a second line (24 §4.2). The dashed line is no route data.
+  const roadRoute = !!navLine && !navLine.dashed;
+  // Terrain adds its own last line while the hillshade is mounted (25 §5.1).
+  const terrain = useTerrainOn();
+  const pillKeys = pillLines({ kind: 'live', roadRoute, provider: navLine?.provider }, terrain, DEM_PROVIDER);
+  const creditLines = pillLineCount(pillKeys);
 
   // Screen-space clusters (< 44 dp apart); riders near an SOS marker are nudged clear of it. Draw
   // order: riders and clusters, my dot, then SOS on top of everything.
@@ -305,7 +316,8 @@ export function RideMap({
 
   const hasRiders = riders.length > 0;
   const overview = nav.mode === 'overview';
-  const vis = mapControlVisibility({ controlsHidden, mapVisH, positionedRiders: riders.length, navActive: !!voice });
+  const { width: windowW, fontScale } = useWindowDimensions();
+  const vis = mapControlVisibility({ controlsHidden, mapVisH, positionedRiders: riders.length, navActive: !!voice, creditLines, fontScale });
   const controlsStyle = useAnimatedStyle(() => ({ transform: [{ translateY: overlayShift.value }] }));
 
   return (
@@ -315,7 +327,8 @@ export function RideMap({
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants">
         <Map
-          mapStyle={colors.mapStyle}
+          accessibilityLabel={copy['map.a11yRide']}
+          mapStyle={mapStyleJsonFor(colors.mapStyle)}
           compass={false}
           touchRotate={false}
           touchPitch={false}
@@ -327,6 +340,7 @@ export function RideMap({
           onRegionIsChanging={onRegionChange}
           onRegionDidChange={onRegionDidChange}>
           <Camera ref={cameraRef} initialViewState={initial.view} />
+          <TerrainLayer />
           {/* Layer order bottom to top: passed trail, ahead trail, nav route (mount order, all inserted
               below the first label layer after the last road). Sources stay mounted and only their
               data changes, so the order never has to be rebuilt. */}
@@ -446,11 +460,10 @@ export function RideMap({
       <Reanimated.View
         pointerEvents="box-none"
         style={[styles.overlay, { bottom: overlayBottomInset }, controlsStyle]}>
-        <View pointerEvents="none" style={[styles.attribution, { backgroundColor: colors.surfaceRaised }]}>
-          <Text maxFontSizeMultiplier={1.3} style={[styles.attributionText, { color: colors.text }]}>
-            {attribution}
-          </Text>
-        </View>
+        <MapCreditPill
+          lines={pillKeys.map((k) => copy[k])}
+          maxWidth={pillMaxWidth(windowW, vis.rightColumn)}
+        />
         <MapControls
           vis={vis}
           meSlot={meSlotKind(nav.mode, speedKmh)}
@@ -727,15 +740,5 @@ const styles = StyleSheet.create({
   waitingText: { fontSize: font.sm, fontFamily: family.semibold },
   // Anchored to the bottom of the map; `overlayShift` lifts it onto the sheet's top edge.
   overlay: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 0 },
-  attribution: {
-    position: 'absolute',
-    left: space.sm,
-    bottom: space.sm,
-    borderRadius: 8,
-    paddingHorizontal: space.sm,
-    paddingVertical: 2,
-    opacity: 0.85,
-  },
-  attributionText: { fontSize: font.xs, fontFamily: family.regular },
   startDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 3 },
 });

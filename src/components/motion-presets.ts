@@ -35,6 +35,15 @@ export const sheetEnter = enabled
       .duration(motion.enter)
       .reduceMotion(ReduceMotion.System)
   : undefined;
+/** Sheet panel (26 E2): opacity 0 to 1 and a 24 dp rise in 200 ms, ease-out; the Modal itself only fades. Instant under Reduce Motion. */
+export const panelEnter = enabled
+  ? new Keyframe({
+      0: { opacity: 0, transform: [{ translateY: 24 }] },
+      100: { opacity: 1, transform: [{ translateY: 0 }], easing: Easing.out(Easing.cubic) },
+    })
+      .duration(motion.base)
+      .reduceMotion(ReduceMotion.System)
+  : undefined;
 /** Welcome (16 §1): hero fade 300; notification card slides down 12 dp and fades, 320 ms, after 500 ms. */
 export const notifEnter = enabled
   ? new Keyframe({

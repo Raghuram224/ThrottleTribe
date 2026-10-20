@@ -16,11 +16,15 @@ import { LocationRow, locationRowVisible } from '@/components/location-row';
 import { PlacePanel } from '@/components/place-panel';
 import { PlanMap } from '@/components/plan-map';
 import { QuickTiles } from '@/components/quick-tiles';
+import { MapCreditPill } from '@/components/map-credit-pill';
+import { MapTypeButton } from '@/components/map-type-button';
+import { MapTypeSheet } from '@/components/map-type-sheet';
 import { RecentPlacesSection } from '@/components/recent-places-section';
 import { RecentRidesSection, useRecentRides } from '@/components/recent-rides-section';
 import { RideProgressCard } from '@/components/ride-progress-card';
 import { RoutePanel } from '@/components/route-panel';
 import { Sheet } from '@/components/sheet';
+import { StatusBarScrim } from '@/components/status-bar-scrim';
 import { useContactCount } from '@/hooks/use-contact-count';
 import { useNetOffline } from '@/hooks/use-connection';
 import { useHomeConvoy } from '@/hooks/use-home-convoy';
@@ -29,7 +33,7 @@ import { usePlanningPosition } from '@/hooks/use-planning-position';
 import { usePreviewRoute } from '@/hooks/use-preview-route';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy, errorText, t } from '@/lib/copy';
-import { ROUTING_SUPPORTS_EXCLUDE } from '@/lib/flags';
+import { DEM_PROVIDER, ROUTING_SUPPORTS_EXCLUDE } from '@/lib/flags';
 import { formatElapsed } from '@/lib/format';
 import { haversineM, type LatLng } from '@/lib/geo';
 import { haptic } from '@/lib/haptics';
@@ -41,7 +45,7 @@ import { navRideEpoch, pruneNavRides, pruneNavRidesExcept } from '@/lib/nav-ride
 import {
   attributionFade,
   attributionInSheet,
-  ATTRIBUTION_CLEAR,
+  attributionClear,
   browsePadding,
   chipsTop,
   confirmedSwitch,
@@ -54,6 +58,7 @@ import {
   initialSheetSnap,
   isFirstRun,
   launchPromptWanted,
+  mapTypeTop,
   meSlotForHome,
   type OpenRideLite,
   openRideCard,
@@ -71,6 +76,7 @@ import {
 } from '@/lib/plan-flow';
 import { fixFresh } from '@/lib/planning-speed';
 import { previewPadding } from '@/lib/preview-fit';
+import { pillLineCount, pillLines } from '@/lib/credits';
 import { shownRecents, type RecentPlace } from '@/lib/recent-places';
 import { monthStats } from '@/lib/recent-rides';
 import { readRideStats } from '@/lib/ride-stats';
@@ -111,7 +117,7 @@ let launchPromptAsked = false;
 export default function Home() {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowH } = useWindowDimensions();
+  const { height: windowH, fontScale } = useWindowDimensions();
   const pathname = usePathname();
   const focused = useIsFocused();
   const reduceMotion = useReduceMotion();
@@ -121,6 +127,9 @@ export default function Home() {
   const offline = useNetOffline();
   const thresholdS = usePrefsStore((s) => s.stopThresholdS);
   const allowExpressways = usePrefsStore((s) => s.allowExpressways);
+  const mapLayer = usePrefsStore((s) => s.mapLayer);
+  const setMapLayer = usePrefsStore((s) => s.setMapLayer);
+  const [mapTypeOpen, setMapTypeOpen] = useState(false);
   // Kept across refetches so the resume card shows the last known ride while offline.
   const [open, setOpen] = useState<OpenRide | null>(null);
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
@@ -318,7 +327,6 @@ export default function Home() {
           }),
     [mode, routeState, routeMe, dest],
   );
-  const roadDrawn = routeState.status === 'ok' || updating;
   const onRetry = () => {
     if (fix) setOrigin({ lat: fix.lat, lng: fix.lng });
     retry();
@@ -364,7 +372,7 @@ export default function Home() {
     else openSearch('bar');
   };
 
-  const openRecent = useCallback((p: Pick<RecentPlace, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category'>) => {
+  const openRecent = useCallback((p: Pick<RecentPlace, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category' | 'source'>) => {
     haptic('select');
     track('home.place_opened', { from: 'recent' });
     usePlanStore.getState().openRoute(p, 'recent');
@@ -507,12 +515,19 @@ export default function Home() {
     () => (place && mode !== 'browse' ? { lat: place.lat, lng: place.lng, kind: stopKindFor(place.category) } : null),
     [place, mode],
   );
+  // Terrain adds its credit as the pill's last line (25 §5.1): the pill is taller, the controls above it rise.
+  const terrain = mapLayer === 'terrain';
+  const browseKeys = pillLines({ kind: 'plain' }, terrain, DEM_PROVIDER);
+  const browseCreditLines = pillLineCount(browseKeys);
+  // Place mode names the search provider as well; route mode credits in the panel (24 §4.2), so only Terrain adds a line.
+  const overlayKeys = pillLines(mode === 'place' && place ? { kind: 'place', source: place.source } : { kind: 'plain' }, terrain, DEM_PROVIDER);
+  const overlayLines = pillLineCount(overlayKeys);
   const padding =
     mode === 'browse'
-      ? browsePadding({ insetTop: insets.top, bannerH, chipsShown, sheetH })
+      ? browsePadding({ insetTop: insets.top, bannerH, chipsShown, sheetH, creditLines: browseCreditLines, fontScale })
       : mode === 'place'
-        ? placePadding(insets.top + bannerH, panelH)
-        : previewPadding(insets.top + bannerH, panelH);
+        ? placePadding(insets.top + bannerH, panelH, overlayLines, fontScale)
+        : previewPadding(insets.top + bannerH, panelH, overlayLines, fontScale);
   const intent: CameraIntent =
     mode === 'place' ? { kind: 'place', zoom: HOME_PLACE_ZOOM } : mode === 'route' ? { kind: 'fit' } : cmd.intent;
   const following = mode === 'browse' && !free;
@@ -529,7 +544,9 @@ export default function Home() {
   const barLabel =
     card === 'active' && open ? t('homeMap.searchStops', { ride: displayRideName(open.ride.name) }) : copy['homeMap.searchPlaceholder'];
 
-  const meSlotStyle = useAnimatedStyle(() => ({ bottom: visible.get() + ATTRIBUTION_CLEAR }));
+  // Plain JS: worked out here, because the animated style below runs on the UI thread and can only read values.
+  const meClear = attributionClear(browseCreditLines, fontScale);
+  const meSlotStyle = useAnimatedStyle(() => ({ bottom: visible.get() + meClear }));
   // Gone before the sheet reaches the search bar; expanded, the attribution is the sheet's own footer row.
   const peekH = heights.peek;
   const expandedH = heights.expanded;
@@ -655,6 +672,8 @@ export default function Home() {
         </Reanimated.View>
       ) : null}
 
+      {mapOn && !offline ? <StatusBarScrim /> : null}
+
       {offline ? (
         <View
           onLayout={(e) => setBannerLayoutH(e.nativeEvent.layout.height)}
@@ -708,6 +727,19 @@ export default function Home() {
         </Pressable>
       ) : null}
 
+      {/* Map type (25 §2.1): under the chips, the place bar, or level with the back circle. Not with the sheet expanded
+          (no map to change) or a failed map. */}
+      {mapOn && !mapFailed && !(mode === 'browse' && sheetSnap === 'expanded') ? (
+        <MapTypeButton
+          layer={mapLayer}
+          onPress={() => {
+            haptic('select');
+            setMapTypeOpen(true);
+          }}
+          style={{ position: 'absolute', right: space.md, top: mapTypeTop({ mode, insetTop: insets.top, bannerH, chipsShown }) }}
+        />
+      ) : null}
+
       {/* Bottom-left: the one me-slot element (browse), then the attribution, which is never hidden. */}
       {mode === 'browse' && meSlot !== 'none' ? (
         <Reanimated.View style={[styles.meSlot, meSlotStyle]}>
@@ -726,18 +758,14 @@ export default function Home() {
       {mapOn ? (
         mode === 'browse' ? (
           attributionInSheet(sheetSnap) ? null : (
-            <Reanimated.View pointerEvents="none" style={[styles.attribution, { backgroundColor: colors.surfaceRaised }, attributionStyle]}>
-              <Text maxFontSizeMultiplier={1.3} style={[styles.attributionText, { color: colors.text }]}>
-                {copy['live.attribution']}
-              </Text>
-            </Reanimated.View>
+            <MapCreditPill animated lines={browseKeys.map((k) => copy[k])} style={attributionStyle} />
           )
         ) : (
-          <View pointerEvents="none" style={[styles.attribution, { bottom: panelH + space.sm, backgroundColor: colors.surfaceRaised }]}>
-            <Text maxFontSizeMultiplier={1.3} style={[styles.attributionText, { color: colors.text }]}>
-              {roadDrawn ? copy['live.attributionRoute'] : copy['live.attribution']}
-            </Text>
-          </View>
+          // Place mode names the search provider on a second line; route mode credits in the panel (24 §4.2).
+          <MapCreditPill
+            style={{ bottom: panelH + space.sm }}
+            lines={overlayKeys.map((k) => copy[k])}
+          />
         )
       ) : null}
 
@@ -748,7 +776,7 @@ export default function Home() {
           title={title}
           visible={visible}
           maxHeight={sheetMaxH}
-          attribution={mapOn ? copy['live.attribution'] : null}
+          attribution={mapOn ? browseKeys.map((k) => copy[k]).join('\n') : null}
           onHeights={onHeights}
           peek={<View style={styles.peek}>{blocks.peek.map(renderBlock)}</View>}
           expanded={<View style={styles.expanded}>{blocks.expanded.map(renderBlock)}</View>}
@@ -823,6 +851,13 @@ export default function Home() {
           setClearOpen(false);
         }}
       />
+      <MapTypeSheet
+        visible={mapTypeOpen}
+        onClose={() => setMapTypeOpen(false)}
+        layer={mapLayer}
+        onChange={(next) => setMapLayer(next, 'home')}
+        offline={offline}
+      />
       {/* "Show my location": explains first. The OS prompt comes from the launch prompt above (once per app run) and,
           after a refusal that can be asked again, from this button (rule 8, 04). */}
       <Sheet visible={showMeSheet} onClose={() => setShowMeSheet(false)}>
@@ -852,9 +887,11 @@ function MeSlotPill({ kind, onPress }: { kind: 'recentre' | 'finding' | 'show'; 
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={[styles.pill, { backgroundColor: colors.fabBg, opacity: disabled ? 0.5 : 1 }, elevate('e2', scheme)]}>
-      <Icon name={icon} color={colors.brandOnBg} size={24} />
-      <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.pillText, { color: colors.brandOnBg }]}>
+      // Always a solid surface: a 0.5 opacity let the map show through and dropped the text under 4.5:1. "Finding you" is
+      // told apart by its plain text colour (not the accent) and the disabled state, not by fading.
+      style={[styles.pill, { backgroundColor: colors.fabBg }, elevate('e2', scheme)]}>
+      <Icon name={icon} color={disabled ? colors.text : colors.brandOnBg} size={24} />
+      <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.pillText, { color: disabled ? colors.text : colors.brandOnBg }]}>
         {label}
       </Text>
     </Pressable>
@@ -891,13 +928,4 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   pillText: { fontSize: font.md, fontFamily: family.semibold },
-  attribution: {
-    position: 'absolute',
-    left: space.sm,
-    borderRadius: radius.sm,
-    paddingHorizontal: space.sm,
-    paddingVertical: 2,
-    opacity: 0.85,
-  },
-  attributionText: { fontSize: font.xs, fontFamily: family.regular },
 });

@@ -111,6 +111,20 @@ export const ICON_GLYPHS = {
   voiceOff: 'volume-off',
   navigation: 'navigation',
   // --- end solo navigation ---
+  // --- free OSM stack (24): credit links and the credits row ---
+  openInNew: 'open-in-new',
+  info: 'information-outline',
+  // --- end free OSM stack ---
+  // --- search category chips (replace emoji, which differ per OEM) ---
+  fuel: 'gas-station',
+  food: 'silverware-fork-knife',
+  parking: 'parking',
+  toilets: 'human-male-female',
+  // --- end search category chips ---
+  // --- map detail and terrain (25) ---
+  layers: 'layers-outline',
+  terrain: 'terrain',
+  // --- end map detail and terrain ---
 } as const;
 
 export type IconName = keyof typeof ICON_GLYPHS;

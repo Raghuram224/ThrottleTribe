@@ -1,6 +1,6 @@
 import { destKey, NO_ARRIVAL, type ArrivalLatch } from '../nav-arrival';
 import { selectBanner, type NavEngineState } from '../nav-engine';
-import { createNavSession, type NavSessionDeps } from '../nav-session';
+import { createNavSession, STARTING_MAX_MS, type NavSessionDeps } from '../nav-session';
 import type { NavRoute, NavRouteResult } from '../nav-route';
 import { at, fix, straightRoute } from '../__fixtures__/nav-fixtures';
 
@@ -58,6 +58,41 @@ function harness(over: Partial<NavSessionDeps> = {}) {
 }
 const flush = () => new Promise<void>((r) => setImmediate(r));
 const ok = (r: NavRoute = route()): NavRouteResult => ({ status: 'ok', route: r });
+
+describe('"starting" cannot last forever (a restored ride with no origin)', () => {
+  it('settles to unavailable (no route) when nothing is in flight after the limit', () => {
+    const h = harness();
+    // Offline (or backing off): the fix arrives, no request is made, and the status was left at 'loading'.
+    h.session.start({ rideId: 'r', dest: DEST, offline: true });
+    expect(h.session.getState().routeStatus).toBe('loading');
+    expect(h.calls).toHaveLength(0);
+    h.clock.now += STARTING_MAX_MS;
+    h.session.tick();
+    expect(h.session.getState().routeStatus).toBe('loading');
+    h.clock.now += 1;
+    h.session.tick();
+    expect(h.session.getState().routeStatus).toBe('unavailable');
+    // With a fix, the banner now says no route instead of "Getting directions".
+    h.session.ingest(fix(100, { t: h.clock.now }));
+    const banner = selectBanner({ active: true, engine: h.session.getState(), locationOk: true, netOffline: true, me: null, dest: DEST, now: h.clock.now });
+    expect(banner?.kind).not.toBe('starting');
+  });
+  it('does not settle while a request is in flight', () => {
+    const h = harness();
+    h.session.start({ rideId: 'r', dest: DEST, origin: at(0) });
+    expect(h.calls).toHaveLength(1);
+    h.clock.now += STARTING_MAX_MS + 5000;
+    h.session.tick();
+    expect(h.session.getState().routeStatus).toBe('loading');
+  });
+  it('leaves a seeded route alone', () => {
+    const h = harness();
+    h.session.start({ rideId: 'r', dest: DEST, seed: route() });
+    h.clock.now += STARTING_MAX_MS + 5000;
+    h.session.tick();
+    expect(h.session.getState().routeStatus).toBe('ok');
+  });
+});
 
 describe('headless guard', () => {
   it('ingest is a no-op with no session: no state, no request', () => {
@@ -141,7 +176,7 @@ describe('starting', () => {
     h.setAvoid(true);
     h.session.start({ rideId: 'r', dest: DEST, origin: at(0) });
     expect(h.calls).toHaveLength(1);
-    expect(h.calls[0].opts).toEqual({ steps: true, avoidMotorways: true, bearingDeg: null, noCache: true });
+    expect(h.calls[0].opts).toEqual({ steps: true, avoidMotorways: true, bearingDeg: null, noCache: true, context: 'nav' });
     expect(h.session.getState()).toMatchObject({ routeStatus: 'loading', fetching: true });
     // A fix arriving meanwhile does not start a second request.
     h.session.ingest(fix(10, { t: 1000 }));
@@ -540,5 +575,74 @@ describe('L6: starting offline', () => {
     expect(h.calls).toHaveLength(0); // no fix yet: the origin is only used at start
     h.session.ingest(fix(10, { t: 1000 }));
     expect(h.calls).toHaveLength(1);
+  });
+});
+
+describe('rate limits (24 §3.3, §3.4)', () => {
+  const limited = (scope: 'second' | 'minute' | 'day' | 'user', retryAfterS: number): NavRouteResult => ({ status: 'rate_limited', scope, retryAfterS });
+  const SLOW = { speedMps: 2 }; // below 15 km/h: no bearing, so a failure is a plain one
+
+  it('first route limited (minute): "unavailable" (compass banner), "busy" flag, next request not before retryAfter', async () => {
+    const h = harness();
+    h.session.start({ rideId: 'r', dest: DEST });
+    h.session.ingest(fix(10, { t: 1000, ...SLOW }));
+    h.calls[0].resolve(limited('minute', 45));
+    await flush();
+    expect(h.session.getState()).toMatchObject({ routeStatus: 'unavailable', routeBusy: true, fetching: false });
+    expect(h.effects.onRouteFailed).toHaveBeenCalledWith('rate_limited');
+    // The backoff after one failure is 10 s, but retryAfter says 45 s: it wins.
+    h.clock.now += 44_000;
+    h.session.ingest(fix(20, { t: 2000, ...SLOW }));
+    expect(h.calls).toHaveLength(1);
+    h.clock.now += 1_000;
+    h.session.ingest(fix(30, { t: 3000, ...SLOW }));
+    expect(h.calls).toHaveLength(2);
+    h.calls[1].resolve(ok());
+    await flush();
+    expect(h.session.getState()).toMatchObject({ routeStatus: 'ok', routeBusy: false });
+  });
+
+  it('a per-second limit is retried once after 1 s without counting a failure (no backoff wait)', async () => {
+    const h = harness();
+    h.session.start({ rideId: 'r', dest: DEST });
+    h.session.ingest(fix(10, { t: 1000, ...SLOW }));
+    h.calls[0].resolve(limited('second', 1));
+    await flush();
+    h.clock.now += 500;
+    h.session.ingest(fix(20, { t: 2000, ...SLOW }));
+    expect(h.calls).toHaveLength(1);
+    h.clock.now += 600; // 1.1 s after the limit
+    h.session.ingest(fix(30, { t: 3000, ...SLOW }));
+    expect(h.calls).toHaveLength(2);
+  });
+
+  it('a daily limit pauses requests (30 min at most)', async () => {
+    const h = harness();
+    h.session.start({ rideId: 'r', dest: DEST });
+    h.session.ingest(fix(10, { t: 1000, ...SLOW }));
+    h.calls[0].resolve(limited('day', 50_000));
+    await flush();
+    h.clock.now += 29 * 60_000;
+    h.session.ingest(fix(20, { t: 2000, ...SLOW }));
+    expect(h.calls).toHaveLength(1);
+    h.clock.now += 61_000;
+    h.session.ingest(fix(30, { t: 3000, ...SLOW }));
+    expect(h.calls).toHaveLength(2); // the probe
+  });
+
+  it('a limited reroute keeps the old line and says "busy" on the rerouting banner', async () => {
+    const h = harness();
+    h.session.start({ rideId: 'r', dest: DEST, seed: route(), origin: at(0) });
+    h.clock.now += 20_000;
+    h.session.ingest(fix(100, { t: 1000, ...SLOW }));
+    for (let i = 1; i <= 3; i++) h.session.ingest(fix(100 + i * 20, { northM: 100, t: 1000 + i * 1000, ...SLOW }));
+    expect(h.calls).toHaveLength(1);
+    h.calls[0].resolve(limited('minute', 30));
+    await flush();
+    const s = h.session.getState();
+    expect(s).toMatchObject({ routeStatus: 'ok', routeBusy: true });
+    expect(s.prepared).not.toBeNull();
+    const banner = selectBanner({ active: true, engine: s, locationOk: true, netOffline: false, now: h.clock.now, me: null, dest: DEST });
+    expect(banner).toMatchObject({ kind: 'rerouting', busy: true });
   });
 });

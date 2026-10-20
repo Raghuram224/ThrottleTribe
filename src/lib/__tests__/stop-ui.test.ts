@@ -1,5 +1,5 @@
 import type { PendingProposal } from '../stop-proposals';
-import { approvalCardModel, categoryGlyph, navLineFor, rideStop, suggestedByName, withStop } from '../stop-ui';
+import { approvalCardModel, categoryIcon, navLineFor, rideStop, suggestedByName, withStop } from '../stop-ui';
 
 const prop = (id: number, userId: string, name = 'Cafe', kind: 'break' | 'destination' = 'break'): PendingProposal => ({
   id,
@@ -71,10 +71,12 @@ describe('approvalCardModel', () => {
   });
 });
 
-describe('categoryGlyph', () => {
-  it('has a glyph for every category', () => {
-    expect(categoryGlyph('cafe')).toBe('☕');
-    expect(categoryGlyph('other')).toBe('📍');
+describe('categoryIcon', () => {
+  it('has an icon from the app set for every category, the same as the search chips', () => {
+    expect(categoryIcon('cafe')).toBe('coffee');
+    expect(categoryIcon('fuel')).toBe('fuel');
+    expect(categoryIcon('restaurant')).toBe('food');
+    expect(categoryIcon('other')).toBe('permLocation');
   });
 });
 

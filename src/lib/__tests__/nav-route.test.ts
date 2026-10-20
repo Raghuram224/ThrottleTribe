@@ -19,10 +19,17 @@ import {
 import { engineRemaining, initProgress } from '../nav-progress';
 import { prepared, straightRoute } from '../__fixtures__/nav-fixtures';
 
+// The geo function is not configured in these tests: every route request falls back to the OSRM URL (fetch is mocked).
+jest.mock('../geo-api', () => ({
+  ...jest.requireActual('../geo-api'),
+  geoCall: jest.fn().mockResolvedValue({ ok: false, failure: { kind: 'not_configured' } }),
+}));
+
 // The public demo does not honour exclude; most tests run as if a router that does (flag on).
 let mockSupportsExclude = true;
 jest.mock('../flags', () => ({
   ROUTING_URL: 'https://router.project-osrm.org/route/v1/driving',
+  ROUTING_FALLBACK_ALLOWED: true,
   get ROUTING_SUPPORTS_EXCLUDE() {
     return mockSupportsExclude;
   },

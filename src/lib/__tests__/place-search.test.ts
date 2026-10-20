@@ -2,12 +2,21 @@ import {
   buildPhotonUrl,
   clearPlaceSearchCache,
   createLruCache,
+  distinctAddress,
   parsePhotonResponse,
   placeRowA11y,
   PlaceSearchError,
+  searchErrorKind,
   searchPlaces,
   sortByDistance,
 } from '../place-search';
+
+// The geo function is not configured here: searchPlaces falls back to Photon (fetch is mocked). The chain itself is in
+// place-search-chain.test.ts.
+jest.mock('../geo-api', () => ({
+  ...jest.requireActual('../geo-api'),
+  geoCall: jest.fn().mockResolvedValue({ ok: false, failure: { kind: 'not_configured' } }),
+}));
 
 const feature = (name: string | undefined, lng: number, lat: number, extra: Record<string, unknown> = {}) => ({
   type: 'Feature',
@@ -25,7 +34,7 @@ describe('parsePhotonResponse', () => {
     };
     const [p] = parsePhotonResponse(json, me);
     expect(p).toMatchObject({
-      id: 'N77600', name: 'Cafe Coffee Day', address: 'MG Road, Bengaluru', lat: 12.98, lng: 77.6, category: 'cafe',
+      id: 'p:N77600', source: 'photon', name: 'Cafe Coffee Day', address: 'MG Road, Bengaluru', lat: 12.98, lng: 77.6, category: 'cafe',
     });
     expect(p.distanceM).toBeGreaterThan(1000);
     expect(p.distanceM).toBeLessThan(2000);
@@ -60,7 +69,7 @@ describe('parsePhotonResponse', () => {
 
 describe('sortByDistance', () => {
   it('orders nearest first, unknown last, stable on ties', () => {
-    const mk = (id: string, d: number | null) => ({ id, name: id, address: '', lat: 0, lng: 0, category: 'other' as const, distanceM: d });
+    const mk = (id: string, d: number | null) => ({ id, name: id, address: '', lat: 0, lng: 0, category: 'other' as const, source: 'photon' as const, distanceM: d });
     expect(sortByDistance([mk('a', 500), mk('b', null), mk('c', 100), mk('d', 500)]).map((p) => p.id)).toEqual(['c', 'a', 'd', 'b']);
   });
 });
@@ -68,7 +77,7 @@ describe('sortByDistance', () => {
 describe('buildPhotonUrl', () => {
   it('sets query, bias, limit, lang and tag', () => {
     const url = buildPhotonUrl({ query: ' cafe ', osmTag: 'amenity:cafe', me });
-    expect(url).toBe('https://photon.komoot.io/api/?q=cafe&limit=8&lang=en&lat=12.97&lon=77.59&osm_tag=amenity:cafe');
+    expect(url).toBe('https://photon.komoot.io/api/?q=cafe&limit=20&lang=en&lat=12.97&lon=77.59&osm_tag=amenity:cafe');
   });
   it('rounds the bias to 2 decimals (about 1 km) so the exact position is not sent', () => {
     const url = buildPhotonUrl({ query: 'cafe', me: { lat: 12.971599, lng: 77.594566 } });
@@ -106,7 +115,7 @@ describe('searchPlaces', () => {
 
   it('fetches once for a repeated query (cache) and sorts chips by distance', async () => {
     const fetchMock = respond({
-      features: [feature('Far', 77.9, 13.5, { osm_key: 'amenity', osm_value: 'cafe' }), feature('Near', 77.591, 12.971, { osm_key: 'amenity', osm_value: 'cafe' })],
+      features: [feature('Far', 77.7, 13.05, { osm_key: 'amenity', osm_value: 'cafe' }), feature('Near', 77.591, 12.971, { osm_key: 'amenity', osm_value: 'cafe' })],
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     const req = { query: 'cafe', osmTag: 'amenity:cafe', me };
@@ -154,5 +163,36 @@ describe('placeRowA11y', () => {
     expect(placeRowA11y('Cafe', '', 350)).toBe('Cafe, 350 metres away');
     expect(placeRowA11y('Cafe', 'MG Road', null)).toBe('Cafe, MG Road');
     expect(placeRowA11y('Cafe', '', null)).toBe('Cafe');
+  });
+});
+
+describe('searchErrorKind (a slow provider is not "needs a connection")', () => {
+  it('offline is offline whatever the error was', () => {
+    expect(searchErrorKind(new PlaceSearchError('network'), true)).toBe('offline');
+  });
+  it('online: timeout, bad answer and network failure are slow; a 429 is busy', () => {
+    for (const code of ['timeout', 'bad_response', 'network'] as const) expect(searchErrorKind(new PlaceSearchError(code), false)).toBe('slow');
+    expect(searchErrorKind(new PlaceSearchError('busy'), false)).toBe('busy');
+    expect(searchErrorKind(new Error('x'), false)).toBe('slow');
+  });
+});
+
+describe('distinctAddress (26 H1)', () => {
+  it('drops a part that only repeats the name, in any spelling', () => {
+    expect(distinctAddress('Kallakuruchi', 'Kallakkurichi')).toBe('');
+    expect(distinctAddress('Bengaluru', 'Bengaluru')).toBe('');
+    expect(distinctAddress('Hosur', 'Hosur, Krishnagiri')).toBe('Krishnagiri');
+    expect(distinctAddress('Mysūru', 'Mysuru')).toBe('');
+  });
+  it('keeps a real address', () => {
+    expect(distinctAddress('Mysuru Palace', 'Sayyaji Rao Rd, Mysuru')).toBe('Sayyaji Rao Rd, Mysuru');
+    expect(distinctAddress('HP Petrol Pump', 'Hosur Rd, Bengaluru')).toBe('Hosur Rd, Bengaluru');
+  });
+  it('short names match exactly only (BP is not HP)', () => {
+    expect(distinctAddress('HP', 'BP, Hosur')).toBe('BP, Hosur');
+    expect(distinctAddress('HP', 'HP, Hosur')).toBe('Hosur');
+  });
+  it('the row label never reads the town twice', () => {
+    expect(placeRowA11y('Kallakuruchi', 'Kallakkurichi', 202_000)).not.toContain('Kallakkurichi');
   });
 });

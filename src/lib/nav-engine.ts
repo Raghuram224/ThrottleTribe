@@ -35,6 +35,8 @@ export interface NavEngineState {
   lastGoodFixAt: number | null;
   /** A route request is in flight. */
   fetching: boolean;
+  /** The last request was rate limited (24 §3.4): the rerouting banner says "Routes are busy", the old line stays. */
+  routeBusy: boolean;
 }
 
 export const EMPTY_ENGINE: NavEngineState = {
@@ -49,6 +51,7 @@ export const EMPTY_ENGINE: NavEngineState = {
   fix: null,
   lastGoodFixAt: null,
   fetching: false,
+  routeBusy: false,
 };
 
 /**
@@ -116,6 +119,8 @@ export interface BannerModel {
   /** noRoute: straight-line distance and bearing from me to the destination. */
   straightM: number | null;
   bearingDeg: number | null;
+  /** rerouting: the request was rate limited, so line 2 says "Routes are busy · retrying" (24 §3.4). */
+  busy?: boolean;
   /** Main row 96, plus the Then row 40 in `guide`. */
   height: number;
 }
@@ -148,7 +153,7 @@ export function selectBanner(a: BannerInput): BannerModel | null {
   const prepared = engine.prepared;
   const progress = engine.progress;
   const offRoute = !!progress?.offRoute && !!prepared;
-  if (offRoute) return { ...base, kind: a.netOffline ? 'offlineOffRoute' : 'rerouting' };
+  if (offRoute) return { ...base, kind: a.netOffline ? 'offlineOffRoute' : 'rerouting', busy: engine.routeBusy };
   if (!prepared || !progress) {
     const hasFix = engine.fix !== null || a.me !== null;
     // No road route: still loading (or not asked yet, without a position) is "starting"; a settled failure is "noRoute".

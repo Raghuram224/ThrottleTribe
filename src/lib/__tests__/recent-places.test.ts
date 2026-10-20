@@ -8,6 +8,7 @@ const place = (id: string, lat = 12, lng = 77, extra: Partial<RecentPlace> = {})
   lat,
   lng,
   category: 'other',
+  source: 'photon',
   ...extra,
 });
 const spread = (n: number) => place(`p${n}`, 12 + n * 0.1, 77);

@@ -93,6 +93,15 @@ export function LiveSheet({
     animateTo(target);
   }, [target, animateTo]);
 
+  // The map's credit pill, controls and SOS ride on `visible` (overlayShift = -visible). When the sheet goes away (full map,
+  // layout reset) the value must not stay at its last height, or they are left floating mid-map.
+  useEffect(
+    () => () => {
+      visible.set(0);
+    },
+    [visible],
+  );
+
   const commit = useCallback(
     (h: number, velocityY: number) => {
       const next = settleSnap({ visibleH: h, velocityY, heights, from: snap, snaps });

@@ -27,6 +27,7 @@ import {
   settleHomeSnap,
   shouldSaveCamera,
   launchPromptWanted,
+  mapTypeTop,
   routeActions,
   startStep,
   toggleHomeSnap,
@@ -312,9 +313,26 @@ describe('place sheet text (22 §3.3)', () => {
 describe('camera padding counts everything that floats (22 §4.2)', () => {
   it('browse at 360x780: bar, chips, sheet and attribution', () => {
     const p = browsePadding({ insetTop: 24, bannerH: 0, chipsShown: true, sheetH: 200 });
-    expect(p).toEqual({ top: 24 + 8 + 56 + 8 + 48 + 16, bottom: 236, left: 16, right: 16 });
+    expect(p).toEqual({ top: 24 + 8 + 56 + 8 + 48 + 16, bottom: 240, left: 16, right: 16 });
     expect(browsePadding({ insetTop: 24, bannerH: 0, chipsShown: false, sheetH: 200 }).top).toBe(24 + 8 + 56 + 16);
     expect(browsePadding({ insetTop: 24, bannerH: 56, chipsShown: false, sheetH: 200 }).top).toBe(24 + 56 + 8 + 56 + 16);
+  });
+  it('Terrain makes the pill two lines, so browse clears 56 instead of 40 under the sheet (25 §5.1)', () => {
+    expect(browsePadding({ insetTop: 24, bannerH: 0, chipsShown: true, sheetH: 200, creditLines: 2 }).bottom).toBe(256);
+  });
+  it('the map type circle: 152 in browse (under the chips), 96 under the place bar, 32 level with the back circle (25 §2.1)', () => {
+    expect(mapTypeTop({ mode: 'browse', insetTop: 24, bannerH: 0, chipsShown: true })).toBe(152);
+    expect(mapTypeTop({ mode: 'browse', insetTop: 24, bannerH: 0, chipsShown: false })).toBe(96);
+    expect(mapTypeTop({ mode: 'place', insetTop: 24, bannerH: 0, chipsShown: false })).toBe(96);
+    expect(mapTypeTop({ mode: 'route', insetTop: 24, bannerH: 0, chipsShown: false })).toBe(32);
+    // The offline banner pushes it down by its height, like the bar.
+    expect(mapTypeTop({ mode: 'browse', insetTop: 24, bannerH: 40, chipsShown: true })).toBe(192);
+    expect(mapTypeTop({ mode: 'route', insetTop: 24, bannerH: 40, chipsShown: false })).toBe(72);
+  });
+  it('place padding clears a taller pill (Terrain, the provider line, a big font)', () => {
+    expect(placePadding(24, 204, 1).bottom).toBe(204 + 24 + 28);
+    expect(placePadding(24, 204, 3).bottom).toBe(204 + 24 + 56 + 4);
+    expect(placePadding(24, 204, 3, 1.3).bottom).toBe(204 + 24 + 71 + 4);
   });
   it('chips start under the bar; place padding clears bar and panel', () => {
     expect(chipsTop(24, 0)).toBe(24 + 8 + 56 + 8);

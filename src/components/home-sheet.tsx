@@ -28,6 +28,7 @@ interface HomeSheetProps {
   /**
    * The map attribution, shown in a footer row above the gesture inset while the sheet is expanded (it reaches up
    * under the search bar, where a pill on the map would float against the bar). Null = none (peek: it is on the map).
+   * One line per `\n` (the licence line, plus the terrain credit while Terrain is on, 25 §5.1).
    */
   attribution?: string | null;
   /** The two resting heights, once measured (the parent's camera padding follows them). */
@@ -48,7 +49,8 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
 
   // Header + the peek block, then the gesture inset (the body is clipped above it, so the inset sits after the
   // last row visible in either snap and the expanded blocks never show through it), then the expanded blocks.
-  const attrRow = attribution ? space.xl : 0;
+  // 8 + 16 a line (24 for one, as the map pill).
+  const attrRow = attribution ? space.sm + 16 * attribution.split('\n').length : 0;
   const peekH = size.sheetHeader + peekBlockH + insets.bottom;
   const contentH = peekH + expandedBlockH + attrRow;
   const expandedH = Math.max(peekH, Math.min(contentH, maxHeight));
@@ -150,8 +152,8 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
             accessibilityLabel={copy['homeMap.sheetA11y']}
             accessibilityValue={{ text: `${isExpanded ? copy['live.sheetValueExpanded'] : copy['live.sheetValueCollapsed']}. ${title}` }}
             accessibilityActions={[
-              { name: 'increment', label: copy['live.sheetExpandA11y'] },
-              { name: 'decrement', label: copy['live.sheetCollapseA11y'] },
+              { name: 'increment', label: copy['homeMap.sheetExpandA11y'] },
+              { name: 'decrement', label: copy['homeMap.sheetCollapseA11y'] },
             ]}
             onAccessibilityAction={onA11yAction}
             onPress={toggle}
@@ -162,7 +164,7 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isExpanded ? copy['live.sheetCollapseA11y'] : copy['live.sheetExpandA11y']}
+            accessibilityLabel={isExpanded ? copy['homeMap.sheetCollapseA11y'] : copy['homeMap.sheetExpandA11y']}
             onPress={toggle}
             style={styles.chevron}>
             <Icon name={isExpanded ? 'chevronDown' : 'chevronUp'} color={colors.textMuted} size={24} />
@@ -183,6 +185,11 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
           <View
             onLayout={onExpandedLayout}
             style={{ paddingBottom: space.lg }}
+            // Below the fold while collapsed: never focusable (a clipped "Clear recent places?" sliver was). It stays mounted,
+            // because its height sizes the expanded sheet; `collapsable` keeps Android from flattening the view away with
+            // the hiding props on it.
+            collapsable={false}
+            pointerEvents={isExpanded ? 'auto' : 'none'}
             accessibilityElementsHidden={!isExpanded}
             importantForAccessibility={isExpanded ? 'auto' : 'no-hide-descendants'}>
             {expanded}

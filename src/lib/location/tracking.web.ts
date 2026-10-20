@@ -4,7 +4,9 @@
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 
+import { parseMapLayer } from '@/lib/dem';
 import { navSession } from '@/lib/nav-session';
+import { readItem, STORAGE_KEYS } from '@/lib/storage';
 import { track } from '@/lib/telemetry';
 import { positionToRow, sampleDue } from '@/lib/web/web-utils';
 
@@ -126,7 +128,7 @@ export async function startRideTracking(rideId: string): Promise<StartResult> {
   }
   // Retry uploads that failed while offline even when no new position arrives.
   if (!flushTimer) flushTimer = setInterval(() => void flush(), 15_000);
-  track('tracking.started', { background: false });
+  track('tracking.started', { background: false, terrain: parseMapLayer(readItem(STORAGE_KEYS.mapLayer)) === 'terrain' });
   return { ok: true, backgroundGranted: false };
 }
 

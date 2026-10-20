@@ -10,7 +10,9 @@ export type PreviewRouteState =
   | { status: 'updating'; route: NavRoute }
   | { status: 'ok'; route: NavRoute }
   | { status: 'no_route' }
-  | { status: 'failed' };
+  | { status: 'failed' }
+  /** Routes are busy (24 §3.4): dashed line, `preview.routeBusy`, Start ride stays enabled. */
+  | { status: 'rate_limited'; retryAfterS: number };
 
 export interface PreviewStateInput {
   origin: LatLng | null;
@@ -31,7 +33,11 @@ export interface PreviewStateInput {
 export function previewState({ origin, avoid, settled, key, answer, lastRoute }: PreviewStateInput): PreviewRouteState {
   if (!origin) return { status: 'locating' };
   if (avoid === settled && answer && answer.key === key) {
-    return answer.result.status === 'ok' ? { status: 'ok', route: answer.result.route } : { status: answer.result.status };
+    const r = answer.result;
+    if (r.status === 'ok') return { status: 'ok', route: r.route };
+    // A route already drawn is still right: a limit does not take it away.
+    if (r.status === 'rate_limited') return lastRoute ? { status: 'ok', route: lastRoute } : { status: 'rate_limited', retryAfterS: r.retryAfterS };
+    return { status: r.status };
   }
   return lastRoute ? { status: 'updating', route: lastRoute } : { status: 'loading' };
 }

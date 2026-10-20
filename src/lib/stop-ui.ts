@@ -3,6 +3,7 @@
 import { fill, copy } from '@/lib/copy';
 import { formatDistance } from '@/lib/format';
 import { haversineM, type LatLng } from '@/lib/geo';
+import type { IconName } from '@/lib/icon-names';
 import { firstName } from '@/lib/names';
 import type { PlaceCategory } from '@/lib/place-search';
 import type { RideRow, StopKind } from '@/lib/ride-api';
@@ -74,17 +75,18 @@ export function suggestedByName(
   return first || null;
 }
 
-const CATEGORY_GLYPH: Record<PlaceCategory, string> = {
-  cafe: '☕',
-  fuel: '⛽',
-  restaurant: '🍽',
-  parking: '🅿',
-  toilets: '🚻',
-  other: '📍',
+// The app's own icon font, not emoji (they look different on every phone maker's font). Same icons as the search chips.
+const CATEGORY_ICON: Record<PlaceCategory, IconName> = {
+  cafe: 'coffee',
+  fuel: 'fuel',
+  restaurant: 'food',
+  parking: 'parking',
+  toilets: 'toilets',
+  other: 'permLocation',
 };
 
-export function categoryGlyph(category: PlaceCategory): string {
-  return CATEGORY_GLYPH[category];
+export function categoryIcon(category: PlaceCategory): IconName {
+  return CATEGORY_ICON[category];
 }
 
 export interface ApprovalMember {
@@ -134,11 +136,16 @@ export interface NavLine {
   coords: LatLng[];
   /** True for the straight-line fallback while no road route is known. */
   dashed: boolean;
+  /** Who computed the road route (the credit names it); undefined for the dashed line. */
+  provider?: 'locationiq' | 'osrm';
 }
 
 /** The road route when there is one, else the dashed straight line; null when there is nothing to draw. */
-export function navLineFor(state: { route: { coords: LatLng[] } | null; straightLine: LatLng[] }): NavLine | null {
-  if (state.route && state.route.coords.length >= 2) return { coords: state.route.coords, dashed: false };
+export function navLineFor(state: {
+  route: { coords: LatLng[]; provider?: 'locationiq' | 'osrm' } | null;
+  straightLine: LatLng[];
+}): NavLine | null {
+  if (state.route && state.route.coords.length >= 2) return { coords: state.route.coords, dashed: false, provider: state.route.provider };
   if (state.straightLine.length >= 2) return { coords: state.straightLine, dashed: true };
   return null;
 }

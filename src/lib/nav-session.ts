@@ -30,6 +30,7 @@ import {
 } from '@/lib/nav-progress';
 import type { LatLng } from '@/lib/geo';
 import { fetchNavRouteResult, type NavRoute, type NavRouteOptions, type NavRouteResult } from '@/lib/nav-route';
+import { planRateLimit } from '@/lib/route-limits';
 import { voiceText } from '@/lib/nav-instructions';
 import { INITIAL_VOICE, planVoice, PROMPT_FIX_MAX_AGE_MS, type VoicePrompt, type VoiceState } from '@/lib/nav-voice';
 import * as speech from '@/lib/speech';
@@ -69,7 +70,7 @@ export interface NavSessionEffects {
   /** Told once per arrival; the app announces it (haptic + telemetry) through one shared claim (L3). */
   onArrived?: (info: { rideId: string; key: string }) => void;
   onRerouted?: () => void;
-  onRouteFailed?: (code: 'no_route' | 'failed') => void;
+  onRouteFailed?: (code: 'no_route' | 'failed' | 'rate_limited') => void;
   /** A prompt was dropped because the audio session could not start (a call, Siri, another app's audio). */
   onVoiceSkipped?: () => void;
 }
@@ -122,6 +123,13 @@ const validFix = (f: NavFix): boolean =>
 /** A fix dated further ahead than this is a bad clock or a bad source; it would freeze the dedupe key. */
 export const FUTURE_FIX_MAX_MS = 30_000;
 
+/**
+ * "Getting directions" may last this long with no request on its way (a restored ride whose first fix never comes or is
+ * refused, a fetch declined while offline or backing off); then the route is settled as unavailable, so the banner moves on to
+ * "no route" (with a fix) or "GPS lost" instead of saying "starting" forever.
+ */
+export const STARTING_MAX_MS = 20_000;
+
 export function createNavSession(deps: NavSessionDeps): NavSession {
   let state: NavEngineState = EMPTY_ENGINE;
   let effects: NavSessionEffects | null = null;
@@ -130,6 +138,10 @@ export function createNavSession(deps: NavSessionDeps): NavSession {
   let lastFetchAt = -Infinity;
   let lastRequestAt = -Infinity;
   let failures = 0;
+  // A rate limit's `retryAfter` (24 §3.3): no request before this, on top of the backoff gap; and whether the one
+  // automatic retry of a per-second limit is used up.
+  let retryNotBefore = 0;
+  let secondRetried = false;
   let offline = false;
   // The one immediate retry a reconnect grants; used up until a request succeeds (a flapping network must not beat the backoff).
   let reconnectUsed = false;
@@ -242,6 +254,7 @@ export function createNavSession(deps: NavSessionDeps): NavSession {
         inFlight: controller !== null,
         now,
         offline,
+        notBefore: retryNotBefore,
       })
     ) {
       return;
@@ -260,7 +273,7 @@ export function createNavSession(deps: NavSessionDeps): NavSession {
         { lat: from.lat, lng: from.lng },
         state.dest,
         // noCache: a reroute is for where I am now; the 3 dp cache cell is ~100 m wide.
-        { steps: true, avoidMotorways: deps.readAvoid(), bearingDeg: bearing, noCache: true },
+        { steps: true, avoidMotorways: deps.readAvoid(), bearingDeg: bearing, noCache: true, context: 'nav' },
         ctl.signal,
       )
       .then((result) => {
@@ -271,14 +284,28 @@ export function createNavSession(deps: NavSessionDeps): NavSession {
           failures = 0;
           bearingOk = true;
           reconnectUsed = false;
+          retryNotBefore = 0;
+          secondRetried = false;
           applyRoute(result.route, state.fix);
-          set({ fetching: false });
+          set({ fetching: false, routeBusy: false });
           if (reroute) effects?.onRerouted?.();
+          return;
+        }
+        if (result.status === 'rate_limited') {
+          // The bearing is not to blame for a limit, so it is kept. The old line stays; the banner says "busy".
+          const plan = planRateLimit(result.scope, result.retryAfterS, deps.now(), secondRetried);
+          retryNotBefore = plan.notBefore;
+          secondRetried = plan.usedSecondRetry;
+          if (plan.countsAsFailure) failures += 1;
+          // A per-second limit is not a failure: its retry waits only the 1 s, not the backoff.
+          else lastFetchAt = -Infinity;
+          set({ fetching: false, routeBusy: true, routeStatus: state.prepared ? 'ok' : 'unavailable' });
+          effects?.onRouteFailed?.('rate_limited');
           return;
         }
         failed(bearing !== null);
         // Keep the old line on a failed reroute: better than none.
-        set({ fetching: false, routeStatus: state.prepared ? 'ok' : 'unavailable' });
+        set({ fetching: false, routeBusy: false, routeStatus: state.prepared ? 'ok' : 'unavailable' });
         effects?.onRouteFailed?.(result.status === 'no_route' ? 'no_route' : 'failed');
       })
       .catch(() => {
@@ -305,6 +332,8 @@ export function createNavSession(deps: NavSessionDeps): NavSession {
       routeSeq += 1;
       lastFixT = -Infinity;
       failures = 0;
+      retryNotBefore = 0;
+      secondRetried = false;
       bearingOk = true;
       reconnectUsed = false;
       // Told up front: the network effect runs after this and must not see a request already on its way.
@@ -434,6 +463,9 @@ export function createNavSession(deps: NavSessionDeps): NavSession {
     tick() {
       deps.voice.releaseIfIdle();
       runVoice(null);
+      if (state.active && !state.prepared && state.routeStatus === 'loading' && controller === null && deps.now() - state.startedAt > STARTING_MAX_MS) {
+        set({ routeStatus: 'unavailable' });
+      }
     },
 
     repeat() {

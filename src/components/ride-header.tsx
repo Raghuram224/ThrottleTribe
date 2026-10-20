@@ -5,7 +5,8 @@ import { Icon } from '@/components/icon';
 import type { ConnectionState } from '@/hooks/use-connection';
 import { copy } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
-import { family, font, radius, space, touchTarget } from '@/theme/tokens';
+import { connectionPill } from '@/lib/live-chrome';
+import { family, font, radius, size, space, touchTarget } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
 interface RideHeaderProps {
@@ -13,6 +14,8 @@ interface RideHeaderProps {
   /** "Lobby · 4 riders" in the lobby, the elapsed time ("1 h 24 min") once the ride is live. */
   meta: string;
   connection: ConnectionState;
+  /** The phone itself has no network: only then the pill says "Offline" (26 L2). */
+  netOffline: boolean;
   onBack: () => void;
   onMenu: () => void;
   /** Live rides: stop search (20 C2). Shown only while connected; the connection pill takes its place otherwise. */
@@ -20,8 +23,9 @@ interface RideHeaderProps {
 }
 
 /** Ride header (00 §2.3, 20 C2): back, name + meta, connection pill or search, menu. 60 tall. */
-export function RideHeader({ name, meta, connection, onBack, onMenu, onSearch }: RideHeaderProps) {
+export function RideHeader({ name, meta, connection, netOffline, onBack, onMenu, onSearch }: RideHeaderProps) {
   const { colors } = useTheme();
+  const pill = connectionPill(connection, netOffline);
   return (
     <View style={[styles.root, { backgroundColor: colors.surfaceRaised, borderBottomColor: colors.border }]}>
       <Pressable
@@ -40,7 +44,7 @@ export function RideHeader({ name, meta, connection, onBack, onMenu, onSearch }:
         </AppText>
       </View>
       {/* Healthy = silent: the me row says "Sharing". Only a problem earns a pill. */}
-      {connection === 'live' ? null : <ConnectionPill state={connection} />}
+      {pill ? <ConnectionPill icon={pill.icon} label={copy[pill.labelKey]} /> : null}
       {onSearch && connection === 'live' ? (
         <Pressable
           accessibilityRole="button"
@@ -56,7 +60,7 @@ export function RideHeader({ name, meta, connection, onBack, onMenu, onSearch }:
       ) : null}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Ride menu"
+        accessibilityLabel={copy['live.menuA11y']}
         onPress={onMenu}
         style={styles.touch}>
         <Icon name="menu" color={colors.text} size={24} />
@@ -65,16 +69,15 @@ export function RideHeader({ name, meta, connection, onBack, onMenu, onSearch }:
   );
 }
 
-function ConnectionPill({ state }: { state: ConnectionState }) {
+function ConnectionPill({ icon, label }: { icon: 'connecting' | 'offline'; label: string }) {
   const { colors } = useTheme();
-  const label = state === 'connecting' ? copy['live.connConnecting'] : copy['live.connOffline'];
   const fg = colors.onStatus.offline;
   return (
     <View
       accessible
       accessibilityLabel={label}
       style={[styles.pill, { backgroundColor: colors.status.offline }]}>
-      <Icon name="offline" color={fg} size={16} />
+      <Icon name={icon} color={fg} size={16} />
       <Text maxFontSizeMultiplier={1.3} style={[styles.pillText, { color: fg }]}>
         {label}
       </Text>
@@ -84,7 +87,7 @@ function ConnectionPill({ state }: { state: ConnectionState }) {
 
 const styles = StyleSheet.create({
   root: {
-    height: 60,
+    height: size.header,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,

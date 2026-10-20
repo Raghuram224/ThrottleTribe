@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-/** Longer than the Modal slide-out (about 300 ms on Android) so the next Modal is not dropped. */
-export const MODAL_CLOSE_MS = 400;
+/**
+ * Longer than the Modal's fade-out so the next Modal is not dropped (26 E2: the Modal fades instead of sliding, which is
+ * faster than the old ~300 ms slide). 300 is the spec's floor-plus-margin; re-measure on the moto g64 (measured close + 100,
+ * never below 250) and raise it if a Modal opened after another is ever dropped.
+ */
+export const MODAL_CLOSE_MS = 300;
 
 /**
  * Android drops a Modal that is opened while another Modal is still closing. Close the first one,

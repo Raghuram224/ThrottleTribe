@@ -3,15 +3,21 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import maplibregl, { type Map as MlMap } from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { MapCreditPill } from '@/components/map-credit-pill';
 import { RoutePin } from '@/components/route-pin';
+import { useTerrainOn } from '@/hooks/use-terrain-on';
 import { MapMarker } from '@/components/ride-map.web';
+import { mapStyleFor } from '@/lib/map-styles';
 import { copy } from '@/lib/copy';
+import { pillLines } from '@/lib/credits';
+import { DEM_PROVIDER } from '@/lib/flags';
+import { runWhenStyleReady } from '@/lib/map-ready-web';
+import { syncHillshade } from '@/lib/hillshade-web';
 import type { LatLng } from '@/lib/geo';
 import { fitBoundsFor } from '@/lib/map-fit';
 import { syncRouteLayers } from '@/lib/route-layers-web';
-import { family, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
 const PADDING = { top: 70, right: 70, bottom: 56, left: 70 };
@@ -23,7 +29,8 @@ interface SummaryRouteMapProps {
 }
 
 export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
+  const terrain = useTerrainOn();
   const containerRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MlMap | null>(null);
   const styleUrl = useRef(colors.mapStyle);
@@ -39,8 +46,11 @@ export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
   );
   const geoRef = useRef(geo);
   const sync = useCallback(
-    (m: MlMap) => syncRouteLayers(m, geoRef.current, { routeLine: colors.routeLine, routeCasing: colors.routeCasing }),
-    [colors.routeLine, colors.routeCasing],
+    (m: MlMap) => {
+      syncHillshade(m, { on: terrain, scheme, beforeId: colors.hillshadeBeforeId, provider: DEM_PROVIDER });
+      syncRouteLayers(m, geoRef.current, { routeLine: colors.routeLine, routeCasing: colors.routeCasing });
+    },
+    [colors.routeLine, colors.routeCasing, colors.hillshadeBeforeId, terrain, scheme],
   );
   const syncRef = useRef(sync);
   useEffect(() => {
@@ -53,7 +63,7 @@ export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
     if (!container) return;
     const m = new maplibregl.Map({
       container,
-      style: styleUrl.current,
+      style: mapStyleFor(styleUrl.current) as unknown as maplibregl.StyleSpecification,
       attributionControl: false,
       interactive: false,
       ...(bounds
@@ -74,11 +84,12 @@ export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
   useEffect(() => {
     if (!map || styleUrl.current === colors.mapStyle) return;
     styleUrl.current = colors.mapStyle;
-    map.setStyle(colors.mapStyle);
+    // No diff: a diffed swap keeps the layers we added (route, hillshade) out of `style.load`, so they would never be re-added.
+    map.setStyle(mapStyleFor(colors.mapStyle) as unknown as maplibregl.StyleSpecification, { diff: false });
   }, [map, colors.mapStyle]);
 
   useEffect(() => {
-    if (map) sync(map);
+    if (map) runWhenStyleReady(map, () => sync(map));
   }, [map, geo, sync]);
 
   useEffect(() => {
@@ -102,16 +113,8 @@ export function SummaryRouteMap({ points, fitNonce }: SummaryRouteMapProps) {
           </MapMarker>
         </>
       ) : null}
-      <View pointerEvents="none" style={styles.attribution}>
-        <Text maxFontSizeMultiplier={1.2} style={[styles.attributionText, { color: colors.textMuted }]}>
-          {copy['live.attribution']}
-        </Text>
-      </View>
+      <MapCreditPill lines={pillLines({ kind: 'plain' }, terrain, DEM_PROVIDER).map((k) => copy[k])} style={{ bottom: 30 }} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  attribution: { position: 'absolute', left: space.sm, bottom: 30 },
-  attributionText: { fontSize: 10, lineHeight: 14, fontFamily: family.regular },
-});

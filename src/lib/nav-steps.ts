@@ -75,6 +75,8 @@ export function parseSteps(legs: unknown, trailTotalM: number): NavStep[] | unde
     if (Array.isArray(steps)) for (const s of steps) if (s && typeof s === 'object') raw.push(s as Record<string, unknown>);
   }
   const parsed: Omit<NavStep, 'alongM'>[] = [];
+  // `driving_side` may be missing (LocationIQ may leave it out): a step inherits the last one known on this route.
+  const sides: ('left' | 'right' | null)[] = [];
   for (const s of raw) {
     const m = (s.maneuver ?? {}) as Record<string, unknown>;
     const loc = m.location;
@@ -93,10 +95,18 @@ export function parseSteps(legs: unknown, trailTotalM: number): NavStep[] | unde
       rotaryName: str(s.rotary_name),
       location: { lat: loc[1] as number, lng: loc[0] as number },
       distanceM: Math.max(0, num(s.distance) ?? 0),
-      drivingSide: s.driving_side === 'left' ? 'left' : 'right',
+      drivingSide: 'left', // replaced below from `sides`
     });
+    sides.push(s.driving_side === 'left' || s.driving_side === 'right' ? s.driving_side : null);
   }
   if (parsed.length === 0) return undefined;
+  // Forward fill, then back fill the leading gap; with no side known anywhere the default is left (India), not right.
+  let known: 'left' | 'right' | null = null;
+  const filled = sides.map((v) => (known = v ?? known));
+  const first = sides.find((v) => v !== null) ?? 'left';
+  parsed.forEach((p, i) => {
+    p.drivingSide = filled[i] ?? first;
+  });
   return withAlong(parsed, trailTotalM);
 }
 
@@ -169,7 +179,7 @@ export function announcedSteps(steps: readonly NavStep[] | undefined, end: LatLn
     rotaryName: '',
     location: end,
     distanceM: 0,
-    drivingSide: last?.drivingSide ?? 'right',
+    drivingSide: last?.drivingSide ?? 'left',
     alongM: totalM,
   });
   return out;

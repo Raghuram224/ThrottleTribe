@@ -118,6 +118,9 @@ Derived: `netOffline` (NetInfo `isConnected === false`) or `channelStatus !== 's
 | connecting ≤5 s | `◌ Connecting` dot `status.offline` | none |
 | offline / error / closed >5 s | `📶 Offline` pill bg `status.offline`, text `onStatus.offline` | Offline banner |
 
+> **2026-10-20, see 26 §3 L1–L2:** with network up but the ride channel down, the pill says "Connecting" and the
+> "Reconnecting to the ride…" banner is grey (`offline` tone), never amber.
+
 ### 2.5 Banner stack (below header, above content) — `Banner` (new)
 Order top→bottom, max **2 visible**; lower-priority banners wait:
 1. **SOS-minimised** (06/07) — `status.sosStrong` bg, white text, cannot be closed while SOS is on.
@@ -143,6 +146,8 @@ No new dependency. `Sheet` (new) = RN `Modal` (transparent, `animationType="slid
 Android back, or explicit Close button (56). **Never** rely on swipe-to-close (gloves).
 `ConfirmSheet` (new) = Sheet with title 20/700, body 16, two stacked BigButtons: confirm (danger or
 primary) on **top**, Cancel (secondary) at the bottom, so a sloppy thumb lands on Cancel.
+> **2026-10-20, see 26 §4 E1–E3:** the Modal fades and the panel rises 24 dp in 200 ms (no `slide`); a loading confirm shows
+> spinner + label ("Ending ride…"); sheet action rows sit back to back with no gap.
 
 ## 3. New tokens (add to `src/theme/tokens.ts`)
 

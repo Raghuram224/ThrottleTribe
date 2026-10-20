@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { LatLng } from '@/lib/geo';
 import { fetchNavRouteResult, type NavRoute, type NavRouteResult } from '@/lib/nav-route';
 import { previewState } from '@/lib/preview-state';
+import { clampRetryAfterS } from '@/lib/route-limits';
 
 export type { PreviewRouteState } from '@/lib/preview-state';
 
@@ -41,7 +42,7 @@ export function usePreviewRoute(origin: LatLng | null, dest: LatLng, avoidMotorw
       { lat: originLat, lng: originLng },
       { lat: destLat, lng: destLng },
       // Steps are asked for once, here: the live ride reuses this route (seeded at Go), so Go sends no second request.
-      { steps: true, avoidMotorways: settled },
+      { steps: true, avoidMotorways: settled, context: 'preview' },
       controller.signal,
     ).then((result) => {
       if (controller.signal.aborted) return;
@@ -51,8 +52,45 @@ export function usePreviewRoute(origin: LatLng | null, dest: LatLng, avoidMotorw
     return () => controller.abort();
   }, [originLat, originLng, destLat, destLng, settled, key]);
 
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  // A rate limit (24 §3.4): one automatic retry after `retryAfterS` (at most 60 s) while the panel is open; the manual
+  // "Try again" inside that wait is scheduled for its end and shows "loading" meanwhile.
+  const [waiting, setWaiting] = useState(false);
+  const notBefore = useRef(0);
+  const autoRetriedFor = useRef('');
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baseKey = key.split('#')[0];
+  const limitedS = answer && answer.key === key && answer.result.status === 'rate_limited' ? answer.result.retryAfterS : null;
+  useEffect(() => {
+    if (limitedS === null) return;
+    const waitMs = clampRetryAfterS(limitedS) * 1000;
+    notBefore.current = Date.now() + waitMs;
+    if (autoRetriedFor.current === baseKey) return;
+    autoRetriedFor.current = baseKey;
+    const t = setTimeout(() => setAttempt((n) => n + 1), waitMs);
+    return () => clearTimeout(t);
+  }, [limitedS, baseKey]);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
-  const state = previewState({ origin, avoid: avoidMotorways, settled, key, answer, lastRoute });
+  const retry = useCallback(() => {
+    const wait = notBefore.current - Date.now();
+    if (timer.current) clearTimeout(timer.current);
+    if (wait > 0) {
+      setWaiting(true);
+      timer.current = setTimeout(() => {
+        setWaiting(false);
+        setAttempt((n) => n + 1);
+      }, wait);
+    } else {
+      setAttempt((n) => n + 1);
+    }
+  }, []);
+
+  const computed = previewState({ origin, avoid: avoidMotorways, settled, key, answer, lastRoute });
+  const state = waiting && computed.status === 'rate_limited' ? ({ status: 'loading' } as const) : computed;
   return { state, retry };
 }

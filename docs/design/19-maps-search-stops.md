@@ -50,6 +50,9 @@ Proposals are **ride_events**, so they need no new table: add `'stop_proposed'`,
 - `clear_stop(p_ride_id)`. Leader only. Nulls the columns and inserts `stop_cleared`.
 
 ### Search (client)
+> **Superseded 2026-10-16 by 24 §2:** search is Geoapify through the `geo` Edge Function, Photon is the automatic
+> fallback; debounce 400 ms, chip radius 5 → 25 km, new credit row. The route provider below is now LocationIQ (24 §3).
+
 - **Photon** (`https://photon.komoot.io/api/`). It is free, keyless and OSM-based. Requests use
   `q`, `lat`/`lon` = my last position (location bias), `limit=8`, and `lang=en`. Debounce 350 ms, abort
   in-flight requests, require at least 3 characters, cache the last 20 queries in memory, and give up

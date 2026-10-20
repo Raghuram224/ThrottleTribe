@@ -9,6 +9,11 @@ import { MeMarker } from '@/components/me-marker';
 import type { PlanMapProps } from '@/components/plan-map';
 import { MapMarker } from '@/components/ride-map.web';
 import { StopPin } from '@/components/stop-pin';
+import { useTerrainOn } from '@/hooks/use-terrain-on';
+import { DEM_PROVIDER } from '@/lib/flags';
+import { runWhenStyleReady } from '@/lib/map-ready-web';
+import { syncHillshade } from '@/lib/hillshade-web';
+import { mapStyleFor } from '@/lib/map-styles';
 import { fitBoundsFor } from '@/lib/map-fit';
 import { HOME_ME_ZOOM } from '@/lib/plan-flow';
 import { previewFitPoints } from '@/lib/preview-fit';
@@ -25,7 +30,8 @@ const PIN_ONLY_ZOOM = 14;
 const FOLLOW_MIN_ZOOM = 10;
 
 export function PlanMap({ me, place, line, padding, intent, intentNonce, initial, follow, onUserGesture, onIdle, onMapError, onMapPress }: PlanMapProps) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
+  const terrain = useTerrainOn();
   const containerRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MlMap | null>(null);
   const styleUrl = useRef(colors.mapStyle);
@@ -44,11 +50,13 @@ export function PlanMap({ me, place, line, padding, intent, intentNonce, initial
   });
   const firstFrame = useRef(initial);
 
-  const sync = (m: MlMap) =>
+  const sync = (m: MlMap) => {
+    syncHillshade(m, { on: terrain, scheme, beforeId: colors.hillshadeBeforeId, provider: DEM_PROVIDER });
     syncNavRouteLayers(m, layerRef.current.geo, layerRef.current.dashed, {
       navRoute: colors.navRoute,
       navRouteCasing: colors.navRouteCasing,
     });
+  };
   const syncRef = useRef(sync);
   useEffect(() => {
     syncRef.current = sync;
@@ -60,7 +68,7 @@ export function PlanMap({ me, place, line, padding, intent, intentNonce, initial
     const f = firstFrame.current;
     const m = new maplibregl.Map({
       container,
-      style: styleUrl.current,
+      style: mapStyleFor(styleUrl.current) as unknown as maplibregl.StyleSpecification,
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
@@ -93,13 +101,14 @@ export function PlanMap({ me, place, line, padding, intent, intentNonce, initial
   useEffect(() => {
     if (!map || styleUrl.current === colors.mapStyle) return;
     styleUrl.current = colors.mapStyle;
-    map.setStyle(colors.mapStyle);
+    // No diff: a diffed swap keeps the layers we added (route, hillshade) out of `style.load`, so they would never be re-added.
+    map.setStyle(mapStyleFor(colors.mapStyle) as unknown as maplibregl.StyleSpecification, { diff: false });
   }, [map, colors.mapStyle]);
 
   useEffect(() => {
     layerRef.current = { geo, dashed };
-    if (map) syncRef.current(map);
-  }, [map, geo, dashed]);
+    if (map) runWhenStyleReady(map, () => syncRef.current(map));
+  }, [map, geo, dashed, terrain, scheme]);
 
   const pad = `${padding.top}|${padding.bottom}|${padding.left}`;
   const key =

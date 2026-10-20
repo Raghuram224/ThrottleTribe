@@ -4,6 +4,14 @@ const me = { lat: 12.97, lng: 77.59 };
 const dest = { lat: 12.3, lng: 76.65 };
 const road = [me, { lat: 12.6, lng: 77.1 }, dest];
 
+describe('previewPadding with a taller pill', () => {
+  it('Terrain adds a line, so the fit clears 16 dp more; a big font adds more', () => {
+    expect(previewPadding(24, 300, 1).bottom).toBe(300 + 24 + 28);
+    expect(previewPadding(24, 300, 2).bottom).toBe(300 + 24 + 28 + 16);
+    expect(previewPadding(24, 300, 2, 1.3).bottom).toBeGreaterThan(previewPadding(24, 300, 2).bottom);
+  });
+});
+
 describe('previewPadding', () => {
   it('clears the back button at the top and the panel, air and attribution at the bottom', () => {
     // 360x780: status bar 24, panel 300.

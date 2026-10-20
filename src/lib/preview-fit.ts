@@ -1,4 +1,5 @@
 // What the route preview camera frames, and the room the floating chrome takes (21 §2.3). Pure.
+import { pillHeight, type PillLines } from '@/lib/credits';
 import type { LatLng } from '@/lib/geo';
 import type { NavLine } from '@/lib/stop-ui';
 
@@ -19,10 +20,11 @@ export const PREVIEW_SIDE = 48;
  * Fit padding (the preview's version of the 20 C2 rule: everything floating over the map is counted): top
  * clears the back button, bottom clears the panel, 24 of air and the attribution; sides 48.
  */
-export function previewPadding(insetTop: number, panelH: number): PreviewPadding {
+export function previewPadding(insetTop: number, panelH: number, creditLines: PillLines = 1, fontScale = 1): PreviewPadding {
   return {
     top: insetTop + PREVIEW_BACK_BOTTOM,
-    bottom: panelH + 24 + PREVIEW_ATTRIBUTION_H,
+    // PREVIEW_ATTRIBUTION_H (28) is the one-line pill plus 4; a taller pill (Terrain) grows it.
+    bottom: panelH + 24 + (pillHeight(creditLines, fontScale) - pillHeight(1) + PREVIEW_ATTRIBUTION_H),
     left: PREVIEW_SIDE,
     right: PREVIEW_SIDE,
   };

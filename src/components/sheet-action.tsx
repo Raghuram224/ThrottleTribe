@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
@@ -14,6 +15,11 @@ interface SheetActionProps {
   destructive?: boolean;
   /** No divider under the last row. */
   last?: boolean;
+}
+
+/** The rows of a sheet back to back: no gap, so each divider sits halfway between two labels (26 E3). */
+export function SheetActionList({ children }: { children: ReactNode }) {
+  return <View>{children}</View>;
 }
 
 /** Sheet action row (14 §1): 56 tall, icon 24 + 16 semibold label, left aligned, inset divider. */

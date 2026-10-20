@@ -26,6 +26,8 @@ export const STORAGE_KEYS = {
   pendingJoinCode: 'pending.joinCode',
   mapTilt: 'pref.mapTilt',
   haptics: 'pref.haptics',
+  /** Map type (docs/design/25 T2): 'standard' | 'terrain'. A display preference: kept across launches and sign-out. */
+  mapLayer: 'pref.mapLayer',
   fullMap: 'pref.fullMap',
   /** Where to? recent places (21 §2.2): on this device only, cleared on sign-out. */
   recentPlaces: 'pref.recentPlaces',

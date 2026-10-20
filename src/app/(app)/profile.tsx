@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { CreditsSheet } from '@/components/credits-sheet';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
@@ -25,7 +26,7 @@ import { stopRideTracking } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
 import { deleteMyAccount, saveProfile, signOutLocal, toRideError } from '@/lib/ride-api';
 import { setTelemetryRideId } from '@/lib/telemetry';
-import { setPendingJoinCode, usePrefsStore, type ThemePref } from '@/store/prefs-store';
+import { setPendingJoinCode, usePrefsStore, type MapLayer, type ThemePref } from '@/store/prefs-store';
 import { useRideStore } from '@/store/ride-store';
 import { useSessionStore } from '@/store/session-store';
 import { showToast } from '@/store/toast-store';
@@ -36,6 +37,11 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'auto', label: copy['profile.themeAuto'] },
   { value: 'light', label: copy['profile.themeLight'] },
   { value: 'dark', label: copy['profile.themeDark'] },
+];
+
+const MAP_TYPE_OPTIONS: { value: MapLayer; label: string }[] = [
+  { value: 'standard', label: copy['mapType.standard'] },
+  { value: 'terrain', label: copy['mapType.terrain'] },
 ];
 
 // The stop alert time every new ride is created with (it moved here from the old "New ride" form, 22 D5).
@@ -51,6 +57,8 @@ export default function Profile() {
   const profile = useSessionStore((s) => s.profile);
   const themePref = usePrefsStore((s) => s.themePref);
   const setThemePref = usePrefsStore((s) => s.setThemePref);
+  const mapLayer = usePrefsStore((s) => s.mapLayer);
+  const setMapLayer = usePrefsStore((s) => s.setMapLayer);
   const hapticsOn = usePrefsStore((s) => s.haptics);
   const setHaptics = usePrefsStore((s) => s.setHaptics);
   const thresholdS = usePrefsStore((s) => s.stopThresholdS);
@@ -58,6 +66,7 @@ export default function Profile() {
   const contacts = useContactCount();
   const [editing, setEditing] = useState(false);
   const [howSharing, setHowSharing] = useState(false);
+  const [credits, setCredits] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +178,18 @@ export default function Profile() {
           <AppText variant="caption" muted>
             {copy['profile.themeHint']}
           </AppText>
+          {/* Map type (25 §2.3): the same setting as Home's map type circle. */}
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <AppText style={styles.label}>{copy['profile.mapTypeLabel']}</AppText>
+          <SegmentedControl
+            options={MAP_TYPE_OPTIONS}
+            value={mapLayer}
+            onChange={(next) => setMapLayer(next, 'profile')}
+            accessibilityLabel={copy['profile.mapTypeLabel']}
+          />
+          <AppText variant="caption" muted>
+            {copy['profile.mapTypeHint']}
+          </AppText>
         </Card>
         <Card padding={0} gap={0} style={styles.spaced}>
           <View style={styles.switchRow}>
@@ -191,7 +212,8 @@ export default function Profile() {
 
         <SectionLabel>{copy['profile.sectionPrivacy']}</SectionLabel>
         <Card padding={0} gap={0}>
-          <SettingsRow icon="lock" title={copy['profile.howSharing']} last onPress={() => setHowSharing(true)} />
+          <SettingsRow icon="lock" title={copy['profile.howSharing']} onPress={() => setHowSharing(true)} />
+          <SettingsRow icon="info" title={copy['profile.creditsRow']} last onPress={() => setCredits(true)} />
         </Card>
       </View>
 
@@ -213,6 +235,8 @@ export default function Profile() {
       {editing ? (
         <NameEditSheet initial={name} onSave={saveName} onCancel={() => setEditing(false)} />
       ) : null}
+
+      <CreditsSheet visible={credits} onClose={() => setCredits(false)} />
 
       <Sheet visible={howSharing} onClose={() => setHowSharing(false)}>
         <AppText variant="heading" style={styles.label}>

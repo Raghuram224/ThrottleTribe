@@ -13,7 +13,7 @@ import { WebRideNotices } from '@/components/web-ride-notices';
 import { Sheet } from '@/components/sheet';
 import { StopApprovalCard } from '@/components/stop-approval-card';
 import { RenameRideSheet } from '@/components/rename-ride-sheet';
-import { SheetAction } from '@/components/sheet-action';
+import { SheetAction, SheetActionList } from '@/components/sheet-action';
 import { SosSenderPanel } from '@/components/sos-sender-panel'; // sos contacts
 import { SosPinnedBanner, SosTakeover, useReceiverSos } from '@/components/sos-takeover';
 import { MODAL_CLOSE_MS, useAfterModalClose } from '@/hooks/use-after-modal'; // invite
@@ -537,7 +537,8 @@ export default function RideLayout() {
           text={solo && navOn && !engineOffRoute ? copy['banner.offlineSolo'] : copy['banner.offline']}
         />
       ) : (
-        <Banner key="reconnecting" tone="warning" icon="connecting" text={copy['banner.reconnecting']} />
+        // Grey, not amber: no data is not "stopped" (26 L1).
+        <Banner key="reconnecting" tone="offline" icon="connecting" text={copy['banner.reconnecting']} />
       ),
     );
   } else if (backOnline) {
@@ -677,6 +678,9 @@ export default function RideLayout() {
     <RideActionsContext.Provider value={actions}>
       <Screen
         padded={false}
+        // The status-bar band takes the header's colour and the nav-bar band the action bar's / footer's (26 L3).
+        insetTopColor={showHeader && !fullMapOn ? colors.surfaceRaised : undefined}
+        insetBottomColor={child === 'live' || child === 'summary' ? colors.surfaceRaised : undefined}
         edgeToEdge={fullMapOn}
         top={
           <>
@@ -685,6 +689,7 @@ export default function RideLayout() {
                 name={rideName}
                 meta={meta}
                 connection={connection}
+                netOffline={netOffline}
                 // Back leaves the ride screens, not the ride: tracking continues, Home shows the resume card.
                 onBack={() => (router.canGoBack() ? router.back() : router.replace(href('/home')))}
                 onMenu={() => setMenuOpen(true)}
@@ -718,6 +723,7 @@ export default function RideLayout() {
       {rideLive && id ? <SosTakeover rideId={id} target={sosTarget} /> : null}
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} onDismiss={afterMenu.onDismiss} hideClose>
+        <SheetActionList>
         <SheetAction
           icon="inviteOutline"
           label={copy['live.menuInvite']}
@@ -777,6 +783,7 @@ export default function RideLayout() {
             afterMenu.schedule(() => setConfirm(isLeader ? 'end' : 'leave'));
           }}
         />
+        </SheetActionList>
       </Sheet>
 
       {canRename && renameOpen ? (
@@ -797,6 +804,7 @@ export default function RideLayout() {
         cancelLabel={solo ? copy['nav.stopCancel'] : copy['stop.clearCancel']}
         tone={solo ? 'primary' : 'danger'}
         loading={working}
+        loadingLabel={solo ? copy['nav.stopping'] : copy['stop.clearing']}
         onCancel={() => !working && setConfirm(null)}
         onConfirm={() => void doClearStop()}
       />
@@ -806,6 +814,7 @@ export default function RideLayout() {
         body={leaveBody}
         confirmLabel={leaveConfirm}
         loading={working}
+        loadingLabel={copy['live.leaving']}
         onCancel={() => !working && setConfirm(null)}
         onConfirm={() => void doLeave()}
       />
@@ -816,6 +825,7 @@ export default function RideLayout() {
         confirmLabel={endConfirm}
         cancelLabel={inLobby ? undefined : copy['live.keepRiding']}
         loading={working}
+        loadingLabel={inLobby ? copy['lobby.cancelling'] : copy['live.ending']}
         onCancel={() => !working && setConfirm(null)}
         onConfirm={() => void doEnd()}
       />

@@ -1,5 +1,8 @@
 # 21 — Solo navigation ("Where to?")
 
+> **2026-10-20, see 26 §2 R1 and §4 E1:** the route panel's line 1 is the duration alone; distance and arrive time share
+> line 2. Loading buttons ("Starting…", "Ending ride…") show a spinner and their label.
+
 Source: user request, 2026-10-13: *"I want this app to have single user ride like Google Maps. It allows the
 individual user to go to the destination whenever the user wants."* Settled user decisions: (1) **"Where to?"
 first**, (2) **turn banner + voice**, (3) **arrival offers, never auto-acts**.
@@ -25,6 +28,11 @@ is attributed; SOS reachable on every ride screen state.
 | D3 | Background voice | **Yes, in this build.** Voice keeps speaking with the screen locked or another app in front | **P3**: §4.1, §4.3, §4.5 (new), §5.5, §10, §12, §13 |
 | D4 | Typing lock passenger override | **No override** (resolved as recommended) | §2.2.2 unchanged |
 | D2a | Expressway switch while the router cannot honour it (user, **2026-10-14**) | The public OSRM demo rejects every `exclude` (HTTP 400 `InvalidValue`, "Exclude flag combination is not supported."), so the switch could not do anything. **Hidden unless `EXPO_PUBLIC_ROUTING_EXCLUDE=1`** (`flags.ROUTING_SUPPORTS_EXCLUDE`, default off). Off: no request (preview, live, reroute, group stop route) carries `exclude`, there is no doomed first request or double request, and the preview note is `preview.carNoteMayUse` "Route for cars — may use expressways that ban two-wheelers." On: §2.3.1 as written (switch with an On/Off word, busy state, disabled while Go runs, 500 ms settle, "Updating route…" with the old line at 0.4 opacity, `preview.noRouteAvoid`, the reject-fallback and its 30 min memo, `nav.expressways_toggled` / `nav.exclude_rejected`). Only an exclude-related `InvalidValue` counts as a rejection, so a bad `bearings` value (P2) cannot switch avoidance off | **P1**: §2.3.1, §3.1, §3.8 |
+
+**2026-10-16, see 24:** D1 is decided: routing is **LocationIQ Directions** (driving) through the `geo` Edge Function
+(24 §3), search is Geoapify with a Photon fallback (24 §2), and the OSRM credit is replaced by "Routes by LocationIQ.com"
+(24 §4). §3.1's URL and User-Agent, §5.1 and the `live.attributionRoute` string are superseded there; D2a stays (LocationIQ
+does not document `exclude`).
 
 **P2 implementation notes (engineer, 2026-10-14):** where the build settled a spec ambiguity or chose a close alternative.
 - **Engine files.** Besides §3's modules: `nav-engine.ts` (engine state, `selectBanner`, `isNavActive`, `newestPosition`),
