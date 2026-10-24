@@ -165,8 +165,8 @@ export async function signOutLocal(): Promise<void> {
 
 // ---------------------------------------------------------------- ride RPCs
 
-/** How a ride was made (telemetry only, 22 §11): Start ride, Invite riders (lobby) or Just ride (no destination). */
-export type RideStartKind = 'start' | 'invite' | 'just_ride';
+/** How a ride was made (telemetry only, 22 §11): Start ride or Invite riders (lobby). `just_ride` is retired. */
+export type RideStartKind = 'start' | 'invite';
 
 export async function createRide(name: string, stopThresholdS: number, opts: { startKind?: RideStartKind } = {}): Promise<RideRow> {
   await ensureSignedIn();

@@ -12,5 +12,5 @@ export function backAction(fullMap: boolean): 'exit-full-map' | 'default' {
   return fullMap ? 'exit-full-map' : 'default';
 }
 
-// No rule opens full map by itself (22 D6): every ride, a free Just ride included, opens in the normal sheet view, so the
+// No rule opens full map by itself (22 D6): every ride opens in the normal sheet view, so the
 // Invite riders row and the header menu are visible from the first second. Full map is one tap away (the toggle).

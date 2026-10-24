@@ -120,7 +120,7 @@ export interface OpenRideLite {
 
 export type OpenRideCard = 'none' | 'active' | 'lobby';
 
-/** Which "ride in progress" card the sheet shows (and so whether the tiles and recents are hidden). */
+/** Which "ride in progress" card the sheet shows (and so whether Join and the recents are hidden). */
 export function openRideCard(open: Pick<OpenRideLite, 'status'> | null): OpenRideCard {
   if (!open || open.status === 'ended') return 'none';
   return open.status === 'active' ? 'active' : 'lobby';
@@ -151,7 +151,6 @@ export function whereToHref(o: { focus?: boolean; chip?: string; q?: string }): 
 
 export type SheetBlock =
   | 'firstSub'
-  | 'tiles'
   | 'rideCard'
   | 'recentPlaces'
   | 'locationRow'
@@ -187,19 +186,18 @@ export function homeSheetBlocks(i: SheetBlocksInput): SheetBlocks {
   const rides: SheetBlock[] = i.showRecentRides ? ['recentRides'] : [];
   const location: SheetBlock[] = i.locationGranted ? [] : ['locationRow'];
   if (i.openRide !== 'none') {
-    // The tiles and the recent places would start a second ride: hidden. One primary: Back to ride.
+    // The recent places would start a second ride: hidden (the strip has no Join either). One primary: Back to ride.
     return {
       strip: 'resume',
       expanded: ['rideCard', ...nudge, ...(i.openRide === 'lobby' && i.recentPlaces > 0 ? (['recentPlaces'] as SheetBlock[]) : []), ...rides],
     };
   }
   if (i.firstRun) {
-    return { strip: 'title', expanded: ['firstSub', 'tiles', ...location, 'steps', ...nudge] };
+    return { strip: 'title', expanded: ['firstSub', ...location, 'steps', ...nudge] };
   }
   return {
     strip: 'title',
     expanded: [
-      'tiles',
       ...(i.recentPlaces > 0 ? (['recentPlaces'] as SheetBlock[]) : []),
       ...location,
       ...nudge,
@@ -365,7 +363,7 @@ export type StartStep =
   /** A ride is open: ask first (a rider leaves it, a leader must end it). */
   | { kind: 'confirm'; sheet: 'switch' | 'leaderBusy' };
 
-/** Start (or Just ride) with a ride maybe open. */
+/** Start (or Invite riders) with a ride maybe open. */
 export function startStep(open: Pick<OpenRideLite, 'role'> | null): StartStep {
   if (!open) return { kind: 'go' };
   return { kind: 'confirm', sheet: open.role === 'leader' ? 'leaderBusy' : 'switch' };
@@ -419,14 +417,9 @@ export function launchPromptWanted(a: {
   return a.focused && !a.asked && a.platform !== 'web' && a.status === 'undetermined' && a.canAskAgain;
 }
 
-export type HomeTile = 'join' | 'ride';
-
-/**
- * The sheet tiles (D5): Join with a code and Just ride. There is no group tile: any ride becomes a group when its
- * code is shared from the ride itself.
- */
-export function homeTiles(): readonly HomeTile[] {
-  return ['join', 'ride'];
+/** "Join with a code" sits on the collapsed strip, except while a ride is open (one primary: Back to ride). */
+export function stripJoinVisible(strip: SheetStrip): boolean {
+  return strip === 'title';
 }
 
 // ---------------------------------------------------------------- place sheet text (22 §3.3)

@@ -20,7 +20,6 @@ import { PlaceResults } from '@/components/place-results';
 import { HomeMap } from '@/components/home-map';
 import type { MapHandle } from '@/components/map/types';
 import type { MapPin, RouteLabelView } from '@/components/plan-map';
-import { QuickTiles } from '@/components/quick-tiles';
 import { MapCreditPill } from '@/components/map-credit-pill';
 import { MapTypeButton } from '@/components/map-type-button';
 import { MapTypeSheet } from '@/components/map-type-sheet';
@@ -81,6 +80,7 @@ import {
   searchResultsPadding,
   shouldSaveCamera,
   startStep,
+  stripJoinVisible,
   type CameraIntent,
   type GoingKind,
   type HomeSnap,
@@ -103,7 +103,6 @@ import { getMyOpenRide, toRideError, type OpenRide } from '@/lib/ride-api';
 import { isRideStartBusy } from '@/lib/ride-start';
 import { rideHref } from '@/lib/routing';
 import { startInviteRide, startNavigationRide, stopKindFor } from '@/lib/solo-nav';
-import { startSoloRide } from '@/lib/solo-ride';
 import { receiverTakeoverShowing } from '@/lib/sos';
 import { track } from '@/lib/telemetry';
 import { useLiveUiStore } from '@/store/live-ui-store';
@@ -161,7 +160,7 @@ let launchPromptAsked = false;
  * (typing over a solid list, then the results as pins and a bottom list; no screen is pushed), `place` (a searched
  * place's sheet) and `route` (the 21 preview: every route drawn, one primary, Start ride). There is one kind of ride
  * (22 D5): it becomes a group when its code is shared from the live screen. Nothing here creates a ride until Start ride
- * / Just ride is tapped.
+ * or Invite riders is tapped.
  */
 export default function Home() {
   const { colors, scheme } = useTheme();
@@ -226,7 +225,7 @@ export default function Home() {
       // (a lobby cancelled from this phone never reaches the recent-rides list below).
       pruneNavRidesExcept(fresh?.ride ?? null, epoch);
     } catch {
-      // Offline or failing: keep showing what we have; the tiles explain their own errors.
+      // Offline or failing: keep showing what we have; the screens explain their own errors.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataEpoch]);
@@ -487,8 +486,6 @@ export default function Home() {
   const goingRef = useRef(false);
   // What the switch / leader-busy sheet was opened for, so the confirmed one runs.
   const pendingKind = useRef<'start' | 'invite'>('start');
-  // Just ride is starting (tile). Declared here: the back handler below reads it.
-  const soloRef = useRef(false);
 
   // ---------------------------------------------------------------- back (22 §5.1) and focus
   useFocusEffect(
@@ -498,7 +495,7 @@ export default function Home() {
       usePlanStore.getState().setSheetSnap(initialSheetSnap(firstRunRef.current, usePlanStore.getState().firstRunSeen));
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         // Android back must not leave while a ride is being started (it would still be created, with no screen waiting).
-        if (goingRef.current || soloRef.current) return true;
+        if (goingRef.current) return true;
         // A receiver SOS takeover over Home owns Back (its handler is registered later, but this one runs first).
         const ride = useRideStore.getState();
         const sos = useSosStore.getState();
@@ -517,8 +514,6 @@ export default function Home() {
   );
 
   // ---------------------------------------------------------------- actions
-  const [soloLoading, setSoloLoading] = useState(false);
-
   // Search is inline (28): the plan store switches Home to `search`, no screen is pushed.
   const openSearch = (from: 'bar' | 'chip', chipKey?: SearchChip['key']) => {
     track('home.search_opened', { from });
@@ -550,27 +545,15 @@ export default function Home() {
     usePlanStore.getState().openRoute(p, 'recent');
   }, []);
 
+  // The sheet owns the tap haptic, as it does for the resume row.
+  const joinWithCode = () => router.push(href('/join'));
+
   const goToOpenRide = () => {
     if (open) openRide({ id: open.ride.id, status: open.ride.status });
   };
 
   // Every ride gets the normal default name ("Raghu's ride"): it may be shared, and the name is in the invite text.
   const rideName = defaultRideName(first);
-
-  const justRide = async () => {
-    if (soloRef.current) return;
-    soloRef.current = true;
-    setSoloLoading(true);
-    try {
-      // A ride with no destination: it opens in the normal view (22 D6), and a stop can be added from the header.
-      resetToRide(await startSoloRide(thresholdS, rideName));
-    } catch (e) {
-      if (!isRideStartBusy(e)) showToast(errorText(toRideError(e).code));
-    } finally {
-      soloRef.current = false;
-      setSoloLoading(false);
-    }
-  };
 
   /**
    * Start ride (21 §2.4): create, start and set the stop; Invite riders (22 D6): create in the lobby, set the stop,
@@ -769,16 +752,6 @@ export default function Home() {
             <AppText variant="caption" muted numberOfLines={2} maxFontSizeMultiplier={1.3}>
               {copy['home.firstSub']}
             </AppText>
-          </View>
-        );
-      case 'tiles':
-        return (
-          <View key={b} style={styles.tiles}>
-            <QuickTiles
-              rideLoading={soloLoading}
-              onJoin={() => router.push(href('/join'))}
-              onRide={() => void justRide()}
-            />
           </View>
         );
       case 'rideCard':
@@ -1072,6 +1045,7 @@ export default function Home() {
                 }
               : undefined
           }
+          onJoin={stripJoinVisible(blocks.strip) ? joinWithCode : undefined}
           visible={visible}
           maxHeight={sheetMaxH}
           attribution={mapOn ? browseKeys.map((k) => copy[k]).join('\n') : null}
@@ -1215,7 +1189,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   topBanner: { position: 'absolute', top: 0, left: 0, right: 0 },
   sub: { paddingHorizontal: space.lg, paddingBottom: space.sm },
-  tiles: { paddingTop: space.xs },
   expanded: { gap: 0 },
   searchEmpty: { paddingHorizontal: space.lg, paddingTop: space.xl },
   card: { paddingHorizontal: space.lg },

@@ -1,6 +1,6 @@
-// Shared by every way of starting a ride from the pre-ride screens (Go on the preview, "Just ride"): one at a
-// time, and never a second ride while one is open. Without this, Android back during Go followed by "Just
-// ride" (or a stale Home that does not know about the open ride) could create two rides.
+// Shared by every way of starting a ride from the pre-ride screens (Start ride, Invite riders): one at a
+// time, and never a second ride while one is open. Without this, Android back during Start followed by Invite
+// (or a stale Home that does not know about the open ride) could create two rides.
 import { hrefAfterEnter } from '@/lib/enter-ride';
 import { getMyOpenRide } from '@/lib/ride-api';
 

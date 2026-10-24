@@ -275,7 +275,7 @@ BigButton under the me row).
   `group` at the persisted `liveSheetSnap`, and the convoy appears once 2 riders have positions. The
   reverse applies when the last other rider leaves. A width change of the SOS button **must not cancel a
   hold in progress** (acceptance item).
-- 19 B "full map is the default the first time a solo ride opens" stays. **Superseded by 22 D6: removed (Just ride opens in the sheet view).**
+- 19 B "full map is the default the first time a solo ride opens" stays. **Superseded by 22 D6: removed (Just ride opens in the sheet view).** (22 D7 then removed Just ride itself; no ride opens in full map by itself.)
 
 ### C5. Next-stop card: the number is the fact (P1)
 **Principle:** rule 6 (largest = most important), rule 1 (icon + text), 14 §0.5 (one icon family).

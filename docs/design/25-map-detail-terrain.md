@@ -277,8 +277,7 @@ without the Home map (for example after leaving a ride to Home is not wanted).
 │ © OpenMapTiles © OpenStreetMap         │ pill: 2 lines (§5), bottom = sheetH + 8
 │ Terrain © Mapterhorn                   │
 ├──────────────────── ── ────────────────┤
-│ Good evening, Raghu                (˄) │ sheet (22, unchanged)
-│ [ Join with a code ] [   Just ride   ] │
+│ Good evening, Raghu         ( ⌨ Join ) │ strip (28 §3, 22 D7: Join pill; no tiles, no Just ride)
 ```
 
 ---

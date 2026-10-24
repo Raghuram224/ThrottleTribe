@@ -3,6 +3,9 @@
 > **2026-10-20, see 26 §2 R1 and §4 E1:** the route panel's line 1 is the duration alone; distance and arrive time share
 > line 2. Loading buttons ("Starting…", "Ending ride…") show a spinner and their label.
 
+> **2026-10-24, see 22 D7:** "Just ride, no destination" (the Where to? footer here, later a Home tile) is removed; every
+> new ride starts from a destination. Mentions of Just ride below are history; §2.9 still covers rides without a stop.
+
 Source: user request, 2026-10-13: *"I want this app to have single user ride like Google Maps. It allows the
 individual user to go to the destination whenever the user wants."* Settled user decisions: (1) **"Where to?"
 first**, (2) **turn banner + voice**, (3) **arrival offers, never auto-acts**.
@@ -539,6 +542,8 @@ One 96 main row in every state; the Then row appears only in `guide`. Priority w
 - Full map + arrived: the `StopChip` shows the arrived line (exists), and tapping it exits full map so the panel shows.
 
 ### 2.9 Just ride, no destination
+> **2026-10-24, 22 D7:** Just ride can no longer be started (no Home tile, no footer); every new ride starts from a
+> destination. This section still describes how a ride **without** a stop behaves (an older ride, or after Stop directions).
 Today's free solo ride (19 C + 20 C4), **without the full-map first open (22 D6: it opens in the sheet view)**: solo panel = the Invite row only, header
 search to add a stop later. If a stop is added later (solo **Go here**), navigation starts: banner and voice. It does
 not jump to full map.

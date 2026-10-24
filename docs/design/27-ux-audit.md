@@ -80,6 +80,7 @@ first minute after install, not the screens themselves.
 
 **7. Just ride commits in one tap.** It creates the ride and starts sharing location with no confirm or undo (p04).
 Fix: a "Ride started · Undo" snackbar for a few seconds (Material: snackbar, not a dialog). → Phase 3.
+*(2026-10-24: moot, 22 D7 removed Just ride.)*
 
 **8. The location card hides its own promise.** "…They get your area or start point, never …" truncates at the key words
 "your name" (e05; worse at 1.3× text, e07) and names vendors (Geoapify, LocationIQ). Fix: one plain sentence plus the
@@ -91,6 +92,7 @@ category (`RideStop`, `src/lib/stop-ui.ts:12`). Needs a `stop_category` column: 
 
 **10. No-destination follow view has nothing to orient by.** Just ride follows at z16.5: buildings, no street names (p05).
 Fix: confirm whether labels were still loading; else ease to ~z15 when there is no route. → Phase 5.
+*(2026-10-24: Just ride is removed (22 D7); still applies to a ride with no stop, e.g. after Stop directions.)*
 
 **11. The welcome demo card reads as a real alert.** TalkBack announces "Priya stopped · 2 min. 1.7 km behind you" (e01).
 Fix: label it as an example or hide the decorative scene from accessibility. → Phase 3.
@@ -146,7 +148,7 @@ Found during Phase 2:
 
 1. **[P0] `harden`**: register the location task from a custom entry (1).
 2. **[P1] `harden`**: seed the live and Home cameras (2, 4); tile timeouts (6); reproduce the Back exit (5).
-3. **[P1] `onboard`**: explain, then ask for location (3); undo for Just ride (7); demo card (11).
+3. **[P1] `onboard`**: explain, then ask for location (3); ~~undo for Just ride (7)~~ (moot, 22 D7); demo card (11).
 4. **[P2] `clarify`**: location card copy (8), setup dot (12), P3 copy (13–15).
 5. **[P2] `polish`**: stop icons once the column is approved (9), follow zoom (10), style warnings (16).
 6. **`polish`**: final pass, then re-run this audit on the phone.

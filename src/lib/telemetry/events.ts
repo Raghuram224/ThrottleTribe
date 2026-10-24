@@ -8,7 +8,7 @@ export const EVENTS = [
   'onboarding.completed',
   'permission.location', // foreground, background
   'permission.notifications',
-  // start_kind: start | invite | just_ride. (`with_dest`, from the group form that D5 removed, is retired: it is not sent.)
+  // start_kind: start | invite. (`with_dest`, from the group form that D5 removed, and `just_ride`, the no-destination start, are retired: not sent.)
   'ride.created',
   'ride.group_formed', // the first other rider joined a ride I lead: no props (22 D6)
   'invite.shared', // via: share | sms | menu | lobby: the code or link was handed to the share sheet / an SMS composer

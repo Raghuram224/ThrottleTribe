@@ -1,4 +1,3 @@
-import { startSoloRide } from '../solo-ride';
 import { startInviteRide, startNavigationRide, stopKindFor, STOP_ADDRESS_MAX, STOP_NAME_MAX } from '../solo-nav';
 
 const calls: string[] = [];
@@ -49,15 +48,6 @@ describe('stopKindFor', () => {
   it('is a break for cafes, fuel, food, toilets and parking, a destination for anything else', () => {
     for (const c of ['cafe', 'fuel', 'restaurant', 'toilets', 'parking'] as const) expect(stopKindFor(c)).toBe('break');
     expect(stopKindFor('other')).toBe('destination');
-  });
-});
-
-describe('startSoloRide (Just ride)', () => {
-  it('creates and starts a ride with the normal name and no destination', async () => {
-    await expect(startSoloRide(60, RIDE)).resolves.toBe('/ride/r1/live');
-    expect(mockCreate).toHaveBeenCalledWith("Raghu's ride", 60, { startKind: 'just_ride' });
-    expect(mockPropose).not.toHaveBeenCalled();
-    expect(calls).toEqual(['create', 'start', 'href']);
   });
 });
 
@@ -169,17 +159,17 @@ describe('startNavigationRide', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('shares one start lock with Just ride: a second start while Go runs is refused, and the lock is released after', async () => {
+  it('shares one start lock with Invite riders: a second start while Go runs is refused, and the lock is released after', async () => {
     let release: (v: unknown) => void = () => {};
     mockCreate.mockImplementationOnce(() => new Promise((r) => (release = r)));
     const first = startNavigationRide(place, 180, { rideName: RIDE });
-    // Same lock from the other entry point (Where to? "Just ride").
-    await expect(startSoloRide(180, RIDE)).rejects.toMatchObject({ name: 'RideStartBusy' });
+    // Same lock from the other entry point.
+    await expect(startInviteRide(place, 180, { rideName: RIDE })).rejects.toMatchObject({ name: 'RideStartBusy' });
     await expect(startNavigationRide(place, 180, { rideName: RIDE })).rejects.toMatchObject({ name: 'RideStartBusy' });
     expect(mockCreate).toHaveBeenCalledTimes(1);
     release(ride);
     await first;
-    await expect(startSoloRide(180, RIDE)).resolves.toBe('/ride/r1/live');
+    await expect(startInviteRide(place, 180, { rideName: RIDE })).resolves.toBeDefined();
   });
 
   it('releases the lock when a start fails', async () => {
@@ -247,7 +237,6 @@ describe('startInviteRide (Invite riders on the route preview, 22 D6)', () => {
     const first = startInviteRide(place, 180, { rideName: RIDE });
     await expect(startInviteRide(place, 180, { rideName: RIDE })).rejects.toMatchObject({ name: 'RideStartBusy' });
     await expect(startNavigationRide(place, 180, { rideName: RIDE })).rejects.toMatchObject({ name: 'RideStartBusy' });
-    await expect(startSoloRide(180, RIDE)).rejects.toMatchObject({ name: 'RideStartBusy' });
     expect(mockCreate).toHaveBeenCalledTimes(1);
     release(ride);
     await first;

@@ -16,8 +16,9 @@ contacts nudge, footer "Start a ride".
 | 1 | **Group navigation: everyone gets turn-by-turn later, once hosted routing exists (D1).** Until then a group ride with a destination gives **every** rider the route line + stop card, and **no turn banner or voice for anyone in a group ride, the leader included.** | §3.8 option A (leader-only banner + voice), §0.1 row 9, the P2 `leaderNav` / `GROUP_LEADER_NAV` work and the P2 acceptance item are **not approved** and are dropped. Option C stays the plan after D1. `isNavActive` is fixed (§3.8.1): navigation is never *started* for a group ride; a ride that starts solo and gains riders keeps navigating for its leader (21 §10, unchanged). |
 | 2 | **Route preview primary: Ride solo is the filled primary; Ride with a group is secondary.** | Closed open question 2. **Superseded by D5:** there is one primary, Start ride. |
 | 3 | **The destination is not in the WhatsApp / invite text.** | Closes open question 3; the P3 "destination in the invite text" item is dropped. `lib/invite.ts` is not touched. |
-| **D5** (2026-10-15) | **One kind of ride; a ride becomes a group when its code is shared.** User: *"Instead of creating a separate menu for the group ride, the user will create a ride like Google Maps; then if the user wants a group ride he can share the code with others and it will be a group ride. We don't have to show a separate button from the start. It will happen in the flow."* **Also: the location permission is asked when Home opens** (once per app run, while still undetermined), replacing "no prompt on launch" (§3.1.5, rule 8 of the constraints). | **Overrides the solo / group choice everywhere in this spec.** Route preview has one primary, **Start ride** (= the old Ride solo: create + start + propose stop, turn-by-turn, voice, arrival). "How are you riding?", **Ride with a group**, the **Start a group ride** tile, the group setup screen (`/new-ride`, `createGroupRide`), the lobby "Riding to {place}" caption and the `plan.choice` event are **removed**. The Home tiles are **Join with a code** and **Just ride** (no destination; neutral name). Every ride started from Home gets the normal `defaultRideName(first)` ("Raghu's ride"), never "Solo ride". The group happens inside the ride: live panel **Invite riders** row (or ⋯ → Invite riders) → invite screen (6-digit code + WhatsApp). Joiners join the active ride by code or link and get the route line + stop card; the leader who was navigating keeps turn-by-turn + voice (decision 1 stands: group turn-by-turn for everyone waits for D1). The device-local "group ride" marker (`nav.groupRides.v1`) is replaced by a "this phone navigates this ride" marker (`nav.navRides.v1`, §3.8.1). The stop-alert time (1 / 3 / 5 min) moved from the removed form to **Profile → Safety**. P2 items that are obsolete: §3.7 lobby destination card / caption and the lobby "Remove destination" copy fix, the group-leader-nav flag work (already dropped by decision 1), and the §13 P2 acceptance list. P3 "Make it the destination of {ride}" for a lobby leader and "change destination in the lobby" are obsolete too (no new lobby rides carry a destination). |
-| **D6** (2026-10-15) | **Invite riders on the route preview, Just ride in the normal view, review fixes.** User decisions: (1) the route preview gets **Invite riders** (secondary) under **Start ride** (primary): it creates the ride in the **lobby** with the destination, opens the invite screen (code + WhatsApp), then the lobby (who has joined, "Riding to {place}"), and the leader taps **Start** → live with turn-by-turn + voice; riders can join while it waits. (2) The stop-alert time stays in Profile → Safety, with a note that it applies to new rides. (3) A leader **Rename ride** in the ⋯ menu: built in the app, with migration 0010 (applied 2026-10-15, §3.6). (4) **Just ride opens in the normal (sheet) view**, never full map by itself, so Invite riders is visible. | **Partly reverses D5:** the lobby "Riding to {place}" caption (§3.7) and the invite screen's `?first=1` "Continue to lobby" mode (§3.5.1) are back, for rides made by Invite riders; the route preview has two actions (§3.4); the full-map first-open default is gone (§3.9; 19 §B, 21 decision 2). `isNavActive`'s `navRide` now carries the **destination** (§3.8.1): the leader's turn-by-turn is decided by `marker === destKey(stop)`, read live, not by whether a screen remounted. Review fixes and the launch prompt: §3.1.5, §3.8.1, §11. |
+| **D5** (2026-10-15) | **One kind of ride; a ride becomes a group when its code is shared.** User: *"Instead of creating a separate menu for the group ride, the user will create a ride like Google Maps; then if the user wants a group ride he can share the code with others and it will be a group ride. We don't have to show a separate button from the start. It will happen in the flow."* **Also: the location permission is asked when Home opens** (once per app run, while still undetermined), replacing "no prompt on launch" (§3.1.5, rule 8 of the constraints). | **Overrides the solo / group choice everywhere in this spec.** Route preview has one primary, **Start ride** (= the old Ride solo: create + start + propose stop, turn-by-turn, voice, arrival). "How are you riding?", **Ride with a group**, the **Start a group ride** tile, the group setup screen (`/new-ride`, `createGroupRide`), the lobby "Riding to {place}" caption and the `plan.choice` event are **removed**. ~~The Home tiles are **Join with a code** and **Just ride** (no destination; neutral name).~~ **Superseded by D7:** no tiles; Join is a pill on the collapsed strip and Just ride is removed. Every ride started from Home gets the normal `defaultRideName(first)` ("Raghu's ride"), never "Solo ride". The group happens inside the ride: live panel **Invite riders** row (or ⋯ → Invite riders) → invite screen (6-digit code + WhatsApp). Joiners join the active ride by code or link and get the route line + stop card; the leader who was navigating keeps turn-by-turn + voice (decision 1 stands: group turn-by-turn for everyone waits for D1). The device-local "group ride" marker (`nav.groupRides.v1`) is replaced by a "this phone navigates this ride" marker (`nav.navRides.v1`, §3.8.1). The stop-alert time (1 / 3 / 5 min) moved from the removed form to **Profile → Safety**. P2 items that are obsolete: §3.7 lobby destination card / caption and the lobby "Remove destination" copy fix, the group-leader-nav flag work (already dropped by decision 1), and the §13 P2 acceptance list. P3 "Make it the destination of {ride}" for a lobby leader and "change destination in the lobby" are obsolete too (no new lobby rides carry a destination). |
+| **D6** (2026-10-15) | **Invite riders on the route preview, Just ride in the normal view, review fixes.** User decisions: (1) the route preview gets **Invite riders** (secondary) under **Start ride** (primary): it creates the ride in the **lobby** with the destination, opens the invite screen (code + WhatsApp), then the lobby (who has joined, "Riding to {place}"), and the leader taps **Start** → live with turn-by-turn + voice; riders can join while it waits. (2) The stop-alert time stays in Profile → Safety, with a note that it applies to new rides. (3) A leader **Rename ride** in the ⋯ menu: built in the app, with migration 0010 (applied 2026-10-15, §3.6). (4) ~~**Just ride opens in the normal (sheet) view**, never full map by itself, so Invite riders is visible.~~ **Superseded by D7** (Just ride is removed); the rule that no ride opens in full map by itself stands for every ride. | **Partly reverses D5:** the lobby "Riding to {place}" caption (§3.7) and the invite screen's `?first=1` "Continue to lobby" mode (§3.5.1) are back, for rides made by Invite riders; the route preview has two actions (§3.4); the full-map first-open default is gone (§3.9; 19 §B, 21 decision 2). `isNavActive`'s `navRide` now carries the **destination** (§3.8.1): the leader's turn-by-turn is decided by `marker === destKey(stop)`, read live, not by whether a screen remounted. Review fixes and the launch prompt: §3.1.5, §3.8.1, §11. |
+| **D7** (2026-10-24) | **Join with a code always on the collapsed strip; "Just ride" removed.** User: *"always make the bottom sheet to visible the join code, remove the just ride concept"*. (1) While no ride is open, the collapsed Home strip (28 §3) carries a compact **Join** pill at its right end (greeting left, 1 line, truncates; the pill never does). It is hidden while a ride is open: the strip is then only "Back to <ride>" (one primary during a ride). Rule: `stripJoinVisible(strip)` (`plan-flow.ts`) is true only for the `'title'` strip, first run included. (2) The one-tap no-destination ride (**Just ride**, D5) is gone, and with it the whole tiles block: the expanded sheet has no tiles. A ride is started only from a destination: search → route preview → **Start ride** / **Invite riders**. | **Supersedes** the D5 tiles ("Join with a code" + "Just ride") and D6 item (4) "Just ride opens in the normal view" (moot: Start ride and Invite riders already open in the sheet view). Updated: §0.1 rows 5, 11, 12; §0.2; §1; §3.1 (purpose, §3.1.2 blocks, §3.1.3 now "Join on the strip", §3.1.6 wireframes); §3.2; §3.5; §3.8; §3.9; §3.10; §5.2; §6; §7; §8; §9; §10; §11 (`start_kind: 'start' \| 'invite'`; `just_ride` retired like `with_dest`); §12; §13; §15. `RideStartKind = 'start' \| 'invite'`; `startSoloRide` / `lib/solo-ride.ts`, `QuickTiles` (`quick-tiles.tsx`), `homeMap.tileJoin*` / `homeMap.tileRide*` and `size.quickTile` are deleted. **Rides without a destination still exist** (made by an older build, or after the leader taps **Stop directions**, 21 §2.10) and render on live and lobby exactly as before (21 §2.9). |
 
 Open questions 1-3 in §15 are answered by the table above.
 
@@ -49,7 +50,7 @@ Open questions 1-3 in §15 are answered by the table above.
   is left; if it ended nothing is left; if it started, changed or I became leader, Home shows it as it is (and asks again
   for a lobby ride) instead of leaving it on the old confirmation.
 - **Guards:** a second tap on Ride with a group does not push the form twice; Android Back is blocked while Just ride
-  solo starts; the browse camera is not written once there is no session.
+  solo starts (Just ride removed by D7); the browse camera is not written once there is no session.
 - **Accessibility (§10):** `onAccessibilityEscape` on the place and route panels = `plan.back()` (iOS; Android has no
   such gesture and uses Back).
 - **Group-ride marker (§3.8.1):** pruned when its ride ends or I leave it (ride layout) and when Home sees it in the
@@ -110,14 +111,14 @@ the earlier design that attached the destination in a group setup screen (`new-r
 | 2 | 17 §2: "No floating search pill, no bottom-sheet drag handle" | **Map home only:** a floating search bar + chip row, and a draggable sheet with a grabber (it really drags, like the live group sheet, and has a tap/chevron alternative). Live keeps 20 C2 (search in the header) | 17 §2 protected the live map's glance and camera framing. Home is used at rest; the bar is counted in the camera padding (the 20 C2 camera rule) |
 | 3 | 21 §2.1: Home card "Where to?" | The search bar **is** Where to? (placeholder "Where to?") | Same entry, Google position |
 | 4 | 21 §2.2: Where to? is never auto-focused | Auto-focused **when opened from the bar** (the rider asked to type). Not focused when opened from a chip, and never while the typing lock is on (21 §2.2.2 unchanged) | Tapping a search field means "type". With no footer on the search screen any more, the keyboard leaves 5 recent rows visible at 360×780 |
-| 5 | 21 §2.2: Where to? footer "Just ride, no destination" (2 taps from Home) | Home sheet tile **"Just ride"** (1 tap; was "Just ride solo", renamed by D5). The search screen has no footer | Free rides live on the map home (§3.9) |
+| 5 | 21 §2.2: Where to? footer "Just ride, no destination" (2 taps from Home) | ~~Home sheet tile **"Just ride"** (1 tap; was "Just ride solo", renamed by D5).~~ **Superseded by D7:** there is no way to start a ride without a destination. The search screen has no footer | ~~Free rides live on the map home (§3.9)~~ D7: every ride starts from a destination |
 | 6 | 21 §2.2: picking any row pushes `/route-preview` | **New place** (search result) → Home `place` mode (place sheet). **Recent place** (from the search screen or the home sheet) → straight to Home `route` mode. `/route-preview` becomes a redirect into Home (§5) | Google: a new place shows its card first; a place you already went to goes straight to directions. Keeps the fast path (§1) |
 | 7 | 21 §2.3: one primary **Go** on the preview | One primary, **Start ride** (D5), and since D6 a secondary **Invite riders** under it (create in the lobby with the destination, invite, start from the lobby). *(Superseded design: two stacked actions under "How are you riding?", Ride with a group + Ride solo.)* | User, 2026-10-15: no separate group menu (D5), but a group start from the preview is wanted (D6) |
 | 8 | 21 §1: 3 taps Home → recent → Go | **2 taps** from a recent place in the home sheet (recent → Start ride); 3 from the search screen's recents; 4 for a searched place (bar, result, Directions, Start ride) | Recents are in the thumb zone; the place sheet costs one tap only for new places |
 | 9 | 21 §6 / `isNavActive`: a group never starts navigation | **Not approved (decision 1), and no longer needed (D5):** navigation is started for a ride of one led by me; riders who join later get the route line + stop card, the leader keeps turn-by-turn (§3.8.1) | There is no group-creation path any more, so "a ride created as a group" no longer exists |
 | 10 | 13 §3 greeting as the page title ("Good evening, Raghu", 28) | Greeting moves to the sheet header (16 semibold). First run keeps "Welcome, {name}" there | Nothing big floats over the map; the greeting is warmth, not a glance fact |
-| 11 | 02: with a lobby ride open, "Start a ride" stays as a secondary (switch / leader-busy sheets) | With any open ride the tiles are hidden. Starting another ride is still possible from a place's route mode, which runs the same switch / leader-busy sheets | One open-ride state, one primary ("Back to ride") |
-| 12 | 05: the lobby has no destination | **Withdrawn (D5), then partly restored (D6):** a ride made by **Invite riders** sits in the lobby with its destination and the lobby shows "Riding to {place}" (§3.7). Start ride and Just ride still start at once | Only Invite riders makes a lobby ride with a destination |
+| 11 | 02: with a lobby ride open, "Start a ride" stays as a secondary (switch / leader-busy sheets) | With any open ride ~~the tiles are~~ the strip's Join pill is hidden (D7; there are no tiles) and the strip is only "Back to <ride>". Starting another ride is still possible from a place's route mode, which runs the same switch / leader-busy sheets | One open-ride state, one primary ("Back to ride") |
+| 12 | 05: the lobby has no destination | **Withdrawn (D5), then partly restored (D6):** a ride made by **Invite riders** sits in the lobby with its destination and the lobby shows "Riding to {place}" (§3.7). Start ride ~~and Just ride~~ still starts at once (Just ride removed by D7) | Only Invite riders makes a lobby ride with a destination |
 | 13 | 21 §2.2 Where to? is entered from Home's card and closes back to Home | Where to? returns its pick to Home through `plan-store` and `router.back()`; it never pushes a preview | One map instance (§2) |
 
 ### 0.2 What happens to today's Home content
@@ -127,12 +128,12 @@ the earlier design that attached the destination in a group setup screen (`new-r
 | Avatar 40 + amber to-do dot → Profile | Right end of the search bar, same avatar, dot and a11y label | Google position; unchanged behaviour |
 | Greeting "Good morning/afternoon/evening, {name}" / "Ready to ride?" | Sheet header text (greeting only). "Ready to ride?" retired | The bar's "Where to?" asks the question |
 | First run: "Welcome, {name}" + "three steps away" + 3-step explainer | Sheet, **expanded on first run** (once). Step 1 is reworded for the new flow (§8) | The explainer is the first-run moment; the map is visible above it once collapsed |
-| Join with a code card | Sheet tile **"Join with a code"**, always in the peek (one tap) | Must stay one tap away |
+| Join with a code card | ~~Sheet tile **"Join with a code"**, always in the peek (one tap)~~ **D7:** the **Join** pill at the right end of the collapsed strip (one tap, visible in both snaps); hidden while a ride is open | Must stay one tap away |
 | Where to? card | The search bar | — |
 | Emergency contacts nudge (one nudge max, contacts > save account) | Expanded sheet, after recent places / the location row (order in §3.1.2) | Not a ride-blocking item; the to-do dot, the lobby setup row and the lobby nudge banner (11 §4) still carry it |
 | Stats strip (month) | Expanded sheet | Rest-time information |
 | Recent rides (5 + See all) | Expanded sheet | Rest-time information |
-| Footer "Start a ride" (primary) | Search bar → place → **Start ride** on the route preview; sheet tile **"Just ride"** (no destination) | D5: there is no group start; a ride becomes a group when its code is shared from the live screen |
+| Footer "Start a ride" (primary) | Search bar → place → **Start ride** (or **Invite riders**) on the route preview; ~~sheet tile **"Just ride"** (no destination)~~ (removed by D7) | D5: there is no group start; a ride becomes a group when its code is shared from the live screen |
 | Ride in progress card (convoy, exception line, Back to ride) | Peek: compact card with **Back to ride** (the primary). Expanded: the full card with the convoy strip | Unchanged data (`useHomeConvoy`) |
 | Offline banner `home.offlineSaved` | Full-bleed at the top, above the search bar, new text `homeMap.offline` | Viewer offline is said first (rule 2) |
 | Welcome toast after onboarding | Unchanged | — |
@@ -153,7 +154,7 @@ launch → gate ──none──►  │ browse ──[place picked]──► pl
             │           /where-to (search, full screen)           │
             ├─active ride──► /ride/<id>/live  ◄── joiners (code / link) enter here, with the route line + stop card
             └─lobby ride───► /ride/<id>/lobby (a ride made by Invite riders, or one an older build left in the lobby)
-Home sheet tiles: Join with a code → /join · Just ride → startSoloRide → live (normal sheet view)
+Home strip (D7, no ride open): [Join] pill → /join   (the D5 tiles and "Just ride → startSoloRide" are removed)
 Group (D6): route ─[Invite riders]─► startInviteRide (lobby ride + stop) → /ride/<id>/invite?first=1 ─[Continue to lobby]─► lobby ─[Start]─► live (the leader navigates)
 Group from a running ride (D5): live → "Invite riders" row (or ⋯ → Invite riders) → /ride/<id>/invite (6-digit code + WhatsApp) → riders join the running ride
 Open ride on Home: peek = Back to ride (primary) · search bar (active ride) → /ride/<id>/search?from=home
@@ -167,12 +168,13 @@ Open ride on Home: peek = Back to ride (primary) · search bar (active ride) →
 | Ride to a new place | bar (1) → result (2) → Directions (3) → Start ride (4). Chip: chip, result, Directions, Start ride |
 | Start a ride with riders (D6) | route preview: **Invite riders** (1) → share the code / WhatsApp (optional) → **Continue to lobby** (2) → **Start** (3). From a recent place in the sheet: 2 + 3 = 5 taps |
 | Make the running ride a group (D5) | live: **Invite riders** row (1) → share the code / WhatsApp (2). Or ⋯ (1) → Invite riders (2) → share (3) |
-| Just ride / Join | 1 tile tap |
+| Join a ride with a code | **Join** pill on the strip (1), collapsed or expanded (D7) |
+| ~~Just ride~~ | ~~1 tile tap~~ Removed (D7): a ride starts from a destination |
 
 The first ride ever adds the permissions explainer (04), as every ride does today.
 
-**When rows are created:** at **Start ride** (21 §2.4, unchanged), **Invite riders** (D6: a lobby ride with the stop) or
-**Just ride**. Browsing the map, searching, opening a place or a route creates nothing on the server. Sharing the
+**When rows are created:** at **Start ride** (21 §2.4, unchanged) or **Invite riders** (D6: a lobby ride with the stop).
+~~Or **Just ride**~~ (removed by D7). Browsing the map, searching, opening a place or a route creates nothing on the server. Sharing the
 code later changes no row: joiners add `ride_members` rows to the ride.
 
 ---
@@ -238,8 +240,13 @@ tokens in §9. Floating elements on the map are `surfaceRaised` + `elevate('e2')
 in dark).
 
 ### 3.1 Map home — `browse` mode (`src/app/(app)/home.tsx`, rewritten)
-**Purpose:** see where I am and start: search a place, pick a recent one, or use a tile.
-**Glance:** my marker; the bar "Where to?"; at the bottom either the tiles + recent places, or **Back to ride**.
+**Purpose:** see where I am and start: search a place, pick a recent one, or join a ride with a code.
+**Glance:** my marker; the bar "Where to?"; at the bottom the strip: the greeting + **Join** (no ride open), or
+**Back to <ride>** (D7; 28 §3 made the collapsed sheet a one-line strip).
+
+> **2026-10-24, see 28 §3 and D7:** the collapsed sheet is a 56 dp strip (grab handle + one line, no chevron, no peek
+> block). Item 7's header description below (chevron, `adjustable`) and the "peek block" column of §3.1.2 are history;
+> the strip, its Join pill and its accessibility are in §3.1.3 and 28 §3.
 
 #### 3.1.1 Layout, top to bottom (z-order: map lowest)
 1. **Map** (`PlanMap`), full bleed, under the status bar. `StatusBar style="auto"`.
@@ -288,38 +295,71 @@ in dark).
    - The camera's bottom padding follows the **visible** sheet height (shared value, as live).
 
 #### 3.1.2 Sheet content by state (`homeSheetBlocks`, pure, tested)
-Peek block (always visible) / expanded-only blocks, in order:
+**Current (28 §3 + D7, 2026-10-24).** `homeSheetBlocks` returns `{ strip, expanded }`. The collapsed sheet is the strip
+only; every block is in the expanded sheet. The strip stays on top of the sheet in both snaps.
 
-| State | Peek block | Expanded adds (in order) |
+| State | Strip (collapsed, 56 + inset) | Expanded blocks (in order) |
 |---|---|---|
-| **First run** (no rides ever, no open ride) | `home.firstSub` 14 muted (1–2 lines) · **Tiles** | LocationRow (if not granted) · 3 steps (`FirstRunSteps`, step 1 reworded) · nudge |
-| **Returning**, no ride | **Tiles** · up to `peekRecentCount(windowH)` recent places (2 when `windowH ≥ 760`, else 1; 0 if none) | "Recent places" section (up to 5, Clear) · LocationRow (if not granted) · nudge · stats strip · recent rides (5 + See all) |
-| **Ride open — active** | Compact ride card + **Back to ride** (primary) | Full ride card (convoy strip) · nudge · recent rides |
-| **Ride open — lobby** | Compact ride card ("Waiting in the lobby") + **Back to ride** | nudge · recent places (5, Clear) · recent rides |
+| **First run** (no rides ever, no open ride) | `'title'`: `home.firstTitle` / `home.firstTitleNoName` · **[Join]** | `firstSub` · `locationRow` (if not granted) · `steps` · `nudge` |
+| **Returning**, no ride | `'title'`: the greeting · **[Join]** | `recentPlaces` (if any; up to 5, Clear) · `locationRow` (if not granted) · `nudge` · `stats` · `recentRides` (5 + See all; hidden if they failed to load) |
+| **Ride open — lobby** | `'resume'`: "Back to <ride>" ›, **no Join** | `rideCard` · `nudge` · `recentPlaces` (if any) · `recentRides` |
+| **Ride open — active** | No strip on native: Home's map is the ride view (28 §8.5). (Flag off / web: `'resume'`, no Join) | `rideCard` · `nudge` · `recentRides` |
+
+There is **no tiles block** in any state (D7). `stripJoinVisible(strip) = strip === 'title'`.
+
+*History (superseded by 28 §3 and D7): the P1/D5 table had a "peek block" column holding ~~**Tiles**~~ in the first-run
+and returning states, plus up to `peekRecentCount(windowH)` recent places at peek, and the compact ride card + Back to
+ride in the open-ride states. None of these sit in the collapsed sheet any more.*
 
 - **Initial snap** (`initialSheetSnap`): first run and `pref.homeFirstRunSeen` not set → `expanded`; set
   `homeFirstRunSeen` the first time the sheet is collapsed or a ride is created. Everything else → `peek`. On every
   return to Home (focus) the sheet goes back to `peek` unless first run.
 - Loading (rides / open ride not fetched yet): returning layout without recent rides; the ride card fades in
-  (150 ms) when found (02 rule: never block the tiles on this fetch). Recent rides: 2 skeleton rows (exists).
+  (150 ms) when found (02 rule: never block the strip's Join on this fetch). Recent rides: 2 skeleton rows (exists).
 - Errors fetching recent rides: the section hides (13 §3, unchanged).
 
-#### 3.1.3 Tiles (`QuickTiles`, new; D5: two tiles)
-Two equal tiles in one row, gap 8, padding-x 16: width `(windowW − 32 − 8) / 2` = **160** at 360 (`homeTiles()`, tested).
-`minHeight` `size.quickTile` 80 (grows with text), radius `radius.lg` 16, bg `surface`, pressed `surfacePressed`
-(+ the `PressableScale` press motion), padding 8, centred column: icon circle 32 `brandTint` with icon 20
-`brandOnBg`, gap 8, label 14 `family.semibold` `text`, centred, up to 2 lines (3 at 1.3×).
+#### 3.1.3 Join on the strip (D7, 2026-10-24; replaces the tiles)
+**Purpose:** joining a friend's ride is always one tap from Home, without pulling the sheet up.
+**Glance:** the greeting on the left, a small orange-tinted **Join** pill on the right.
 
-| Tile | Icon | Label | a11y label | Action |
-|---|---|---|---|---|
-| 1 | `dialpad` | `homeMap.tileJoin` "Join with a code" | `homeMap.tileJoinA11y` | `push('/join')` (one tap, unchanged) |
-| 2 | `bike` | `homeMap.tileRide` "Just ride" | `homeMap.tileRideA11y` | `startSoloRide(thresholdS, defaultRideName(first))` → `resetToRide` (a ride with no destination; **normal sheet view since D6**, not full map). Tile shows a spinner in the icon circle and ignores taps while it runs; error → toast `errorText(code)` |
+Strip row (`HomeSheet`, `src/components/home-sheet.tsx`), when `stripJoinVisible(strip)` (strip `'title'`, first run included):
+- Row height `size.sheetHeader` 56 (the whole strip), `flexDirection: row`, `alignItems: center`. The grab handle (4×40
+  `borderStrong`, 6 from the top) is unchanged and centred over the whole strip.
+- **Left, the strip button** (flex 1): padding-top `space.md` 12, padding-left `space.lg` 16, padding-right `space.sm` 8
+  (16 when there is no pill); text 16 `family.semibold` `text`, **1 line, tail-truncates** (the greeting gives way, never
+  the pill). Tap → toggle the snap (haptic `select`), as 28 §3.
+- **Right, the Join button** (`PressableScale`): hit area = the full 56 dp strip height × (pill + padding-right
+  `space.lg` 16), plus `hitSlop` 8 left / right; padding-top `space.md` 12 so the pill sits in the line under the handle.
+  - Pill: height **`size.stripJoin` 36** (new token, §9), radius `radius.pill`, padding-x `space.md` 12, gap `space.xs` 4;
+    icon `dialpad` 20 + label `homeMap.stripJoin` "Join" 14 `family.semibold`, both `brandOnBg` on `brandTint`
+    (tonal: the screen's primary is the search bar). Pressed: fill `surfacePressed` + the press scale. 1 line, never truncates.
+  - Tap → haptic `select` → `router.push('/join')` (unchanged join screen; it explains its own network errors, 02 rule,
+    so the pill stays enabled offline).
+- **Hidden while a ride is open** (`strip === 'resume'`): the strip is only "Back to <ride>" › (the one primary during a
+  ride; 28 §3, §6). On native an active ride has no strip at all (28 §8.5).
+- In the **expanded** snap the strip, and so the pill, stays on top: Join is reachable from both snaps. There is no
+  second Join anywhere in the sheet.
+- Loading (open ride not read yet): the strip is `'title'` with Join; if an open ride is found the row switches to
+  "Back to <ride>" (no animation needed; Reduce Motion unaffected).
 
-~~Tile 1 "Start a group ride"~~ is removed (D5): any ride becomes a group from the live screen. "Just ride" is named
-neutrally for the same reason (it was "Just ride solo").
+```
+collapsed, no ride open (360 wide)
+├──────────────────── ── ────────────────┤ grab handle 4×40, 6 from the top
+│ Good evening, Raghu         ( ⌨ Join ) │ 16 semibold, 1 line, truncates · pill 36 brandTint / brandOnBg
+└────────────────────────────────────────┘ 56 + gesture inset; Join hit = full 56 height (+8 slop each side)
 
-Tiles are tonal on purpose: the screen's primary is the search bar; the tiles are equal alternatives. Hidden while a
-ride is open (§3.10).
+collapsed, long name at 1.3x
+│ Good evening, Raghuram Ve…  ( ⌨ Join ) │ the greeting truncates, the pill keeps its size
+
+collapsed, lobby ride open
+│ Back to Sunday Run                   › │ no Join: one primary while a ride is open
+```
+
+*History (superseded by D7):* ~~**Tiles** (`QuickTiles`, D5: two tiles): two equal 160×80 tonal tiles in one row
+(`homeTiles()`, `size.quickTile` 80): **Join with a code** (`dialpad`, `homeMap.tileJoin*`, `push('/join')`) and
+**Just ride** (`bike`, `homeMap.tileRide*`, `startSoloRide(thresholdS, defaultRideName(first))` → a ride with no
+destination, normal sheet view since D6). Hidden while a ride is open.~~ Tile "Start a group ride" was already removed by
+D5. `quick-tiles.tsx`, `startSoloRide` / `lib/solo-ride.ts` and the tile copy are deleted.
 
 #### 3.1.4 Recent places in the sheet
 - Rows = `PlaceRow` 64 with the `history` tile (as `RecentPlacesSection`), name 16 semibold, address 14 muted,
@@ -356,13 +396,8 @@ ride is open (§3.10).
 │ ( [mark]  Where to?             (RA)• )│ bar 56: mark 24 · 16 muted · avatar 40 + amber dot
 │ (Fuel) (Coffee) (Food) (Parking) (To…  │ chips 48 (56 hit); hidden while expanded, shown on peek
 ├──────────────────── ── ────────────────┤ sheet expanded, top 8 under the bar, radius 24
-│ Welcome, Raghu                     (˅) │ header 56: 16 semibold · chevron 56
+│ Welcome, Raghu              ( ⌨ Join ) │ strip 56 (28 §3, D7): 16 semibold, 1 line · Join pill 36, hit 56
 │ Your first ride is three steps away.   │ 14 muted (home.firstSub)
-│ ┌──────────────┐ ┌──────────────┐      │ tiles 160×80, gap 8 (D5: two)
-│ │    (dial)    │ │    (bike)    │      │   icon 32 brandTint / 20 brandOnBg
-│ │ Join with a  │ │  Just ride   │      │   14 semibold, 2 lines
-│ │    code      │ │              │      │
-│ └──────────────┘ └──────────────┘      │
 │ [pin]  See where you are               │ LocationRow: tile 40 brandTint · 16 semibold
 │  40    Shows you on the map and finds  │   14 muted, up to 3 lines
 │        places near you. …              │
@@ -373,36 +408,34 @@ ride is open (§3.10).
 │ (3)─ Ride. Nobody gets lost.           │   Everyone sees who is ahead, behind or stopped.
 │ [shield] Add emergency contacts  Add ✕ │ NudgeCard (unchanged)
 └────────────────────────────────────────┘
-Collapsed (peek): header + sub + tiles; map above shows India at zoom 4, me slot "Show my location".
+Collapsed: the strip only ("Welcome, Raghu" + Join); map above shows India at zoom 4, me slot "Show my location".
+(No tiles: D7 removed the "Join with a code" / "Just ride" tile row that sat under the sub line.)
 ```
 
-**B. Returning rider, location granted, no ride (peek)**
+**B. Returning rider, location granted, no ride (collapsed strip; 28 §3 + D7)**
 ```
 ┌────────────────────────────────────────┐
 │ ( [mark]  Where to?              (RA) )│ top = insets.top + 8
 │ (Fuel) (Coffee) (Food) (Parking) (To…  │ top chrome bottom = 144 at 360×780
 │                                        │
 │                 (me)                   │ camera centred on me, zoom 15, north-up
-│                                        │ clear map ≈ 328 dp
-│ © OpenFreeMap © OpenStreetMap          │ attribution (me slot empty: centred)
-├──────────────────── ── ────────────────┤ peek = 56 + 80 + 12 + 128 + 8 + inset
-│ Good evening, Raghu                (˄) │
-│ [ Join with a code ] [   Just ride   ] │ tiles (D5)
-│ [hist] Mysuru Palace            118 km │ PlaceRow 64 → route mode (2 taps to ride)
-│  40    Sayyaji Rao Rd, Mysuru          │
-│ [hist] Nandi Hills               61 km │
+│                                        │ clear map down to the credit pill
+│ © OpenMapTiles © OpenStreetMap         │ credit pill (24 §4), bottom = strip + 8
+├──────────────────── ── ────────────────┤ strip = 56 + gesture inset; grab handle 4×40
+│ Good evening, Raghu         ( ⌨ Join ) │ tap the left part / drag: expand · Join → /join
 └────────────────────────────────────────┘
 ```
+*Superseded (28 §3, D7): the P1 peek showed the header with a chevron, ~~`[ Join with a code ] [ Just ride ]`~~ tiles and
+1–2 recent places under it (peek = 56 + 80 + 12 + 128 + 8 + inset).*
 
 **C. Returning rider, sheet expanded**
 ```
 │ ( [mark]  Where to?              (RA) )│ chips hidden
 ├──────────────────── ── ────────────────┤ top 8 under the bar
-│ Good evening, Raghu                (˅) │
-│ tiles                                  │
-│ (2 peek recent rows)                   │
-│ RECENT PLACES                   Clear  │ SectionLabel 32 + text button 56 hit
-│ … up to 3 more rows (5 total)          │
+│ Good evening, Raghu         ( ⌨ Join ) │ the strip stays on top: Join is reachable expanded too
+│ RECENT PLACES                   Clear  │ SectionLabel 32 + text button 56 hit (no tiles: D7)
+│ [hist] Mysuru Palace            118 km │ PlaceRow 64 → route mode (2 taps to ride)
+│ … up to 5 rows                         │
 │ [shield] Add emergency contacts  Add ✕ │ one nudge max
 │ ┌ 214 km │ 3 Rides │ 7 h 40 ┐          │ StatsStrip (unchanged)
 │ RECENT RIDES                  See all  │
@@ -410,7 +443,15 @@ Collapsed (peek): header + sub + tiles; map above shows India at zoom 4, me slot
 │ …                                      │ body scrolls; no empty space below the last row
 ```
 
-**D. Ride open — active (peek)**
+**D. Ride open — active (peek)** *(history: on native an active ride is the ride view on Home's map with no strip, 28
+§8.5; this layout applies only with `LIVE_ON_HOME` off or on web, where the strip is "Back to <ride>" ›. A lobby ride
+shows the strip below. Either way there is **no Join** while a ride is open, D7.)*
+```
+lobby ride open (collapsed)
+├──────────────────── ── ────────────────┤ 24 dp handle zone = expand button (28 §6)
+│ Back to Sunday Run                   › │ 32 dp resume row → lobby; no Join pill
+└────────────────────────────────────────┘
+```
 ```
 │ ( [mark]  Search stops for Sunday Run (RA) )│ → /ride/<id>/search?from=home ; chips hidden
 │                 (me)                   │
@@ -435,12 +476,12 @@ Expanded adds the convoy strip inside the card (today's full card), the nudge an
 │ (Fuel) (Coffee) (Food) …               │
 │        saved camera or India, zoom 4   │ cached tiles only; missing tiles show the style background
 │ ( [pin] Show my location )56           │ me slot → explainer sheet (never the OS prompt directly)
-│ © OpenFreeMap © OpenStreetMap          │
+│ © OpenMapTiles © OpenStreetMap         │
 ├──────────────────── ── ────────────────┤
-│ Good evening, Raghu                (˄) │
-│ tiles (enabled; their own screens explain network errors, 02 rule)
-│ recent places (no distance column: no fix)
+│ Good evening, Raghu         ( ⌨ Join ) │ Join enabled offline (the join screen explains network errors, 02 rule)
 ```
+Expanded: recent places (no distance column: no fix), the LocationRow, nudge, stats, recent rides. *(Was: ~~tiles~~ in the
+peek, removed by D7.)*
 
 ### 3.2 Search — `/where-to` (changed)
 **Purpose and glance:** unchanged (21 §2.2). Changes only:
@@ -450,7 +491,8 @@ Expanded adds the convoy strip inside the card (today's full card), the nudge an
 - Back button label `whereTo.a11yBack` "Back to home" (exists). Back keeps Home's mode as it was.
 - **Pick a search result** → `plan.openPlace(place, text)` → `router.canGoBack() ? router.back() : router.replace('/home')`.
 - **Pick a recent** → `plan.openRoute(place, 'recent')` → same return.
-- **Footer removed** ("Just ride" is the Home tile). Attribution stays pinned at the bottom.
+- **Footer removed** (~~"Just ride" is the Home tile~~; D7 removed Just ride altogether). Attribution stays pinned at the bottom.
+  *(28 §1: `/where-to` is now only a hand-off into Home's inline search.)*
 - LocationRow stays (21 §2.2.1 copy), offline banner stays.
 ```
 ┌────────────────────────────────────────┐
@@ -540,8 +582,8 @@ label `preview.a11yBack` now "Back"). **D5, amended by D6:** the bottom has one 
   (leave + `stopRideTracking()` first) is for the switch case.
 - Then exactly today's preview `go()`: `nav-store.startSession(rideId, seed, avoidMotorways)`, `recents.add(place)`,
   `track('nav.started', { from: 'map_home' })`, haptic `success`, `plan.reset()`, `resetToRide(href)` (`dismissTo('/home')`
-  is a no-op with Home on top, then push). `ride.created` carries `start_kind: 'start'` (Just ride: `'just_ride'`, Invite
-  riders: `'invite'`; D6 replaces `with_dest`, whose meaning had changed, §11). `solo-nav` also writes the nav-ride marker
+  is a no-op with Home on top, then push). `ride.created` carries `start_kind: 'start'` (Invite
+  riders: `'invite'`; D6 replaced `with_dest`, whose meaning had changed; ~~Just ride: `'just_ride'`~~ retired by D7, §11). `solo-nav` also writes the nav-ride marker
   with the stop (`markNavRide(rideId, destKey(place))`) right after `propose_stop`, and removes it if a later step fails.
 - Live: 21 unchanged (sheet mode, turn banner, voice, arrival), plus the Invite riders row (§3.8).
 
@@ -634,8 +676,8 @@ destination card (distance, Remove destination) and the lobby copy fix stay drop
 stop card; both are always visible. The turn banner (96, +40 with the Then row) docks at the top of the map, above the
 convoy strip, so it does not touch the sheet. Where the row is not on screen: **arrived** (the arrival panel, 216 dp,
 replaces the invite row: the ride is ending, and ⋯ → Invite riders stays one tap away in sheet mode) and **full map**
-(no sheet and no header; the rider leaves full map first). A free ride from **Just ride** no longer opens in
-full map (D6, §3.9), so the row is visible from the first second; full map stays one tap away.
+(no sheet and no header; the rider leaves full map first). No ride opens in full map by itself (D6, §3.9), so the row
+is visible from the first second; full map stays one tap away. *(~~A free ride from **Just ride**~~: removed by D7.)*
 
 **What each rider gets in a ride that has riders (decision 1 stands):**
 - **Joiners:** the 19 A route line from their own position and the 20 C5 stop card ("119 km · 1 h 34 min / Mysuru
@@ -653,7 +695,8 @@ isNavActive(a) = a.rideLive && a.hasStop && !a.arrived &&
   (a.engineRunning || (a.leader && (a.solo || a.navRide)))
 ```
 - `leader`: only a ride's leader starts navigation (a rider left alone in someone else's ride does not).
-- `solo`: a ride of one starts it (Start ride, or a stop added to a Just ride).
+- `solo`: a ride of one starts it (Start ride, or a stop added to a ride without one: an older no-destination ride, or
+  after Stop directions; ~~a Just ride~~ can no longer be made, D7).
 - `engineRunning`: the leader's session keeps running when riders join (21 §10), while the ride screens are up.
 - `navRide` (D6: **`marker === destKey(stop)`**): this phone navigated THIS stop of the ride as its leader
   (`lib/nav-rides.ts`, `nav.navRides.v1` = `{ rideId: destKey }`). The marker is written (a) at creation, by `solo-nav`,
@@ -677,16 +720,23 @@ isNavActive(a) = a.rideLive && a.hasStop && !a.arrived &&
   group banner stays a follow-up (21 §6.2).
 
 ### 3.9 Free rides (no destination)
+**D7 (2026-10-24): a ride without a destination can no longer be started from Home.** Every new ride comes from the
+route preview (Start ride / Invite riders). Rides that have no destination still exist and still render as before on
+live and lobby (21 §2.9: solo panel = the Invite row, header search adds a stop): rides an older build made, and a ride
+whose leader tapped **Stop directions** (21 §2.10). Full map is the toggle, per ride, for every ride (`live-ui-store.startNewRide()`, L1).
+
 | Ride | Where | Behaviour |
 |---|---|---|
-| Just ride | Tile **Just ride** (1 tap) | `startSoloRide(thresholdS, defaultRideName(first))`: live in the **normal sheet view** (D6: never full map by itself; the Invite riders row and ⋯ are visible at once), header search adds a stop later (21 §2.9); invite riders from the panel / ⋯ like any ride. `lib/full-map.ts` has no first-open rule any more (`shouldDefaultFullMap`, `fullMapDefaultStep` and `pref.soloFullMapSeen` are deleted); full map is the toggle, and it is per ride: `createRide` calls `live-ui-store.startNewRide()`, so a new ride (Start ride, Invite riders, Just ride) never opens in full map because the last one was left in it (L1) |
-| Join | Tile **Join with a code** (1 tap) | `/join` (unchanged) |
+| ~~Just ride~~ **Removed (D7)** | ~~Tile **Just ride** (1 tap)~~ | ~~`startSoloRide(thresholdS, defaultRideName(first))`: live in the **normal sheet view** (D6), header search adds a stop later (21 §2.9).~~ `startSoloRide` / `lib/solo-ride.ts` are deleted (D7). Still true for every ride: `lib/full-map.ts` has no first-open rule any more (`shouldDefaultFullMap`, `fullMapDefaultStep` and `pref.soloFullMapSeen` are deleted); full map is the toggle, and it is per ride: `createRide` calls `live-ui-store.startNewRide()`, so a new ride (Start ride, Invite riders) never opens in full map because the last one was left in it (L1) |
+| Join | ~~Tile **Join with a code**~~ **Join** pill on the strip (1 tap, D7; §3.1.3) | `/join` (unchanged) |
 Not on long-press (undiscoverable, and long-press on the map is reserved for "drop a pin", P3).
 
 ### 3.10 An open ride on Home
 - **Gate unchanged** (`decideGate`): active → live, lobby → lobby, none → home. Home only shows an open ride after
   the rider went Back from lobby/live (the ride keeps tracking, 00 §1), or when the cached ride is stale offline.
-- Peek = compact ride card + **Back to ride** (primary) → `push(rideHref(id, status))` (exists). Tiles hidden.
+- Peek = compact ride card + **Back to ride** (primary) → `push(rideHref(id, status))` (exists). ~~Tiles hidden.~~
+  **Now (28 §3, D7):** the strip is only "Back to <ride>" › (lobby; an active ride is the ride view, 28 §8.5); the Join
+  pill is hidden (`stripJoinVisible` false), so the ride is the one primary.
 - Active ride: the bar reads `homeMap.searchStops` and opens `/ride/<id>/search?from=home` (19 A search; leader
   sets, rider suggests). `search.tsx`: when `from=home`, a successful pick does `router.replace('/ride/<id>/live')`
   instead of `back()`. Chips are hidden. Recent places are hidden (they would lead to a second ride).
@@ -777,10 +827,10 @@ ride is being started. The order in Home's handler: starting-ride block, takeove
 iOS: Home is the stack root (no edge swipe).
 
 ### 5.2 Stacks after each start
-- Start / Just ride: `[home]` with the ride view open on it (28 §8; `openLiveRide`), or `[home, permissions]` and then the same when something is still undetermined. With the flag off or on web: `[home, live]` as 21.
+- Start ride (~~/ Just ride~~, removed by D7): `[home]` with the ride view open on it (28 §8; `openLiveRide`), or `[home, permissions]` and then the same when something is still undetermined. With the flag off or on web: `[home, live]` as 21.
 - Invite riders on the route preview (D6): `[home, invite?first=1]` → Continue to lobby → `[home, lobby]` → Start → `[home, live]`.
 - Inviting from the live view: `[home(ride view), invite]`; Done / Back returns to the ride view (`[home, live, invite]` with the flag off).
-- Join (tile or deep link): unchanged `join.tsx` replaces; the stack ends `[home, live]` (or `[home, lobby]` for a ride an
+- Join (strip pill, D7, or deep link): unchanged `join.tsx` replaces; the stack ends `[home, live]` (or `[home, lobby]` for a ride an
   older build left in the lobby) when Home was below.
 
 ### 5.3 Plan reset (never a stale preview under a ride)
@@ -803,14 +853,14 @@ focus when an active ride is open. The browse camera is kept.
 | Screen / state | Behaviour |
 |---|---|
 | Home: first run | Sheet expanded once (§3.1.2 A); welcome text in the header; LocationRow if not granted; the launch location prompt shows first (D5) |
-| Home: returning, no ride | Peek: tiles + 1–2 recent places; expanded: recents, nudge, stats, recent rides |
-| Home: loading (open ride / rides unknown) | Returning layout without recent rides; tiles enabled; ride card fades in if found |
-| Home: active ride open | Peek: compact ride card + Back to ride; bar → in-ride search; tiles, chips, recents hidden |
-| Home: lobby ride open | Peek: compact card ("Waiting in the lobby") + Back to ride; bar = Where to?; route actions → switch / leader-busy |
+| Home: returning, no ride | Strip: greeting + **Join** (D7); expanded: recent places, location row, nudge, stats, recent rides. *(Was: ~~peek tiles~~ + 1–2 recent places.)* |
+| Home: loading (open ride / rides unknown) | Returning layout without recent rides; Join enabled; if an open ride is found the strip becomes "Back to <ride>" (Join goes) and the ride card fades in |
+| Home: active ride open | Native: the ride view (28 §8.5), no strip. Flag off / web: strip "Back to <ride>", no Join; bar → in-ride search; chips, recents hidden |
+| Home: lobby ride open | Strip "Back to <ride>" ›, no Join (D7); expanded: ride card ("Waiting in the lobby"); bar = Where to?; route actions → switch / leader-busy |
 | Home: location undetermined / denied | Undetermined: asked once on open (D5). After "Don't allow": me slot "Show my location" → explainer sheet; LocationRow in the sheet; no distances |
 | Home: location blocked / services off | Same, button `perm.openSettings`; services copy when off; re-read on return |
 | Home: granted, no fix yet | Me slot "Finding you…" disabled; camera saved / fallback |
-| Home: viewer offline | Offline banner on top; cached tiles; tiles and search enabled (they explain errors) |
+| Home: viewer offline | Offline banner on top; cached map tiles; Join and search enabled (they explain errors) |
 | Home: map failed | `homeMap.mapFailed` on `bg`; everything else works |
 | Home: received SOS while on Home | Unchanged from today: push notification → ride (Home is outside the ride layout, as before) |
 | Place: no fix | `stop.noFix` instead of the distance; pin centred |
@@ -834,8 +884,9 @@ focus when an active ride is open. The browse camera is kept.
 | Map (sheet expanded) | — | tap | none | sheet → peek |
 | Re-centre / Show my location | 56 | tap | `select` | camera → me / explainer sheet |
 | Allow location (row or sheet) | 56 | tap | `select`; `success` on grant | OS prompt / settings |
-| Sheet header / chevron | 56 | tap, or drag | `select` | toggle peek ↔ expanded |
-| Tile | 160×80 | tap | `select`, press scale | §3.1.3 |
+| Strip (left part; no chevron since 28) | 56 high | tap, or drag | `select` | toggle collapsed ↔ expanded |
+| Strip **Join** pill (D7; no ride open) | 36 pill, 56 high hit + 8 slop left/right | tap | `select` (once), pressed fill + press scale | `/join` |
+| ~~Tile~~ | ~~160×80~~ | | | Removed (D7) |
 | Recent place row | 64 | tap | `select`, `surfacePressed` | Home route mode |
 | Clear (recents) | 56 | tap → confirm | `select` | list emptied |
 | Back to ride | 56 | tap | `select` | lobby / live |
@@ -866,8 +917,11 @@ focus when an active ride is open. The browse camera is kept.
 | `homeMap.locServicesTitle` | Location is off on this phone |
 | `homeMap.locServicesBody` | Turn it on in Settings to see where you are. |
 | `homeMap.sheetA11y` | Ride options |
-| `homeMap.tileJoin` / `homeMap.tileJoinA11y` | Join with a code / Join a ride with a 6-digit code |
-| `homeMap.tileRide` ✎ / `homeMap.tileRideA11y` (D5, was `tileSolo`) | Just ride / Start a ride without a destination. You can invite riders once it has started. |
+| `homeMap.sheetExpandA11y` / `homeMap.sheetCollapseA11y` (28) | Expand ride options / Collapse ride options |
+| `homeMap.stripJoin` ✎ (D7) | Join |
+| `homeMap.stripJoinA11y` (D7) | Join a ride with a code |
+| ~~`homeMap.tileJoin` / `homeMap.tileJoinA11y`~~ | ~~Join with a code / Join a ride with a 6-digit code~~ (retired by D7) |
+| ~~`homeMap.tileRide` ✎ / `homeMap.tileRideA11y`~~ (D5, was `tileSolo`) | ~~Just ride / Start a ride without a destination. You can invite riders once it has started.~~ (retired by D7) |
 | `home.firstSub` (D5) | Your first ride is three steps away. |
 | `home.step2Title` / `home.step2Body` (D5) | Share the code to ride together / Invite riders from your ride. They join from WhatsApp or the code. No sign-up. |
 | `live.soloSub` (D5) | Share the code to ride together |
@@ -903,17 +957,20 @@ focus when an active ride is open. The browse camera is kept.
 - Retired: `newRide.defaultNameDest` (decision 3), `home.heading`, `home.subtitle`, `home.start`, `home.join`, `home.joinTitle`, `home.joinSub`,
   `home.quickJoinTitle`, `home.quickJoinSub`, `home.whereToTitle`, `home.whereToSub`, `home.offlineSaved`,
   `home.step1Title`, `home.step1Body`, `whereTo.justRide`, `preview.go`, `preview.goA11y`.
+- Retired by D7: `homeMap.tileJoin`, `homeMap.tileJoinA11y`, `homeMap.tileRide`, `homeMap.tileRideA11y`.
 
 ---
 
 ## 9. Tokens (`src/theme/tokens.ts`)
 ```ts
 size.searchBar  = 56   // home floating search bar height (= touchTarget; named for the camera padding maths)
-size.quickTile  = 80   // home sheet tile minimum height
-size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
+size.sheetHeader = 56  // home sheet strip (grab handle + one line; no chevron since 28)
+size.stripJoin  = 36   // D7: the Join pill on the strip (its touch target is the 56 dp strip height)
+// size.quickTile = 80 (home sheet tile minimum height): deleted by D7 with the tiles
 ```
 - No new colours. Bar, chips, me slot: `surfaceRaised` / `fabBg` + `text`, `textMuted`, `brandOnBg` (all ≥ 4.5:1 on
-  their fills in the four palettes, 17 §1.1). Tiles: `surface`, `brandTint`, `brandOnBg`, `text`. Destination tile:
+  their fills in the four palettes, 17 §1.1). Strip Join pill (D7): `brandOnBg` on `brandTint` (Tribe light ≈ 4.9:1,
+  Tribe dark ≈ 7.8:1, Maps light ≈ 4.7:1), pressed `surfacePressed`. ~~Tiles: `surface`, `brandTint`, `brandOnBg`, `text`.~~ Destination tile:
   `navRoute` + `onNavRoute` (20 C5, ≥ 4.5:1). Grabber `borderStrong` (decorative).
 - Local constants (not tokens), in `lib/plan-flow.ts`: `HOME_FALLBACK_CAMERA`, `HOME_ME_ZOOM = 15`,
   `HOME_PLACE_ZOOM = 15`, `HOME_CAMERA_SAVE_MS = 5000`, `PEEK_TWO_ROWS_MIN_H = 760`.
@@ -924,7 +981,7 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
 ## 10. Safety and accessibility
 - **Glove:** every control ≥ 56 (chips 48 + 56 hit, as 21). The sheet drags, but every drag has a tap
   equivalent (header, chevron, Android back). No action needs a swipe. No long-press is required for anything.
-- **Thumb zone:** the commit actions (Back to ride, Directions, Start ride, tiles, recent places)
+- **Thumb zone:** the commit actions (Back to ride, Directions, Start ride, the strip's Join, recent places)
   are all at the bottom. The search bar sits at the top by design (Google pattern, used at rest); the most common
   destinations are duplicated at the bottom as recent places, so the top is never the only way.
 - **Typing lock:** unchanged on the search screen (21 §2.2.2). Home itself has no text input.
@@ -937,11 +994,16 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
   (`accessibilityElementsHidden`, as the preview); the marker information is in the pill and the place panel.
   Place mode: focus moves to the place name; route mode: focus moves to the summary (`preview.a11ySummary`), then
   the note, Start ride. `onAccessibilityEscape` = `plan.back()`.
-- **Dynamic type:** `maxFontSizeMultiplier` 1.3 on the bar, chips, me slot, sheet header, tiles, place and route
-  panels (fixed-height or glance zones). Expanded sheet content scales like today's Home (rest-time).
-  At 1.3× the tile label may take 3 lines (tile grows past 80; the peek height is measured, not fixed).
+- **Dynamic type:** `maxFontSizeMultiplier` 1.3 on the bar, chips, me slot, the strip (greeting and Join pill), place
+  and route panels (fixed-height or glance zones). Expanded sheet content scales like today's Home (rest-time).
+  At 1.3× the strip stays 56 and 1 line: the greeting truncates first, the Join pill (36) keeps its label. *(~~At 1.3× the
+  tile label may take 3 lines~~: tiles removed, D7.)*
+- **Screen reader (strip, D7):** two elements in order: the strip button (`homeMap.sheetA11y`, value collapsed/expanded +
+  the greeting, hint and `expand` / `collapse` actions, 28 §3), then the Join button (`homeMap.stripJoinA11y` "Join a
+  ride with a code", role button). While a ride is open only the handle and "Back to <ride>" are there.
 - **360 dp:** bar text column = 336 − 16 − 24 − 12 − 56 = 228 dp ("Search stops for Sunday Run" truncates the ride
-  name); place bar text = 336 − 56 − 16 = 264; tiles 160; route button 328; chips scroll horizontally (3 visible).
+  name); place bar text = 336 − 56 − 16 = 264; strip greeting ≈ 360 − 16 − 8 − (Join ≈ 78 + 16) ≈ 240 dp; route button 328;
+  chips scroll horizontally (3 visible).
 - **Light / dark × Tribe / Maps:** the bar and chips must read on every basemap: e2 shadow in light, `edge2`
   hairline in dark. QA screenshot set: A–E × 4 palettes.
 
@@ -949,9 +1011,9 @@ size.sheetHeader = 56  // home sheet header (grabber + text + chevron)
 
 ## 11. Telemetry (`lib/telemetry/events.ts` allowlist)
 `home.search_opened` { from: `bar` | `chip` } · `home.place_opened` { from: `search` | `recent` } ·
-`home.directions` · ~~`plan.choice`~~ (removed by D5) · `ride.created` gains **`start_kind: 'start' | 'invite' | 'just_ride'`** (D6;
+`home.directions` · ~~`plan.choice`~~ (removed by D5) · `ride.created` gains **`start_kind: 'start' | 'invite'`** (D6, amended by D7;
 the earlier `with_dest` is retired and not sent: its meaning had silently changed from HEAD's "group ride made with a
-destination") · **`ride.group_formed`** (D6; no props; once per ride, on the leader's phone, when the active rider count goes
+destination"; ~~`'just_ride'`~~ is retired by D7 the same way: not sent, `RideStartKind = 'start' | 'invite'`) · **`ride.group_formed`** (D6; no props; once per ride, on the leader's phone, when the active rider count goes
 from exactly 1 to more: `lib/group-formed.ts`) · **`invite.shared`** (D6; `via: 'share' | 'sms' | 'menu'`: the code / link was
 handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long-press on the lobby code (`lobby`)) · `nav.started` gains `from: 'map_home'` (Start ride; for Invite riders at the lobby's Start) ·
 `map.recentre` gains `screen: 'home'`. No coordinates, names, codes or place names in any event.
@@ -964,7 +1026,7 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
 - New:
   - `src/store/plan-store.ts`; `src/lib/plan-flow.ts` (+ `__tests__/plan-flow.test.ts`)
   - `src/components/plan-map.tsx` + `.web.tsx` (renamed from `route-preview-map(.web).tsx`, extended §2.2)
-  - `src/components/home-search-bar.tsx`, `home-chips.tsx`, `home-sheet.tsx`, `quick-tiles.tsx`,
+  - `src/components/home-search-bar.tsx`, `home-chips.tsx`, `home-sheet.tsx`, `quick-tiles.tsx` (deleted by D7),
     `place-panel.tsx`, `route-panel.tsx` (today's `Preview` body + Start ride), `location-row.tsx` (moved from
     `where-to.tsx`)
   - `src/hooks/use-home-camera.ts` (centred / free, saved camera, intents)
@@ -988,7 +1050,8 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
   `newRideHref` / `choiceStep` / `afterSwitch` / `PlanChoice`, the lobby "Riding to" caption and the invite screen's
   `?first=1` "Continue to lobby" mode (**both restored by D6** for Invite riders), the `plan.choice` event, `solo.rideName`.
 - New: `src/lib/nav-rides.ts` (+ `__tests__/nav-rides.test.ts`), `plan-flow` `startStep` / `startAction` / `homeTiles`.
-- Changed: `home.tsx` (Start, Just ride, `rideName`, launch location request kept), `quick-tiles.tsx` (two tiles),
+- Changed: `home.tsx` (Start, Just ride, `rideName`, launch location request kept), `quick-tiles.tsx` (two tiles; Just ride
+  and the tiles were removed by D7),
   `route-panel.tsx` (one primary), `solo-nav.ts` / `solo-ride.ts` (`rideName`, `with_dest`), `nav-engine.ts`
   (`isNavActive`: `navRide`), `ride/[id]/_layout.tsx` + `live.tsx` (`navRide`, marker set / cleared), `profile.tsx`
   (stop-alert time), `copy.ts`, `storage.ts`, `telemetry/events.ts`.
@@ -1006,6 +1069,15 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
   (recovery re-checks the app state for ~2 s), `full-map.ts` + `live.tsx` (no first-open default), `names.ts`, `copy.ts`,
   `profile.tsx`, `telemetry/events.ts`, `storage.ts` (`soloFullMapSeen` removed).
 - **Rename ride** built (§3.6): `rename-ride-sheet.tsx`, `lib/rename-ride.ts`, `ride-api.renameRide`, `ride/[id]/_layout.tsx`; **migration `0010_rename_ride.sql` applied 2026-10-15.**
+
+**D7 (2026-10-24)**
+- Deleted: `src/components/quick-tiles.tsx`, `src/lib/solo-ride.ts` (`startSoloRide`), the `tiles` sheet block, copy
+  `homeMap.tileJoin*` / `homeMap.tileRide*`, token `size.quickTile`.
+- New: `plan-flow` `stripJoinVisible(strip)`; token `size.stripJoin` 36; copy `homeMap.stripJoin`, `homeMap.stripJoinA11y`.
+- Changed: `home-sheet.tsx` (`onJoin` prop: the Join pill on the title strip), `home.tsx` (`onJoin` only when
+  `stripJoinVisible(blocks.strip)`; no Just ride), `plan-flow.ts` (`homeSheetBlocks` without tiles), `ride-api.ts`
+  (`RideStartKind = 'start' | 'invite'`), `ride-start.ts`, `telemetry/events.ts` (`just_ride` retired), `full-map.ts`,
+  `copy.ts`, `tokens.ts`, tests (`plan-flow`, `full-map`, `new-ride-ui`, `solo-nav`).
 
 **P3**
 - `plan-map(.web).tsx` (result pins, long-press), `lib/place-search.ts` (Photon `/reverse`, `stay` chip).
@@ -1029,8 +1101,8 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
       no "How are you riding?", no group button; disabled offline.
 - [ ] **D5:** Start ride = 21 Go (create → start → propose_stop, seed, recents, stack `[home, live]`); 2 taps from a home
       recent. The ride is named "{name}'s ride" (check the `rides.name`), never "Solo ride".
-- [ ] **D5:** Tiles: Join with a code → /join; Just ride → ride with no destination (normal sheet view since D6), also named
-      "{name}'s ride". There is no group tile and no group form anywhere.
+- [ ] ~~**D5:** Tiles: Join with a code → /join; Just ride → ride with no destination (normal sheet view since D6), also named
+      "{name}'s ride".~~ **Superseded by D7** (see the D7 items below). There is no group tile and no group form anywhere.
 - [ ] **D5:** First run: "Your first ride is three steps away"; steps read pick a place → share the code to ride together
       → nobody gets lost.
 - [ ] **D5:** From a running ride with a destination: the Invite riders row ("Share the code to ride together") is visible
@@ -1048,16 +1120,29 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
 - [ ] **D6:** Double-tapping Invite riders, Continue to lobby or the lobby's Start makes one ride / one hand-off; Android Back is ignored while they run.
 - [ ] **D6:** Start ride, accept a rider's different stop with riders present: the leader's navigation stops for the new stop and
       stays stopped after leaving and re-entering the ride (the marker holds the old stop). Same after an app restart.
-- [ ] **D6:** Just ride opens in the normal sheet view with the Invite riders row visible; full map is the toggle.
+- [ ] ~~**D6:** Just ride opens in the normal sheet view with the Invite riders row visible; full map is the toggle.~~
+      Superseded by D7 (Just ride removed); every new ride opens in the sheet view, full map is the toggle.
 - [ ] **D6:** The launch location prompt shows once per app run (not again when coming back from a ride), and never on web.
-- [ ] **D6:** A rider with no name gets "My ride" from Just ride. Sign-out clears the nav-ride markers.
-- [ ] Open ride on Home: compact card + Back to ride is the only primary; tiles hidden; active ride: bar opens the
+- [ ] **D6:** A rider with no name gets "My ride" from Start ride (~~Just ride~~, D7). Sign-out clears the nav-ride markers.
+- [ ] **D7:** No ride open (first run and returning): the collapsed strip shows the greeting (1 line, truncating) and a
+      **Join** pill at the right: `dialpad` 20 + "Join" 14 semibold, `brandOnBg` on `brandTint`, pill 36 high; the touch
+      target is the full 56 dp strip height (+8 dp slop each side); one `select` haptic; opens /join. Still there when the
+      sheet is expanded, and when the viewer is offline.
+- [ ] **D7:** With a lobby ride open the strip is only "Back to <ride>" › (no Join); with an active ride (native) there is
+      no strip (ride view). `stripJoinVisible` is true only for the `'title'` strip (unit test).
+- [ ] **D7:** At 360 dp and 1.3× with a long name, the greeting truncates and the Join label stays whole; TalkBack /
+      VoiceOver read the strip, then "Join a ride with a code, button".
+- [ ] **D7:** The expanded sheet has no tiles in any state; nothing on Home starts a ride without a destination;
+      `ride.created.start_kind` is only `start` or `invite`. An existing no-destination ride (older build, or after Stop
+      directions) still opens on live / lobby as before.
+- [ ] Open ride on Home: Back to ride is the only primary; the strip has no Join (D7, was "tiles hidden"); active ride: bar opens the
       in-ride search and a pick lands on live; lobby ride: Start ride opens the switch / leader-busy sheets.
 - [ ] Browsing (search, place, route) and backing out creates no ride row.
 - [ ] The home map is unmounted on ride screens (one GL map at a time: check with the profiler) and remounts at
       the saved camera; no location watch runs while Home is not focused.
 - [ ] Offline: banner above the bar; cached tiles; map failure shows `homeMap.mapFailed` and nothing else breaks.
-- [ ] First run: sheet opens expanded once with welcome, tiles, LocationRow and the reworded steps; later opens peek.
+- [ ] First run: sheet opens expanded once with welcome (+ the strip's Join), LocationRow and the reworded steps (no
+      tiles, D7); later opens collapsed.
 - [ ] Every old Home item is where §0.2 says; one primary per state.
 - [ ] Deep links `/join?code=`, `?c=` and notification taps still work with the map home below; `/route-preview?…`
       redirects into route mode.
@@ -1065,9 +1150,9 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
 - [ ] Screen-reader order as §10; map hidden; focus moves to the place name / route summary on mode change.
 - [ ] 360 dp and 1.3× screenshots of A–E, place and route, in all four palettes.
 - [ ] Unit tests: `planBack`, `homeSheetBlocks`, `initialSheetSnap`, `peekRecentCount`, `homeMapMounted`,
-      `meSlotForHome`, `searchBarTarget`, `startStep`, `confirmedSwitch`, `startAction`, `homeTiles`, `isNavActive`,
-      nav-ride marker (with destination, subscribe, clear), `startNavigationRide` / `startInviteRide` / `startSoloRide` (ride name,
-      rollback, marker), `routeActions`, `launchPromptWanted`, `noteRiderCount`, `recheckFront` + the Android cold-start recovery, camera save throttle.
+      `meSlotForHome`, `searchBarTarget`, `startStep`, `confirmedSwitch`, `stripJoinVisible` (D7), `isNavActive`,
+      nav-ride marker (with destination, subscribe, clear), `startNavigationRide` / `startInviteRide` (ride name,
+      rollback, marker; ~~`startSoloRide`, `homeTiles`, `startAction`~~ deleted), `routeActions`, `launchPromptWanted`, `noteRiderCount`, `recheckFront` + the Android cold-start recovery, camera save throttle.
 - [ ] `npx expo lint`, `npx tsc --noEmit`, Jest clean.
 
 **P2 — obsolete (D5).** The lobby destination card, "Remove destination" copy and `leaderNav` checks are dropped.
@@ -1089,7 +1174,8 @@ handed to the share sheet, an SMS composer opened, ⋯ → Share code, or a long
 
 ## 15. Open questions
 All three original questions are answered (decisions 1-3). New, from D5:
-1. ~~Just ride opens in full map the first time~~ **Answered by D6:** it opens in the normal sheet view.
+1. ~~Just ride opens in full map the first time~~ **Answered by D6:** it opens in the normal sheet view. (Moot since D7:
+   Just ride is removed.)
 2. **Arrival panel has no Invite row** (216 dp, End ride + Pick next). Keep (the ride is ending; ⋯ → Invite riders is one
    tap) or add a third row?
 3. ~~Renaming a ride~~ **Done in the app (§3.6).** Migration `0010_rename_ride.sql` applied 2026-10-15.

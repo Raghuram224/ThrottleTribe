@@ -133,6 +133,10 @@ Proposals are **ride_events**, so they need no new table: add `'stop_proposed'`,
 
 ## C. Solo ride (task 1)
 
+> **Superseded for starting a ride:** the Home "Ride solo" action became 21's "Just ride, no destination", then 22 D5's
+> "Just ride" tile, and **22 D7 (2026-10-24) removed it**: every ride now starts from a destination (route preview →
+> Start ride / Invite riders). The live-screen rules below still apply to any ride of one.
+
 - Home gets a secondary action **Ride solo** next to "Start a ride", using the same card style as the
   existing actions.
 - Ride solo calls `create_ride('Solo ride', threshold)` then `start_ride` immediately, skips the invite

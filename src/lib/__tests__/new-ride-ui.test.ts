@@ -43,7 +43,7 @@ describe('a new ride never opens in full map', () => {
     expect(mem.get(STORAGE_KEYS.fullMap)).toBe('0');
   });
 
-  it('createRide (Start ride, Invite riders, Just ride) resets it once the ride exists', async () => {
+  it('createRide (Start ride, Invite riders) resets it once the ride exists', async () => {
     mockRpc.mockResolvedValue({ data: { id: 'r1' }, error: null });
     useLiveUiStore.getState().setFullMap(true);
     await createRide('Sunday run', 300, { startKind: 'invite' });

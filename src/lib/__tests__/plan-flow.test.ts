@@ -10,8 +10,8 @@ import {
   fallbackPadding,
   HOME_FALLBACK_CAMERA,
   homeMapMounted,
-  homeTiles,
   homeSheetBlocks,
+  stripJoinVisible,
   initialCamera,
   initialSheetSnap,
   isFallbackCamera,
@@ -109,38 +109,34 @@ describe('homeSheetBlocks (22 §3.1.2)', () => {
     hasStats: true,
     showRecentRides: true,
   };
-  it('first run: the strip is the title; sub, tiles, location row, steps and nudge are all expanded', () => {
+  it('first run: the strip is the title; sub, location row, steps and nudge are all expanded', () => {
     expect(homeSheetBlocks({ ...base, firstRun: true, locationGranted: false })).toEqual({
       strip: 'title',
-      expanded: ['firstSub', 'tiles', 'locationRow', 'steps', 'nudge'],
+      expanded: ['firstSub', 'locationRow', 'steps', 'nudge'],
     });
     expect(homeSheetBlocks({ ...base, firstRun: true, hasNudge: false })).toEqual({
       strip: 'title',
-      expanded: ['firstSub', 'tiles', 'steps'],
+      expanded: ['firstSub', 'steps'],
     });
   });
-  it('returning: tiles, then every recent place, location, nudge, stats, rides (28: nothing is left in the strip)', () => {
+  it('returning: every recent place, location, nudge, stats, rides (28: nothing is left in the strip)', () => {
     expect(homeSheetBlocks({ ...base, locationGranted: false })).toEqual({
       strip: 'title',
-      expanded: ['tiles', 'recentPlaces', 'locationRow', 'nudge', 'stats', 'recentRides'],
+      expanded: ['recentPlaces', 'locationRow', 'nudge', 'stats', 'recentRides'],
     });
   });
   it('returning with no recent places has no recents block', () => {
     const b = homeSheetBlocks({ ...base, recentPlaces: 0 });
-    expect(b.expanded[0]).toBe('tiles');
     expect(b.expanded).not.toContain('recentPlaces');
   });
-  it('an open ride makes the strip a "Back to ride" row and hides the tiles; the ride card leads the expanded sheet', () => {
+  it('an open ride makes the strip a "Back to ride" row and hides recent places; the ride card leads the expanded sheet', () => {
     expect(homeSheetBlocks({ ...base, openRide: 'active' })).toEqual({ strip: 'resume', expanded: ['rideCard', 'nudge', 'recentRides'] });
     expect(homeSheetBlocks({ ...base, openRide: 'lobby' })).toEqual({
       strip: 'resume',
       expanded: ['rideCard', 'nudge', 'recentPlaces', 'recentRides'],
     });
-    for (const openRide of ['active', 'lobby'] as const) {
-      expect(homeSheetBlocks({ ...base, openRide }).expanded).not.toContain('tiles');
-    }
   });
-  it('the strip never carries tiles or recents: there are no peek blocks at all', () => {
+  it('the strip never carries recents: there are no peek blocks at all', () => {
     for (const openRide of ['none', 'active', 'lobby'] as const) {
       for (const firstRun of [false, true]) {
         expect(homeSheetBlocks({ ...base, openRide, firstRun })).not.toHaveProperty('peek');
@@ -345,16 +341,22 @@ describe('the route preview: Start is the primary, Invite riders the secondary u
   });
 });
 
-describe('home sheet tiles (D5)', () => {
-  it('Join with a code and Just ride; no group tile', () => {
-    expect(homeTiles()).toEqual(['join', 'ride']);
-    expect(homeTiles()).not.toContain('group');
+describe('Join with a code on the strip (D7)', () => {
+  it('shows on the title strip (first run or not) and is hidden while a ride is open', () => {
+    const base = { firstRun: false, openRide: 'none' as const, recentPlaces: 0, locationGranted: true, hasNudge: false, hasStats: false, showRecentRides: false };
+    for (const firstRun of [false, true]) {
+      expect(stripJoinVisible(homeSheetBlocks({ ...base, firstRun }).strip)).toBe(true);
+    }
+    for (const openRide of ['active', 'lobby'] as const) {
+      expect(stripJoinVisible(homeSheetBlocks({ ...base, openRide }).strip)).toBe(false);
+    }
   });
-  it('the tile copy names Just ride neutrally (any ride can become a group)', () => {
-    expect(copy['homeMap.tileRide']).toBe('Just ride');
+  it('the copy: a short label, a spoken label, no group or solo tile, no Just ride', () => {
+    expect(copy['homeMap.stripJoin']).toBe('Join');
+    expect(copy['homeMap.stripJoinA11y']).toBe('Join a ride with a code');
+    expect(Object.keys(copy)).not.toContain('homeMap.tileRide');
     expect(Object.keys(copy)).not.toContain('homeMap.tileGroup');
     expect(Object.keys(copy)).not.toContain('homeMap.tileSolo');
-    expect(copy['homeMap.tileJoin']).toBe('Join with a code');
   });
   it('the first-run steps say: pick a place, share the code to ride together, nobody gets lost', () => {
     expect(copy['homeMap.step1Title']).toMatch(/where you're riding/i);

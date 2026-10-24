@@ -55,13 +55,34 @@ browse --(bar, Search button, chip)--> search --(pin or row)--> place --(Directi
 ## 3. The strip
 
 The collapsed sheet is a 56 dp strip (`HOME_STRIP_H`) plus the gesture inset: a grab handle and **one line**, the greeting,
-or while a lobby ride is open a compact "Back to <ride>" row that opens the ride (an active ride has no strip: §8.5). No chevron. Tapping the strip or dragging it up
-expands to everything: the tiles (Just ride, Join), the ride card, recent places, the location row, steps, the nudge,
-stats and recent rides. Expanded height, scrolling and the first-run "opens expanded once" rule are unchanged.
+or while a lobby ride is open a compact "Back to <ride>" row that opens the ride (an active ride has no strip: §8.5). No chevron.
+**With no ride open the line also carries a Join pill at its right end (22 D7, owner, 2026-10-24).** Tapping the strip
+(outside the pill) or dragging it up expands to everything: ~~the tiles (Just ride, Join)~~ (removed by 22 D7), the ride card,
+recent places, the location row, steps, the nudge, stats and recent rides. Expanded height, scrolling and the first-run
+"opens expanded once" rule are unchanged.
+
+```
+no ride open (title strip, first run included)
+├──────────────────── ── ────────────────┤ grab handle 4×40 borderStrong, 6 from the top
+│ Good evening, Raghu         ( ⌨ Join ) │ greeting 16 semibold, 1 line, truncates · Join pill 36
+└────────────────────────────────────────┘ 56 + gesture inset
+
+lobby ride open (resume strip)
+├──────────────────── ── ────────────────┤ 24 dp handle zone = expand button
+│ Back to Sunday Run                   › │ 32 dp row → the lobby; no Join (one primary)
+└────────────────────────────────────────┘
+```
 
 * `homeSheetBlocks` returns `{ strip: 'title' | 'resume', expanded }`: nothing is left in the collapsed sheet (no tiles, no
-  recents).
-* Accessibility: the strip is a button with `expand` / `collapse` actions and a hint saying what a tap does. While a ride
+  recents). Since 22 D7 there is no tiles block anywhere.
+* **Join on the strip (22 D7, spec in 22 §3.1.3):** shown when `stripJoinVisible(strip)`, i.e. only the `'title'` strip.
+  Pill `size.stripJoin` 36, radius pill, padding-x 12, gap 4: icon `dialpad` 20 + `homeMap.stripJoin` "Join" 14 semibold,
+  `brandOnBg` on `brandTint` (pressed `surfacePressed` + press scale). Touch target = the full 56 dp strip height × (pill + 16
+  right padding) + 8 dp `hitSlop` left / right. Tap → haptic `select` → `/join`. The greeting truncates; the pill never does.
+  It stays on top when the sheet is expanded, and is enabled offline (the join screen explains errors). Hidden while a ride
+  is open: the strip is then only "Back to <ride>".
+* Accessibility: the strip is a button with `expand` / `collapse` actions and a hint saying what a tap does. With no ride
+  open the Join pill is a separate button after it, label `homeMap.stripJoinA11y` "Join a ride with a code". While a ride
   is open the 24 dp handle zone is the expand button (with the same actions) and the line below opens the ride; dragging
   anywhere on the strip expands.
 * Camera padding follows the strip (`browsePadding` uses the measured strip height).
@@ -98,7 +119,8 @@ outside a ride is the phone's own emergency call. Speak (voice guidance) was alw
 
 ## 6. Decisions the brief did not cover
 
-* The strip stays 56 dp tall (the old header): the touch-target floor, and with the body gone it is already thin.
+* The strip stays 56 dp tall (the old header): the touch-target floor, and with the body gone it is already thin. The
+  Join pill (22 D7) is drawn 36 tall inside it but takes taps over the full 56 dp height.
 * With a ride open, the 24 dp handle zone is the tap-to-expand target; the 32 dp resume row opens the ride.
 * A selected route is remembered by identity: new routes (another place, the expressway switch) start on the router's pick.
 * Typing-lock settle: the 1.5 s cap stays latched for the life of Home once it has fired.
@@ -167,14 +189,14 @@ full map > fit all: SOS and Search never go (68 dp a circle, 176 for two as the 
 ### 8.4 Entry points
 Every way into a live ride goes through `openLiveRide(rideId)` (`src/lib/reset-to-ride.ts`): it sets `viewRideId`, resets the plan
 (never a stale place or route), and `dismissTo('/home')` (pops lobby / hand-off screens; replaces the ride route when Home is not
-in the stack; a no-op on Home). Callers: Start ride and Just ride (`resetToRide` maps a `/ride/<id>/live` target to it), the
+in the stack; a no-op on Home). Callers: Start ride (~~and Just ride~~, removed by 22 D7) (`resetToRide` maps a `/ride/<id>/live` target to it), the
 Home learning of an active ride (its open-ride read), a lobby ride turning active (the session's redirect table), the stop
 search bar with a ride active, notification taps, and `/ride/<id>/live` itself (deep links, the launch gate, the permissions
 explainer, join): on native that route is a hand-off that calls `openLiveRide`.
 
 ### 8.5 Back (`rideBack`, pure, `src/lib/plan-flow.ts`)
 **Owner decision (supersedes the first design): there is no "Back to ride" and no browse while a ride runs.** While a ride is
-active (I am a member, not left) Home's map IS the ride view, from every entry: start, Just ride, the launch gate, a
+active (I am a member, not left) Home's map IS the ride view, from every entry: start (~~Just ride~~ is removed, 22 D7), the launch gate, a
 notification, a deep link, and a return from invite, emergency contacts or profile. Home learns of an active ride from its open-ride
 read and opens the view (`viewRideId` follows the active ride; the rider cannot leave it). The browse strip, chips, search-places
 bar do not exist then, and the "Back to <ride>" row and resume card are gone for an active ride (a lobby

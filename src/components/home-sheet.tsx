@@ -5,6 +5,7 @@ import Reanimated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTimi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
+import { PressableScale } from '@/components/pressable-scale';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
@@ -22,11 +23,13 @@ interface HomeSheetProps {
    * the grab handle, or dragging still expands it).
    */
   resume?: { label: string; a11yLabel: string; onPress: () => void };
+  /** "Join with a code": a compact pill at the right end of the title strip. Omitted while a ride is open (no resume row has it). */
+  onJoin?: () => void;
   /** Visible height right now. Owned by the parent so the map controls follow it; this component animates it. */
   visible: SharedValue<number>;
   /** The expanded sheet stops here (8 dp under the search bar, 22 §3.1.1). */
   maxHeight: number;
-  /** Everything but the strip: tiles, ride card, recent places and so on, reached by pulling the strip up. */
+  /** Everything but the strip: ride card, recent places and so on, reached by pulling the strip up. */
   expanded: ReactNode;
   /**
    * The map attribution, shown in a footer row above the gesture inset while the sheet is expanded (it reaches up
@@ -44,7 +47,7 @@ interface HomeSheetProps {
  * only the strip takes the drag, so the body keeps its own scrolling; release settles by velocity; Reduce Motion snaps
  * without animation; every drag has a tap equivalent (the strip) and a screen-reader action.
  */
-export function HomeSheet({ snap, onSnapChange, title, resume, visible, maxHeight, expanded, attribution, onHeights }: HomeSheetProps) {
+export function HomeSheet({ snap, onSnapChange, title, resume, onJoin, visible, maxHeight, expanded, attribution, onHeights }: HomeSheetProps) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -180,19 +183,42 @@ export function HomeSheet({ snap, onSnapChange, title, resume, visible, maxHeigh
               </Pressable>
             </>
           ) : (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={copy['homeMap.sheetA11y']}
-              accessibilityValue={{ text: `${isExpanded ? copy['live.sheetValueExpanded'] : copy['live.sheetValueCollapsed']}. ${title}` }}
-              accessibilityHint={stripHint}
-              accessibilityActions={stripActions}
-              onAccessibilityAction={onA11yAction}
-              onPress={toggle}
-              style={styles.titlePress}>
-              <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>
-                {title}
-              </Text>
-            </Pressable>
+            <View style={styles.titleRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={copy['homeMap.sheetA11y']}
+                accessibilityValue={{ text: `${isExpanded ? copy['live.sheetValueExpanded'] : copy['live.sheetValueCollapsed']}. ${title}` }}
+                accessibilityHint={stripHint}
+                accessibilityActions={stripActions}
+                onAccessibilityAction={onA11yAction}
+                onPress={toggle}
+                style={[styles.titlePress, onJoin ? { paddingRight: space.sm } : null]}>
+                <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>
+                  {title}
+                </Text>
+              </Pressable>
+              {onJoin ? (
+                // The touch target is the full 56 dp strip height; the pill inside is smaller. The greeting truncates, never this.
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={copy['homeMap.stripJoinA11y']}
+                  hitSlop={{ left: space.sm, right: space.sm }}
+                  onPress={() => {
+                    haptic('select');
+                    onJoin();
+                  }}
+                  style={styles.joinHit}>
+                  {(pressed) => (
+                    <View style={[styles.joinPill, { backgroundColor: colors.brandTint, opacity: pressed ? 0.85 : 1 }]}>
+                      <Icon name="dialpad" color={colors.brandOnBg} size={20} />
+                      <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.joinText, { color: colors.brandOnBg }]}>
+                        {copy['homeMap.stripJoin']}
+                      </Text>
+                    </View>
+                  )}
+                </PressableScale>
+              ) : null}
+            </View>
           )}
         </View>
       </GestureDetector>
@@ -243,7 +269,12 @@ const styles = StyleSheet.create({
   header: { height: size.sheetHeader },
   grabber: { position: 'absolute', top: 6, alignSelf: 'center', left: '50%', marginLeft: -20, width: 40, height: 4, borderRadius: 2 },
   // The whole strip is the button; the line sits below the handle.
-  titlePress: { height: size.sheetHeader, justifyContent: 'center', paddingTop: space.md, paddingHorizontal: space.lg },
+  titleRow: { height: size.sheetHeader, flexDirection: 'row', alignItems: 'center' },
+  titlePress: { flex: 1, height: size.sheetHeader, justifyContent: 'center', paddingTop: space.md, paddingLeft: space.lg, paddingRight: space.lg },
+  // Full strip height is the touch target; the pill sits in the part below the handle, like the title.
+  joinHit: { height: size.sheetHeader, justifyContent: 'center', paddingTop: space.md, paddingRight: space.lg },
+  joinPill: { height: size.stripJoin, flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingHorizontal: space.md, borderRadius: radius.pill },
+  joinText: { fontSize: font.sm, lineHeight: 20, fontFamily: family.semibold },
   // With a ride open: a 24 dp handle zone on top, the 32 dp resume row under it.
   handleZone: { height: HANDLE_ZONE },
   resumeRow: { height: size.sheetHeader - HANDLE_ZONE, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },

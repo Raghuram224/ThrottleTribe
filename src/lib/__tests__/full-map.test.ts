@@ -22,7 +22,7 @@ describe('backAction', () => {
   });
 });
 
-describe('no ride opens in full map by itself (22 D6: Just ride opens in the normal sheet view)', () => {
+describe('no ride opens in full map by itself (22 D6: a ride opens in the normal sheet view)', () => {
   it('the first-open default rule is gone: nothing decides to enter full map from a ride opening', () => {
     expect(Object.keys(fullMap)).not.toContain('shouldDefaultFullMap');
     expect(Object.keys(fullMap)).not.toContain('fullMapDefaultStep');
