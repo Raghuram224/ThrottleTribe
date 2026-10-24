@@ -22,13 +22,20 @@ export interface MapLine {
   dashed?: boolean;
   /** Draw below this label layer. */
   beforeId?: string;
+  /** A tap on the line (the route preview's grey alternatives). The press does not reach the map's own `onPress`. */
+  onPress?: () => void;
+  /**
+   * Part of the source's React key: change it to re-add the line's layers above the ones already on the map (a route that
+   * becomes the chosen one must be drawn last, and layers keep the order they were added in).
+   */
+  stack?: string;
 }
 
 /** The camera handle: the live map's `CameraAdapter`, so one adapter shape serves every map. */
 export type MapHandle = CameraAdapter;
 
 export type MapInitialCamera =
-  | { center: [lng: number, lat: number]; zoom: number }
+  | { center: [lng: number, lat: number]; zoom: number; pitch?: number; bearing?: number }
   | { bounds: Bounds; padding: PaddingPx };
 
 export interface MapIdle {
@@ -49,6 +56,8 @@ export interface MapLibreMapProps {
   onIdle?: (camera: MapIdle) => void;
   /** The style or tiles failed to load. */
   onError?: () => void;
+  /** Screen-reader name of the map (default "Map"). */
+  accessibilityLabel?: string;
   ref?: Ref<MapHandle>;
   /** MapLibre `Marker` elements. */
   children?: ReactNode;

@@ -5,7 +5,10 @@ import {
   needsWiden,
   parseGeoapifyPlaces,
   PlaceSearchError,
+  canLocateAlone,
   rankChipPlaces,
+  searchGate,
+  searchPosition,
   runSearch,
   SEARCH_CHIPS,
   shouldTryGeoapify,
@@ -124,6 +127,9 @@ describe('chip ranking and widening (24 §2.3, S5)', () => {
   });
   it('drops anything beyond the cap when one is given (Photon: 25 km)', () => {
     expect(rankChipPlaces([photonPlace('a', 10), photonPlace('b', 30)], 25_000).map((p) => p.name)).toEqual(['a']);
+  });
+  it('with a cap, a row with no distance is dropped too', () => {
+    expect(rankChipPlaces([{ ...photonPlace('a', 1), distanceM: null }, photonPlace('b', 2)], 25_000).map((p) => p.name)).toEqual(['b']);
   });
   it('widens when fewer than 3 named places', () => {
     expect(needsWiden(0)).toBe(true);
@@ -320,6 +326,43 @@ describe('runSearch: chips', () => {
     const out = await runSearch({ ...chip, me: null }, undefined, d, fresh());
     expect(geoCalls).toHaveLength(0);
     expect(out.provider).toBe('photon');
+    expect(out.radiusM).toBeNull(); // no filter could run, so no "within 25 km" caption
     expect(report.fallback).not.toHaveBeenCalled();
+  });
+  it('Photon chip rows are filtered to 25 km: far rows and rows with no distance go, and the caption is true', async () => {
+    const worldwide = [photonPlace('near', 3), photonPlace('croatia', 7000), { ...photonPlace('unknown', 1), distanceM: null }];
+    const { d } = deps({ photon: jest.fn(async () => worldwide) });
+    const out = await runSearch(chip, undefined, d, fresh());
+    expect(out.places.map((p) => p.name)).toEqual(['near']);
+    expect(out.radiusM).toBe(25000);
+  });
+  it('a chip with a position that finds nothing near says so with the radius it really applied', async () => {
+    const { d } = deps({ photon: jest.fn(async () => [photonPlace('croatia', 7000)]) });
+    const out = await runSearch(chip, undefined, d, fresh());
+    expect(out.places).toEqual([]);
+    expect(out.radiusM).toBe(25000);
+  });
+});
+
+describe('search gate and start position', () => {
+  it('a chip never runs without a position: it waits for the fix, or for the rider to allow location', () => {
+    expect(searchGate({ chip: true, hasMe: false, canLocate: true })).toBe('locating');
+    expect(searchGate({ chip: true, hasMe: false, canLocate: false })).toBe('needsLocation');
+    expect(searchGate({ chip: true, hasMe: true, canLocate: false })).toBe('run');
+  });
+  it('typed search may run without a position', () => {
+    expect(searchGate({ chip: false, hasMe: false, canLocate: false })).toBe('run');
+  });
+  it('location can arrive by itself only with permission and the phone switch on', () => {
+    expect(canLocateAlone('granted', true)).toBe(true);
+    expect(canLocateAlone('unknown', null)).toBe(true);
+    expect(canLocateAlone('granted', false)).toBe(false);
+    expect(canLocateAlone('denied', true)).toBe(false);
+    expect(canLocateAlone('undetermined', true)).toBe(false);
+  });
+  it("starts from this screen's own fix, else Home's seed", () => {
+    expect(searchPosition({ lat: 1, lng: 2 }, { lat: 3, lng: 4 })).toEqual({ lat: 1, lng: 2 });
+    expect(searchPosition(null, { lat: 3, lng: 4 })).toEqual({ lat: 3, lng: 4 });
+    expect(searchPosition(null, null)).toBeNull();
   });
 });

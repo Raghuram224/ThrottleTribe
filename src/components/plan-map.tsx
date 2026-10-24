@@ -1,33 +1,46 @@
-import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { MapLibreMap } from '@/components/map/maplibre-map';
-import type { MapHandle, MapLine } from '@/components/map/types';
-import { MeMarker } from '@/components/me-marker';
-import { StopPin } from '@/components/stop-pin';
-import { fitBoundsFor, type Bounds } from '@/lib/map-fit';
-import { HOME_ME_ZOOM, type CameraIntent, type PlanCamera } from '@/lib/plan-flow';
-import { previewFitPoints, type PreviewPadding } from '@/lib/preview-fit';
+import { PlanLayers, usePlanLines, type MapPin, type RouteLabelView } from '@/components/map/plan-layers';
+import type { MapHandle } from '@/components/map/types';
+import { usePlanCamera } from '@/hooks/use-plan-camera';
+import type { LatLng } from '@/lib/geo';
+import type { CameraIntent, PlanCamera } from '@/lib/plan-flow';
+import type { PlaceCategory } from '@/lib/place-search';
+import type { PreviewPadding } from '@/lib/preview-fit';
 import type { StopKind } from '@/lib/ride-api';
-import { NAV_CASING_WIDTH, NAV_ROUTE_SOURCE_ID, NAV_ROUTE_WIDTH } from '@/lib/route-style';
-import type { NavLine } from '@/lib/stop-ui';
-import { useTheme } from '@/theme/use-theme';
+import type { MapRouteView } from '@/lib/route-choices';
+
+export type { MapPin, RouteLabelView } from '@/components/map/plan-layers';
 
 export interface PlanMapProps {
   me: { lat: number; lng: number; accuracyM: number | null } | null;
   /** The pin: the place sheet and the route (null in browse). */
-  place: { lat: number; lng: number; kind: StopKind } | null;
-  /** The road route (solid), the dashed straight line, or nothing yet. Route mode only. */
-  line: NavLine | null;
-  /** The line is the previous route while a new one loads: drawn at 0.4 opacity (21 §2.3 "Updating"). */
+  place: { lat: number; lng: number; kind: StopKind; category: PlaceCategory } | null;
+  /**
+   * Every road route of the preview, the chosen one last (drawn on top): grey with a casing for the others, the route
+   * colour for the chosen one. Empty while loading and on failure: the preview never draws a straight line (28).
+   */
+  routes: readonly MapRouteView[];
+  /** A tap on a grey route line or its duration pill chooses that route. */
+  onSelectRoute?: (index: number) => void;
+  routeLabels?: readonly RouteLabelView[];
+  /** The routes are the previous ones while new ones load: drawn at 0.4 opacity (21 §2.3 "Updating"). */
   faded?: boolean;
+  /** Search results as category pins (search mode, 28). */
+  pins?: readonly MapPin[];
+  onPinPress?: (id: string) => void;
+  /** What a 'fit' intent frames: every route, or every search result (a pure helper in lib/preview-fit decides). */
+  fitPoints: readonly LatLng[];
   /** Everything floating over the map is counted here (the 20 C2 rule): bar, chips, sheet or panel, attribution. */
   padding: PreviewPadding;
   intent: CameraIntent;
   intentNonce: number;
   /** The first frame, no animation. */
   initial: PlanCamera;
+  /** No fix, no saved camera, no touch yet: frame India in the map the sheet leaves visible (22 §4.2, audit 4). */
+  frameFallback?: boolean;
   /** Browse: the camera follows each fix (22 §4.2 "Centred"). */
   follow: boolean;
   /** The rider's own touch moved the camera (programmatic eases report `userInteraction: false`). */
@@ -40,111 +53,51 @@ export interface PlanMapProps {
   onMapPress?: () => void;
 }
 
-/** One point where the pin's tip is, as GeoJSON for the label-collision symbol. */
-function stopBox(p: { lat: number; lng: number }): GeoJSON.Feature<GeoJSON.Point> {
-  return { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lng, p.lat] } };
-}
-
-const FIT_MS = 400;
-const PLACE_MS = 400;
-const FOLLOW_MS = 450;
-/** Without a start point the pin shows at street level. */
-const PIN_ONLY_ZOOM = 14;
-/** Below this the map is showing a country or the world, not where I am: the first fix zooms in. */
-const FOLLOW_MIN_ZOOM = 10;
-
 /**
- * The map home's one map (22 §2.2): the route preview map, extended with a browse camera (follow / free,
- * saved camera, intents). North-up, pan and zoom allowed, no rotate or pitch. Same route, casing, pin and
- * "me" marker as the live map, so a destination looks the same on Home, the preview and live.
+ * The map home's planning map (22 §2.2): `MapLibreMap` with the plan layers (pin, result pins, route labels, me) and the
+ * browse camera (`usePlanCamera`: follow / free, saved camera, intents). North-up, pan and zoom allowed, no rotate or
+ * pitch. Same route, casing, pin and "me" marker as the live map, so a destination looks the same on Home, the preview and
+ * live. Home itself composes these pieces in `HomeMap`, next to the ride view's scene, on one map.
  */
 export function PlanMap({
   me,
   place,
-  line,
+  routes,
+  onSelectRoute,
+  routeLabels = [],
   faded = false,
+  pins = [],
+  onPinPress,
+  fitPoints,
   padding,
   intent,
   intentNonce,
   initial,
+  frameFallback = false,
   follow,
   onUserGesture,
   onIdle,
   onMapError,
   onMapPress,
 }: PlanMapProps) {
-  const { colors, scheme, style } = useTheme();
   const mapRef = useRef<MapHandle>(null);
   const zoomRef = useRef(initial.zoom);
-
-  const points = useMemo(() => (place ? previewFitPoints(line, me, place) : []), [line, me, place]);
-  const bounds = useMemo<Bounds | null>(() => fitBoundsFor(points), [points]);
   // The first frame only: later changes to `initial` are ignored on purpose (the camera moves by intents).
   const [initialCamera] = useState(() => ({ center: [initial.lng, initial.lat] as [number, number], zoom: initial.zoom }));
 
-  // Intents: what the camera frames or the room around it changed. Not on every GPS tick (`me` only matters
-  // for a 'me' intent, whose nonce changes on purpose).
-  const pad = `${padding.top}|${padding.bottom}|${padding.left}`;
-  const key =
-    intent.kind === 'me' || intent.kind === 'none'
-      ? `${intent.kind}#${intentNonce}`
-      : intent.kind === 'fit'
-        ? `fit#${intentNonce}|${bounds ? bounds.map((b) => b.toFixed(4)).join(',') : place ? `${place.lat},${place.lng}` : ''}|${pad}`
-        : intent.kind === 'place'
-          ? `place#${intentNonce}|${place?.lat},${place?.lng}|${pad}`
-          : `restore#${intentNonce}`;
-  useEffect(() => {
-    const cam = mapRef.current;
-    if (!cam) return;
-    if (intent.kind === 'me') {
-      if (me) cam.easeTo({ center: [me.lng, me.lat], zoom: intent.zoom, padding, durationMs: FOLLOW_MS, bearing: 0, pitch: 0 });
-    } else if (intent.kind === 'place') {
-      if (place) cam.easeTo({ center: [place.lng, place.lat], zoom: intent.zoom, padding, durationMs: PLACE_MS, bearing: 0, pitch: 0 });
-    } else if (intent.kind === 'fit') {
-      if (bounds) cam.fitBounds(bounds, { padding, durationMs: FIT_MS });
-      else if (place) cam.easeTo({ center: [place.lng, place.lat], zoom: PIN_ONLY_ZOOM, padding, durationMs: FIT_MS, bearing: 0, pitch: 0 });
-    } else if (intent.kind === 'restore') {
-      const c = intent.camera;
-      cam.easeTo({ center: [c.lng, c.lat], zoom: c.zoom, padding: { top: 0, right: 0, bottom: 0, left: 0 }, durationMs: PLACE_MS, bearing: 0, pitch: 0 });
-    }
-    // `key` stands for the intent, what it frames and the padding.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  // Centred: follow each fix, zoom kept (except from a country-level frame, which is not "where I am").
-  const meLat = me?.lat;
-  const meLng = me?.lng;
-  useEffect(() => {
-    if (!follow || meLat === undefined || meLng === undefined) return;
-    mapRef.current?.easeTo({
-      center: [meLng, meLat],
-      zoom: zoomRef.current < FOLLOW_MIN_ZOOM ? HOME_ME_ZOOM : undefined,
-      padding,
-      durationMs: FOLLOW_MS,
-      bearing: 0,
-      pitch: 0,
-    });
-    // `pad` stands for the padding: the marker stays centred in the part of the map that is visible.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [follow, meLat, meLng, pad]);
-
-  const boxData = useMemo(() => (place ? stopBox(place) : null), [place]);
-  const dashed = line?.dashed ?? false;
-  const opacity = faded ? 0.4 : 1;
-  const lines = useMemo<MapLine[]>(() => {
-    const route = { color: colors.navRoute, width: NAV_ROUTE_WIDTH, opacity };
-    const casing = { color: colors.navRouteCasing, width: NAV_CASING_WIDTH, opacity };
-    return [
-      {
-        id: NAV_ROUTE_SOURCE_ID,
-        coords: line?.coords ?? [],
-        dashed,
-        beforeId: colors.routeBeforeId,
-        // The straight-line fallback has no casing (21 §2.3).
-        layers: dashed ? [route] : [casing, route],
-      },
-    ];
-  }, [line, dashed, opacity, colors.navRoute, colors.navRouteCasing, colors.routeBeforeId]);
+  usePlanCamera({
+    mapRef,
+    me,
+    place,
+    fitPoints,
+    padding,
+    intent,
+    intentNonce,
+    frameFallback,
+    follow,
+    getZoom: () => zoomRef.current,
+  });
+  const lines = usePlanLines({ routes, onSelectRoute, faded });
 
   return (
     <View style={styles.root}>
@@ -159,29 +112,7 @@ export function PlanMap({
           zoomRef.current = zoom;
           onIdle({ lat: center[1], lng: center[0], zoom });
         }}>
-        {place && boxData ? (
-          // The pin is a native view, so basemap labels cannot see it and the place's own name (the town) ended up under it.
-          // This invisible symbol, on top of the style so it is placed first, takes the pin's box in the label collision
-          // pass: any label that would touch the pin is dropped instead. Sprite `circle_11` at 4x is about the pin's 44 dp.
-          <GeoJSONSource key={`plan-stop-box-${style}-${scheme}`} id="plan-stop-box" data={boxData}>
-            <Layer
-              id="plan-stop-box"
-              type="symbol"
-              layout={{ 'icon-image': 'circle_11', 'icon-size': 4, 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false }}
-              paint={{ 'icon-opacity': 0 }}
-            />
-          </GeoJSONSource>
-        ) : null}
-        {place ? (
-          <Marker id="plan-stop" lngLat={[place.lng, place.lat]} anchor="bottom">
-            <StopPin kind={place.kind} />
-          </Marker>
-        ) : null}
-        {me ? (
-          <Marker id="plan-me" lngLat={[me.lng, me.lat]}>
-            <MeMarker variant="map" heading={null} accuracyM={me.accuracyM} lat={me.lat} zoom={15} />
-          </Marker>
-        ) : null}
+        <PlanLayers me={me} place={place} routeLabels={routeLabels} onSelectRoute={onSelectRoute} pins={pins} onPinPress={onPinPress} />
       </MapLibreMap>
     </View>
   );

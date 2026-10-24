@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppText } from '@/components/app-text';
 import { Icon } from '@/components/icon';
-import { PlaceRow } from '@/components/place-search-view';
+import { PlaceRow } from '@/components/place-row';
 import { copy } from '@/lib/copy';
 import { haversineM, type LatLng } from '@/lib/geo';
 import type { Place } from '@/lib/place-search';

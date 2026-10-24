@@ -3,6 +3,7 @@ import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, StyleS
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BigButton } from '@/components/big-button';
+import { RouteChoiceRow } from '@/components/route-choices';
 import { CreditRow } from '@/components/credit-row';
 import { Icon } from '@/components/icon';
 import { Skeleton } from '@/components/skeleton';
@@ -16,6 +17,7 @@ import { formatClockTime, formatDistance, formatDuration } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { distinctAddress } from '@/lib/place-search';
 import { routeActions, type GoingKind } from '@/lib/plan-flow';
+import { clampRouteIndex, routeChoices } from '@/lib/route-choices';
 import { track } from '@/lib/telemetry';
 import { usePrefsStore } from '@/store/prefs-store';
 import type { PlanPlace } from '@/store/plan-store';
@@ -25,6 +27,9 @@ import { useTheme } from '@/theme/use-theme';
 interface RoutePanelProps {
   place: PlanPlace;
   state: PreviewRouteState;
+  /** Which of `state`'s routes is chosen (the one on the map in the route colour); the summary follows it. */
+  selected: number;
+  onSelectRoute: (index: number) => void;
   /** Straight-line metres from me; null = no fix. */
   straightM: number | null;
   /** Expressways are being avoided (flagged routers only): decides which "no route" note to show. */
@@ -52,6 +57,8 @@ interface RoutePanelProps {
 export function RoutePanel({
   place,
   state,
+  selected,
+  onSelectRoute,
   straightM,
   avoidMotorways,
   offline,
@@ -74,8 +81,11 @@ export function RoutePanel({
   const busy = going !== null;
 
   const updating = state.status === 'updating';
-  const route = state.status === 'ok' || updating ? state.route : null;
-  const settledRoute = state.status === 'ok' ? state.route : null;
+  const routes = state.status === 'ok' || updating ? state.routes : [];
+  const chosen = clampRouteIndex(selected, routes.length);
+  // Everything below (duration, distance, arrive time, the credit, the expressway note, what Start seeds) is the chosen route's.
+  const route = routes[chosen] ?? null;
+  const settledRoute = state.status === 'ok' ? (routes[chosen] ?? null) : null;
   // The credit names whoever computed this route (LocationIQ, or the OSRM demo in a dev / transition build).
   const routeCredit = routeCreditLink(route?.provider);
   const durationText = route ? formatDuration(route.durationS * 1000) : null;
@@ -174,6 +184,10 @@ export function RoutePanel({
           </View>
         )}
       </View>
+
+      {routes.length > 1 ? (
+        <RouteChoiceRow choices={routeChoices(routes, now)} selected={chosen} onSelect={onSelectRoute} disabled={busy || updating} />
+      ) : null}
 
       <View style={styles.noteRow}>
         <Icon name="alertCircle" color={colors.textMuted} size={16} />

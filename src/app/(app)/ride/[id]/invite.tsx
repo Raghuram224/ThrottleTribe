@@ -31,6 +31,7 @@ import { contactsAccess, pickContact, requestContactsAccess, type PickedContact 
 import { href } from '@/lib/nav';
 import { displayRideName, firstName } from '@/lib/names';
 import { DEFAULT_PREFIX, formatPhoneDisplay, normalisePhone } from '@/lib/phone';
+import { RIDE_ON_HOME } from '@/lib/ride-on-home';
 import { rideHref } from '@/lib/routing';
 import { track } from '@/lib/telemetry';
 import { NO_INVITEES, useInviteStore } from '@/store/invite-store';
@@ -289,9 +290,25 @@ export default function Invite() {
   const rideStatus = loadedRide?.status ?? 'lobby';
   const leaveScreen = () => {
     if (continuingRef.current) return;
-    if (router.canGoBack()) router.back();
+    // An active ride is Home's map (28 §8): go to that one Home whatever the stack under this screen is.
+    if (RIDE_ON_HOME && rideStatus === 'active') router.dismissTo(href('/home'));
+    else if (router.canGoBack()) router.back();
     else router.replace(href(rideHref(rideId, rideStatus)));
   };
+
+  const leaveScreenRef = useRef(leaveScreen);
+  useEffect(() => {
+    leaveScreenRef.current = leaveScreen;
+  });
+  // Android Back does the same as the header arrow (explicitly: it must never be a dead key on this screen).
+  useEffect(() => {
+    if (!RIDE_ON_HOME || rideStatus !== 'active' || isFirst) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      leaveScreenRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  }, [rideStatus, isFirst]);
 
   const onFooter = async () => {
     if (!isFirst) return leaveScreen();

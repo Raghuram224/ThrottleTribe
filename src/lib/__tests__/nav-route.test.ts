@@ -6,7 +6,9 @@ import {
   EXCLUDE_UNSUPPORTED_MEMO_MS,
   fetchNavRoute,
   fetchNavRouteResult,
+  MAX_ROUTES,
   parseOsrmResponse,
+  parseOsrmRoutes,
   remainingToStop,
   resetRoutingMemo,
   routeCacheKey,
@@ -61,6 +63,39 @@ describe('parseOsrmResponse', () => {
     expect(parseOsrmResponse(null)).toBeNull();
     expect(parseOsrmResponse({ routes: [{ distance: 1, duration: 1, geometry: { coordinates: [[1, 2]] } }] })).toBeNull();
     expect(parseOsrmResponse({ routes: [{ distance: 'x', duration: 1, geometry: { coordinates: [[1, 2], [3, 4]] } }] })).toBeNull();
+  });
+});
+
+const osrmRoute = (distance: number, duration: number, extra: [number, number][] = []) => ({
+  distance,
+  duration,
+  geometry: { coordinates: [[77.1, 12.1], ...extra, [77.2, 12.2]] },
+});
+
+describe('parseOsrmRoutes (the preview\'s alternatives)', () => {
+  it('reads every route in the router\'s order, the recommendation first', () => {
+    const out = parseOsrmRoutes({ routes: [osrmRoute(1000, 100), osrmRoute(1200, 90, [[77.15, 12.2]]), osrmRoute(1500, 140, [[77.12, 12.0]])] });
+    expect(out.map((r) => [r.distanceM, r.durationS])).toEqual([[1000, 100], [1200, 90], [1500, 140]]);
+  });
+  it('keeps at most three', () => {
+    const many = { routes: Array.from({ length: 5 }, (_, i) => osrmRoute(1000 + i * 100, 100 + i)) };
+    expect(MAX_ROUTES).toBe(3);
+    expect(parseOsrmRoutes(many)).toHaveLength(3);
+    expect(parseOsrmRoutes(many, 2)).toHaveLength(2);
+  });
+  it('skips an unreadable route and a repeat of one already kept, and reads the rest', () => {
+    const out = parseOsrmRoutes({
+      routes: [osrmRoute(1000, 100), { distance: 'x' }, osrmRoute(1000, 100), osrmRoute(1300, 120)],
+    });
+    expect(out.map((r) => r.distanceM)).toEqual([1000, 1300]);
+  });
+  it('is empty for a response with no usable route', () => {
+    expect(parseOsrmRoutes({ code: 'NoRoute', routes: [] })).toEqual([]);
+    expect(parseOsrmRoutes(null)).toEqual([]);
+    expect(parseOsrmRoutes({ routes: 'x' })).toEqual([]);
+  });
+  it('the single-route parser still reads only the first (live navigation)', () => {
+    expect(parseOsrmResponse({ routes: [osrmRoute(1000, 100), osrmRoute(1300, 120)] })?.distanceM).toBe(1000);
   });
 });
 
@@ -211,6 +246,13 @@ describe('buildOsrmUrl', () => {
       `${base}&steps=true&exclude=motorway&bearings=90,45;`,
     );
   });
+  it('asks for alternatives only when told to, after exclude and before bearings', () => {
+    expect(buildOsrmUrl(from, to, { alternatives: true })).toBe(`${base}&alternatives=true`);
+    expect(buildOsrmUrl(from, to, { alternatives: false })).toBe(base);
+    expect(buildOsrmUrl(from, to, { steps: true, avoidMotorways: true, alternatives: true, bearingDeg: 90 })).toBe(
+      `${base}&steps=true&exclude=motorway&alternatives=true&bearings=90,45;`,
+    );
+  });
   it('wraps a negative bearing into 0-359', () => {
     expect(buildOsrmUrl(from, to, { bearingDeg: -90 })).toContain('&bearings=270,45;');
   });
@@ -282,6 +324,35 @@ describe('fetchNavRouteResult', () => {
     expect(r).toMatchObject({ status: 'ok', route: { avoidedMotorways: false } });
     expect(f).toHaveBeenCalledTimes(1);
     expect(f.mock.calls[0][0]).not.toContain('exclude');
+  });
+  it('a preview request asks for alternatives and returns every route, the first as `route`', async () => {
+    const body = { routes: [osrmRoute(1000, 100), osrmRoute(1200, 90, [[77.15, 12.2]])] };
+    const f = mockFetch(reply(200, body));
+    const r = await fetchNavRouteResult(a, b, { alternatives: true });
+    expect(f.mock.calls[0][0]).toContain('&alternatives=true');
+    expect(r.status === 'ok' && r.routes.map((x) => x.distanceM)).toEqual([1000, 1200]);
+    expect(r.status === 'ok' && r.route).toBe(r.status === 'ok' && r.routes[0]);
+  });
+  it('a plain request keeps the single route, as `routes` of one', async () => {
+    mockFetch(reply(200, { routes: [osrmRoute(1000, 100), osrmRoute(1200, 90)] }));
+    const r = await fetchNavRouteResult(a, b, {});
+    expect(r.status === 'ok' && r.routes).toHaveLength(1);
+  });
+  it('the cache key includes alternatives: a plain answer never serves the preview', async () => {
+    expect(routeCacheKey(a, b, { alternatives: true })).not.toBe(routeCacheKey(a, b, {}));
+    expect(routeCacheKey(a, b, { alternatives: true })).toBe(routeCacheKey(a, b, { alternatives: true }));
+    // A plain request keeps the shape it always had (no trailing marker).
+    expect(routeCacheKey(a, b, {})).not.toContain('alt');
+    mockFetch(reply(200, okBody));
+    await fetchNavRouteResult(a, b, {});
+    const f = mockFetch(reply(200, { routes: [osrmRoute(1000, 100), osrmRoute(1200, 90, [[77.15, 12.2]])] }));
+    const r = await fetchNavRouteResult(a, b, { alternatives: true });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(r.status === 'ok' && r.routes).toHaveLength(2);
+    // And the alternatives answer is served from the cache the second time, all routes intact.
+    const again = await fetchNavRouteResult(a, b, { alternatives: true });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(again.status === 'ok' && again.routes).toHaveLength(2);
   });
   it('leaves avoidedMotorways unset when it was not asked for', async () => {
     mockFetch(reply(200, okBody));

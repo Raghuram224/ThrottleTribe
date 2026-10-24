@@ -62,3 +62,10 @@ export const ROUTING_SUPPORTS_EXCLUDE = process.env.EXPO_PUBLIC_ROUTING_EXCLUDE 
  * Terrain Tiles fallback. A JS constant, so switching it ships as an OTA update. Unknown values read as Mapterhorn.
  */
 export const DEM_PROVIDER: DemProvider = parseDemProvider(process.env.EXPO_PUBLIC_DEM_PROVIDER?.trim());
+
+/**
+ * The live ride runs on Home's one map (docs/design/28 §8): starting or opening a ride never slides to another screen
+ * or reloads the map. On by default; EXPO_PUBLIC_LIVE_ON_HOME=0 brings back the separate live screen. Web always keeps
+ * the live screen (see `rideOnHome`).
+ */
+export const LIVE_ON_HOME = process.env.EXPO_PUBLIC_LIVE_ON_HOME?.trim() !== '0';

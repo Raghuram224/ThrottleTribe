@@ -5,7 +5,7 @@ import { formatDistance } from '@/lib/format';
 import { haversineM, type LatLng } from '@/lib/geo';
 import type { IconName } from '@/lib/icon-names';
 import { firstName } from '@/lib/names';
-import type { PlaceCategory } from '@/lib/place-search';
+import { asPlaceCategory, type PlaceCategory } from '@/lib/place-search';
 import type { RideRow, StopKind } from '@/lib/ride-api';
 import type { PendingProposal } from '@/lib/stop-proposals';
 
@@ -15,13 +15,15 @@ export interface RideStop {
   lat: number;
   lng: number;
   kind: StopKind;
+  /** What kind of place; null for rides whose stop was set without one (old app versions). */
+  category: PlaceCategory | null;
   setBy: string | null;
 }
 
-type StopColumns = Pick<
-  RideRow,
-  'stop_name' | 'stop_address' | 'stop_lat' | 'stop_lng' | 'stop_kind' | 'stop_set_by'
->;
+// `stop_category` may be missing: rides cached offline before the column existed.
+type StopColumns = Pick<RideRow, 'stop_name' | 'stop_address' | 'stop_lat' | 'stop_lng' | 'stop_kind' | 'stop_set_by'> & {
+  stop_category?: string | null;
+};
 
 /** The ride's next stop, or null when none is set (the columns are all null together). */
 export function rideStop(ride: StopColumns | null | undefined): RideStop | null {
@@ -33,6 +35,7 @@ export function rideStop(ride: StopColumns | null | undefined): RideStop | null 
     lat: ride.stop_lat,
     lng: ride.stop_lng,
     kind,
+    category: asPlaceCategory(ride.stop_category),
     setBy: ride.stop_set_by,
   };
 }
@@ -44,7 +47,7 @@ export function rideStop(ride: StopColumns | null | undefined): RideStop | null 
  */
 export function withStop<R extends StopColumns & { stop_set_at: string | null }>(
   ride: R,
-  stop: { name: string; address?: string | null; lat: number; lng: number; kind: StopKind },
+  stop: { name: string; address?: string | null; lat: number; lng: number; kind: StopKind; category?: PlaceCategory | null },
   byUserId: string | null,
   nowIso: string,
 ): R {
@@ -55,6 +58,7 @@ export function withStop<R extends StopColumns & { stop_set_at: string | null }>
     stop_lat: stop.lat,
     stop_lng: stop.lng,
     stop_kind: stop.kind,
+    stop_category: stop.category ?? null,
     stop_set_by: byUserId,
     stop_set_at: nowIso,
   };
@@ -89,6 +93,11 @@ export function categoryIcon(category: PlaceCategory): IconName {
   return CATEGORY_ICON[category];
 }
 
+/** The glyph of a break stop: its own category's icon; the cup for no category (old rides) and for 'other' (the map marker is no icon for a break). */
+export function breakIcon(category: PlaceCategory | null | undefined): IconName {
+  return category && category !== 'other' ? categoryIcon(category) : 'coffee';
+}
+
 export interface ApprovalMember {
   name: string;
   leftAt?: string | null;
@@ -105,8 +114,9 @@ export interface ApprovalCardModel {
   moreCount: number;
   /** Place name, for the local notification. */
   place: string;
-  /** Drives the card icon: cup for a break, flag for the destination. */
+  /** Drives the card icon: the place's icon for a break (cup without a category), flag for the destination. */
   kind: StopKind;
+  category: PlaceCategory | null;
 }
 
 /**
@@ -128,7 +138,7 @@ export function approvalCardModel(args: {
   const template = copy[top.stop.kind === 'destination' ? 'stop.approvalDestination' : 'stop.approvalBreak'];
   // Without my position the trailing " · {km}" has nothing to say.
   const text = fill(template, { name, place: top.stop.name, km }).replace(/ · $/, '');
-  return { proposalId: top.id, name, text, moreCount: live.length - 1, place: top.stop.name, kind: top.stop.kind };
+  return { proposalId: top.id, name, text, moreCount: live.length - 1, place: top.stop.name, kind: top.stop.kind, category: top.stop.category };
 }
 
 /** What the live map draws for my route to the stop. */

@@ -10,8 +10,12 @@ function ev(type: string, userId: string | null, payload: Record<string, unknown
 describe('parseStopPayload', () => {
   it('accepts a valid payload and nulls an empty address', () => {
     expect(parseStopPayload({ ...stop('Cafe'), address: '' })).toEqual({
-      name: 'Cafe', address: null, lat: 12.9, lng: 77.5, kind: 'break',
+      name: 'Cafe', address: null, lat: 12.9, lng: 77.5, kind: 'break', category: null,
     });
+  });
+  it('reads the category and drops an unknown one', () => {
+    expect(parseStopPayload({ ...stop('Shell'), category: 'fuel' })?.category).toBe('fuel');
+    expect(parseStopPayload({ ...stop('Shell'), category: 'spaceport' })?.category).toBeNull();
   });
   it('rejects bad name, coordinates and kind', () => {
     expect(parseStopPayload({ ...stop(' ') })).toBeNull();

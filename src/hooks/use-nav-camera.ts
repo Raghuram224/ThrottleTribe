@@ -45,8 +45,8 @@ export interface CameraAdapter {
     durationMs: number;
     linear?: boolean;
   }): void;
-  /** Fit north-up and flat (bearing 0, pitch 0). */
-  fitBounds(bounds: Bounds, o: { padding: PaddingPx; durationMs: number }): void;
+  /** Fit north-up and flat (bearing 0, pitch 0), unless `keepView` leaves the camera's bearing and pitch alone. */
+  fitBounds(bounds: Bounds, o: { padding: PaddingPx; durationMs: number; keepView?: boolean }): void;
   getZoom(): number | null;
   getBounds(): Bounds | null;
 }
@@ -68,6 +68,11 @@ interface Args {
   /** The ride's next stop (19 A); `stopFocusNonce` bumps ask for one fit of [me, stop]. */
   stop?: LatLng | null;
   stopFocusNonce?: number;
+  /**
+   * How long the very first follow ease lasts. 0 (default) jumps there: right for a map that has just been created at my
+   * position. Home's one map is already showing something else when the ride view opens, so it eases in instead.
+   */
+  entryEaseMs?: number;
 }
 
 /** A stop focus waits this long for the stop to arrive (the leader's own pick comes back by broadcast). */
@@ -100,6 +105,7 @@ export function useNavCamera({
   reduceMotion,
   stop = null,
   stopFocusNonce = 0,
+  entryEaseMs = 0,
 }: Args) {
   const [mode, dispatch] = useReducer(reduceCamera, 'follow' as CameraMode);
   const me = riders.find((r) => r.isMe) ?? null;
@@ -171,13 +177,13 @@ export function useNavCamera({
       bearing: nav.bearing.bearing,
       pitch: followPitch(tilt),
       padding: followPadding({ areaH, topInset, bottomInset }),
-      durationMs: reduceMotion || !applied.current ? 0 : isUpdate ? FOLLOW_EASE_MS : RECENTRE_MS,
+      durationMs: reduceMotion ? 0 : !applied.current ? entryEaseMs : isUpdate ? FOLLOW_EASE_MS : RECENTRE_MS,
       linear: isUpdate,
     });
     applied.current = true;
     wasFollowing.current = true;
     lastNavKey.current = nav.key;
-  }, [eff, adapter, nav, areaH, topInset, bottomInset, tilt, reduceMotion]);
+  }, [eff, adapter, nav, areaH, topInset, bottomInset, tilt, reduceMotion, entryEaseMs]);
 
   // ---- overview
   const fit = useCallback(

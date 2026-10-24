@@ -1,4 +1,5 @@
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { RiderAvatar } from '@/components/rider-avatar';
@@ -78,6 +79,87 @@ export function HomeSearchBar({ top, label, a11yLabel, onPress, avatar }: HomeSe
   );
 }
 
+interface SearchInputBarProps {
+  top: number;
+  value: string;
+  onChangeText: (value: string) => void;
+  /** The keyboard's search key. */
+  onSubmit: () => void;
+  /** The input took the keyboard: Home goes back to the suggestions list. */
+  onFocus: () => void;
+  /** Back arrow: the same step as Android Back. */
+  onBack: () => void;
+  /** Clear X: empties the text and puts the cursor back. */
+  onClear: () => void;
+  /** Moving (21 §2.2.2): the input stops taking text; chips and rows keep working. */
+  locked: boolean;
+  /** Take the keyboard now (the where-to focus rules decide, not this component). */
+  autoFocus: boolean;
+}
+
+/**
+ * The bar in search mode (28): back arrow at the left, the text input, a clear X at the right once there is text. The
+ * same 56 dp pill as the browse bar, so the bar does not jump when search opens.
+ */
+export function SearchInputBar({ top, value, onChangeText, onSubmit, onFocus, onBack, onClear, locked, autoFocus }: SearchInputBarProps) {
+  const { colors, scheme } = useTheme();
+  const inputRef = useRef<TextInput>(null);
+  // `autoFocus` only acts at mount; the typing lock decides later (after a live fix), so it also focuses when the prop turns true.
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
+  // The keyboard goes away the moment the lock engages.
+  useEffect(() => {
+    if (locked) Keyboard.dismiss();
+  }, [locked]);
+  const placeholder = locked ? copy['whereTo.lockedPlaceholder'] : copy['search.placeholder'];
+  return (
+    <View style={[styles.bar, { top, backgroundColor: colors.surfaceRaised }, elevate('e2', scheme)]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={copy['homeSearch.a11yBack']}
+        onPress={() => {
+          haptic('select');
+          onBack();
+        }}
+        style={styles.back}>
+        <Icon name="back" color={colors.text} size={28} />
+      </Pressable>
+      <TextInput
+        ref={inputRef}
+        autoFocus={autoFocus}
+        autoCorrect={false}
+        returnKeyType="search"
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={onFocus}
+        onSubmitEditing={onSubmit}
+        editable={!locked}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSubtle}
+        selectionColor={colors.brand.primary}
+        accessibilityLabel={placeholder}
+        accessibilityState={{ disabled: locked }}
+        maxFontSizeMultiplier={1.3}
+        style={[styles.input, { color: colors.text }, locked && styles.locked]}
+      />
+      {value.length > 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy['search.a11yClear']}
+          onPress={() => {
+            haptic('select');
+            onClear();
+            inputRef.current?.focus();
+          }}
+          style={styles.back}>
+          <Icon name="close" color={colors.textMuted} size={22} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 interface PlaceBarProps {
   top: number;
   name: string;
@@ -121,10 +203,14 @@ export function PlaceBar({ top, name, onBack, onSearchAgain }: PlaceBarProps) {
 interface HomeChipsProps {
   top: number;
   onChip: (key: SearchChip['key']) => void;
+  /** Search mode (28): the chosen chip is marked (fill, border, a tick and `selected`); browse has none. */
+  selected?: SearchChip['key'] | null;
+  /** Solid chips on the suggestions surface need no shadow. */
+  flat?: boolean;
 }
 
-/** Category chips under the bar (22 §3.1.1): 48 visual, 56 hit; no selected state on Home. */
-export function HomeChips({ top, onChip }: HomeChipsProps) {
+/** Category chips under the bar (22 §3.1.1): 48 visual, 56 hit; a selected state only in search mode. */
+export function HomeChips({ top, onChip, selected = null, flat = false }: HomeChipsProps) {
   const { colors, scheme } = useTheme();
   return (
     <ScrollView
@@ -135,12 +221,14 @@ export function HomeChips({ top, onChip }: HomeChipsProps) {
       keyboardShouldPersistTaps="handled">
       {SEARCH_CHIPS.map((c) => {
         const label = copy[c.labelKey];
+        const on = selected === c.key;
         return (
           <Pressable
             key={c.key}
             accessibilityRole="button"
             accessibilityLabel={t('homeMap.chipA11y', { label })}
             accessibilityHint={copy['homeMap.searchHint']}
+            accessibilityState={{ selected: on }}
             hitSlop={{ top: 4, bottom: 4 }}
             onPress={() => {
               haptic('select');
@@ -148,13 +236,17 @@ export function HomeChips({ top, onChip }: HomeChipsProps) {
             }}
             style={({ pressed }) => [
               styles.chip,
-              { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceRaised },
-              elevate('e2', scheme),
+              {
+                backgroundColor: on ? colors.brandTint : pressed ? colors.surfacePressed : flat ? colors.surface : colors.surfaceRaised,
+                borderColor: on ? colors.brandOnBg : 'transparent',
+              },
+              flat ? null : elevate('e2', scheme),
             ]}>
-            <Icon name={c.icon} color={colors.text} size={22} />
-            <Text maxFontSizeMultiplier={1.3} style={[styles.chipLabel, { color: colors.text }]}>
+            <Icon name={c.icon} color={on ? colors.brandOnBg : colors.text} size={22} />
+            <Text maxFontSizeMultiplier={1.3} style={[styles.chipLabel, { color: on ? colors.brandOnBg : colors.text }]}>
               {label}
             </Text>
+            {on ? <Icon name="ready" color={colors.brandOnBg} size={16} /> : null}
           </Pressable>
         );
       })}
@@ -206,6 +298,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: radius.pill,
   },
   placeName: { fontSize: font.md, fontFamily: family.semibold },
+  input: { flex: 1, height: size.searchBar, fontSize: font.md, fontFamily: family.regular, paddingVertical: 0 },
+  locked: { opacity: 0.6 },
   chips: { position: 'absolute', left: 0, right: 0, flexGrow: 0 },
   chipsContent: { paddingHorizontal: space.md, gap: space.sm, paddingVertical: space.xs },
   chip: {
@@ -215,6 +309,8 @@ const styles = StyleSheet.create({
     gap: space.xs,
     paddingHorizontal: space.md,
     borderRadius: radius.pill,
+    // Reserved and colour-swapped, so a chip does not change size when it is chosen.
+    borderWidth: 2,
   },
   chipLabel: { fontSize: font.md, fontFamily: family.semibold },
 });

@@ -730,10 +730,13 @@ Not on long-press (undiscoverable, and long-press on the map is reserved for "dr
 ### 4.3 Performance and battery
 - **No 1 Hz watch on Home.** `usePlanningPosition`: one last-known read + Balanced, 10 m watch, only while Home is
   focused and the app is active (iOS suspends it in the background; Android pauses it, 21 notes).
-- **One GL map at a time.** `homeMapMounted(pathname)`: the map is mounted only while the path is `/home`,
-  `/where-to` or `/route-preview` (instant return from search). On any other path (ride screens, permissions,
-  profile, join, rides) Home renders `bg` instead of the map; on return it remounts at the saved camera with a 150 ms
-  fade from `bg` (none under Reduce Motion). So the home map and the live map never run together.
+- **One GL map at a time.** `homeMapMounted(pathname, rideOnHome)` (updated by 28 §8): with the live ride on Home's map
+  (default on native) it is a **deny-list**: the map stays mounted on every path except `/ride/<id>/summary`, which draws its
+  own map. The lobby, the invite screen, the live hand-off, profile, join and the rest keep Home's map mounted under them, so
+  nothing reloads when a ride starts or opens, and Back lands on a map that is already there. With the flag off
+  (`EXPO_PUBLIC_LIVE_ON_HOME=0`) and on web the old allow-list stands: the map is mounted only on `/home`, `/where-to` and
+  `/route-preview`, and elsewhere Home renders `bg` (and remounts at the saved camera with a 150 ms fade). Either way the
+  home map and a live-screen map never run together.
 - No OSRM request in browse or place mode. One preview request per route mode (5 min cache, 21 §3.1).
 - No keep-awake on Home (unchanged).
 
@@ -759,21 +762,24 @@ Not on long-press (undiscoverable, and long-press on the map is reserved for "dr
 ### 5.1 Android back (and the visible equivalents)
 | Where | Android back | Visible control |
 |---|---|---|
-| Home browse, sheet expanded | collapse to peek | chevron / header tap |
+| Home browse, sheet expanded | collapse to peek | strip tap / drag |
 | Home browse, peek | OS default (leave the app) | — |
 | Home place | → browse (camera restored) | bar ‹, panel ✕ |
 | Home route (from a search result) | → place | floating ‹ |
 | Home route (from a recent) | → browse | floating ‹ |
 | Home route, Start ride running | blocked (exists) | ‹ ignored |
 | `/where-to` | → Home, mode unchanged | ‹ |
-| Lobby / live | → Home browse (the ride keeps going; plan was reset at entry) | header ‹ |
+| Ride view on Home (28 §8) | one step per press, `rideBack`: stop search → ride view; selected rider → cleared; full map → normal; list pulled up → collapsed; then the OS (backgrounds the app). Never browse: while a ride is active the map IS the ride view | header ‹ only while there is a step (no arrow otherwise) |
+| Lobby | → Home (the ride keeps going; plan was reset at entry) | header ‹ |
 | A Sheet / ConfirmSheet open on Home | closes the sheet first | Cancel / scrim |
+A receiver SOS takeover over Home owns Back (Home's handler returns false while one shows), and Back is still blocked while a
+ride is being started. The order in Home's handler: starting-ride block, takeover, `rideBack`, then (ride view) the OS or (browse) `planBack`.
 iOS: Home is the stack root (no edge swipe).
 
 ### 5.2 Stacks after each start
-- Start / Just ride: `[home, live]` (or `[home, permissions → live]`) via `resetToRide`, as 21.
+- Start / Just ride: `[home]` with the ride view open on it (28 §8; `openLiveRide`), or `[home, permissions]` and then the same when something is still undetermined. With the flag off or on web: `[home, live]` as 21.
 - Invite riders on the route preview (D6): `[home, invite?first=1]` → Continue to lobby → `[home, lobby]` → Start → `[home, live]`.
-- Inviting from the live screen: `[home, live, invite]`; Done / Back returns to live.
+- Inviting from the live view: `[home(ride view), invite]`; Done / Back returns to the ride view (`[home, live, invite]` with the flag off).
 - Join (tile or deep link): unchanged `join.tsx` replaces; the stack ends `[home, live]` (or `[home, lobby]` for a ride an
   older build left in the lobby) when Home was below.
 

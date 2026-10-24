@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useIsFocused, useLocalSearchParams, usePathname } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppState, BackHandler, Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, BackHandler, Keyboard, Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Reanimated, { FadeIn, ReduceMotion, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,13 +8,18 @@ import { AppText } from '@/components/app-text';
 import { Banner } from '@/components/banner';
 import { ConfirmSheet } from '@/components/confirm-sheet';
 import { NudgeCard } from '@/components/contacts-nudge-card';
+import { EmptyState } from '@/components/empty-state';
+import { SearchResultsPanel, SearchSuggestions } from '@/components/home-search-panels';
 import { FirstRunSteps, StatsStrip } from '@/components/home-widgets';
-import { HomeChips, HomeSearchBar, PlaceBar } from '@/components/home-search-bar';
+import { HomeChips, HomeSearchBar, PlaceBar, SearchInputBar } from '@/components/home-search-bar';
 import { HomeSheet } from '@/components/home-sheet';
 import { Icon } from '@/components/icon';
 import { LocationRow, locationRowVisible } from '@/components/location-row';
 import { PlacePanel } from '@/components/place-panel';
-import { PlanMap } from '@/components/plan-map';
+import { PlaceResults } from '@/components/place-results';
+import { HomeMap } from '@/components/home-map';
+import type { MapHandle } from '@/components/map/types';
+import type { MapPin, RouteLabelView } from '@/components/plan-map';
 import { QuickTiles } from '@/components/quick-tiles';
 import { MapCreditPill } from '@/components/map-credit-pill';
 import { MapTypeButton } from '@/components/map-type-button';
@@ -22,12 +27,16 @@ import { MapTypeSheet } from '@/components/map-type-sheet';
 import { RecentPlacesSection } from '@/components/recent-places-section';
 import { RecentRidesSection, useRecentRides } from '@/components/recent-rides-section';
 import { RideProgressCard } from '@/components/ride-progress-card';
+import { RoutesLoadingPill } from '@/components/route-choices';
+import { RideView } from '@/components/ride-view/ride-view';
+import { StopPickSheet } from '@/components/ride-view/stop-pick-sheet';
 import { RoutePanel } from '@/components/route-panel';
 import { Sheet } from '@/components/sheet';
 import { StatusBarScrim } from '@/components/status-bar-scrim';
 import { useContactCount } from '@/hooks/use-contact-count';
 import { useNetOffline } from '@/hooks/use-connection';
 import { useHomeConvoy } from '@/hooks/use-home-convoy';
+import { useHomeSearch } from '@/hooks/use-home-search';
 import { useNow } from '@/hooks/use-now';
 import { usePlanningPosition } from '@/hooks/use-planning-position';
 import { usePreviewRoute } from '@/hooks/use-preview-route';
@@ -36,6 +45,8 @@ import { copy, errorText, t } from '@/lib/copy';
 import { DEM_PROVIDER, ROUTING_SUPPORTS_EXCLUDE } from '@/lib/flags';
 import { formatElapsed } from '@/lib/format';
 import { haversineM, type LatLng } from '@/lib/geo';
+import { liveStartView } from '@/lib/live-camera';
+import { followPitch } from '@/lib/nav-camera';
 import { haptic } from '@/lib/haptics';
 import { greetingCopyKey, isGuest, pickNudge, profilePill, profileTodoCount } from '@/lib/home';
 import { href } from '@/lib/nav';
@@ -55,6 +66,8 @@ import {
   homeMapMounted,
   homeSheetBlocks,
   initialCamera,
+  isFallbackCamera,
+  type PlanCamera,
   initialSheetSnap,
   isFirstRun,
   launchPromptWanted,
@@ -62,37 +75,47 @@ import {
   meSlotForHome,
   type OpenRideLite,
   openRideCard,
-  peekRecentCount,
   placePadding,
+  resultsPanelHeight,
   searchBarTarget,
+  searchResultsPadding,
   shouldSaveCamera,
   startStep,
-  whereToHref,
   type CameraIntent,
   type GoingKind,
   type HomeSnap,
   type SheetBlock,
   type StartStep,
 } from '@/lib/plan-flow';
+import { SEARCH_CHIPS, type Place, type SearchChip } from '@/lib/place-search';
 import { fixFresh } from '@/lib/planning-speed';
-import { previewPadding } from '@/lib/preview-fit';
+import { previewFitPoints, previewPadding, resultsFitPoints } from '@/lib/preview-fit';
+import { clampRouteIndex, mapRouteViews, routeChoices, routeLabelAnchors } from '@/lib/route-choices';
 import { pillLineCount, pillLines } from '@/lib/credits';
 import { shownRecents, type RecentPlace } from '@/lib/recent-places';
 import { monthStats } from '@/lib/recent-rides';
 import { readRideStats } from '@/lib/ride-stats';
-import { resetToRide } from '@/lib/reset-to-ride';
+import { openLiveRide, resetToRide } from '@/lib/reset-to-ride';
+import { onOpenRideInvalidated } from '@/lib/open-ride-signal';
+import { currentRideBackState, runRideBack } from '@/lib/ride-back';
+import { RIDE_ON_HOME } from '@/lib/ride-on-home';
 import { getMyOpenRide, toRideError, type OpenRide } from '@/lib/ride-api';
 import { isRideStartBusy } from '@/lib/ride-start';
 import { rideHref } from '@/lib/routing';
 import { startInviteRide, startNavigationRide, stopKindFor } from '@/lib/solo-nav';
 import { startSoloRide } from '@/lib/solo-ride';
-import { navLineFor } from '@/lib/stop-ui';
+import { receiverTakeoverShowing } from '@/lib/sos';
 import { track } from '@/lib/telemetry';
+import { useLiveUiStore } from '@/store/live-ui-store';
+import { useRideViewStore } from '@/store/ride-view-store';
 import { readFreshOrigin, useNavStore } from '@/store/nav-store';
 import { useNudgeStore } from '@/store/nudge-store';
+import type { NavRoute } from '@/lib/nav-route';
 import { persistCamera, usePlanStore, type PlanPlace } from '@/store/plan-store';
 import { usePrefsStore } from '@/store/prefs-store';
 import { useRecentsStore } from '@/store/recents-store';
+import { useRideStore } from '@/store/ride-store';
+import { useSosStore } from '@/store/sos-store';
 import { useSessionStore } from '@/store/session-store';
 import { showToast } from '@/store/toast-store';
 import { elevate, family, font, motion, radius, size, space, touchTarget } from '@/theme/tokens';
@@ -104,15 +127,41 @@ const toLite = (o: OpenRide | null): OpenRideLite | null =>
   o ? { id: o.ride.id, status: o.ride.status, role: o.member.role === 'leader' ? 'leader' : 'rider' } : null;
 
 const NO_DEST: LatLng = { lat: 0, lng: 0 };
+const NO_ROUTES: NavRoute[] = [];
+const NO_VIEWS: ReturnType<typeof mapRouteViews> = [];
+const NO_PINS: MapPin[] = [];
+const NO_POINTS: LatLng[] = [];
+
+/**
+ * Home's map first frame: the saved camera, my fix or India; or, when the map is created with a ride view already asked for
+ * (a cold start into the ride, a notification), the live start view (the planning position Home knew, tilted for follow), so
+ * the ride never opens on a world frame (audit 27 #2).
+ */
+function firstFrame(fix: LatLng | null, tilt: boolean): { camera: PlanCamera; pitch: number } {
+  const saved = usePlanStore.getState().camera;
+  if (RIDE_ON_HOME && useLiveUiStore.getState().viewRideId) {
+    const nav = useNavStore.getState();
+    const start = liveStartView({ me: fix, bounds: null, planning: nav.origin, planningAt: nav.originAt, now: Date.now(), saved });
+    if (start.kind !== 'bounds') {
+      return {
+        camera: { lat: start.center[1], lng: start.center[0], zoom: start.zoom },
+        pitch: start.kind === 'saved' ? 0 : followPitch(tilt),
+      };
+    }
+  }
+  return { camera: initialCamera(saved, fix), pitch: 0 };
+}
 
 /** The launch location prompt was asked in this app run: one per process, not per Home mount (22 D6). */
 let launchPromptAsked = false;
 
 /**
- * Map home (22): one full-screen map, a floating "Where to?" bar, category chips and a bottom sheet with the old
- * Home content. Three modes share the one map: `browse`, `place` (a searched place's sheet) and `route` (the
- * 21 preview with one primary, Start ride). There is one kind of ride (22 D5): it becomes a group when its code
- * is shared from the live screen. Nothing here creates a ride until Start ride / Just ride is tapped.
+ * Map home (22, 28): one full-screen map, a floating "Where to?" bar, category chips, a thin pull-up strip with the old
+ * Home content behind it, and a Search / SOS stack at the bottom right. Four modes share the one map: `browse`, `search`
+ * (typing over a solid list, then the results as pins and a bottom list; no screen is pushed), `place` (a searched
+ * place's sheet) and `route` (the 21 preview: every route drawn, one primary, Start ride). There is one kind of ride
+ * (22 D5): it becomes a group when its code is shared from the live screen. Nothing here creates a ride until Start ride
+ * / Just ride is tapped.
  */
 export default function Home() {
   const { colors, scheme } = useTheme();
@@ -139,10 +188,20 @@ export default function Home() {
   const mode = usePlanStore((s) => s.mode);
   const place = usePlanStore((s) => s.place);
   const query = usePlanStore((s) => s.query);
+  const searchStage = usePlanStore((s) => s.searchStage);
   const sheetSnap = usePlanStore((s) => s.sheetSnap);
   const firstRunSeen = usePlanStore((s) => s.firstRunSeen);
+  const searchContext = usePlanStore((s) => s.searchContext);
+  // The ride on Home's map (28 §8): the ride view while a ride is asked for here; its stop search is the inline search
+  // (the planning scene shows the result pins), and the ride's overlays and layers come back when it closes.
+  const viewRideId = useLiveUiStore((s) => s.viewRideId);
+  const rideViewId = RIDE_ON_HOME ? viewRideId : null;
+  const stopSearchOpen = !!rideViewId && mode === 'search' && searchContext === 'ride-stop';
+  const rideViewOn = !!rideViewId && !stopSearchOpen;
+  const mapRef = useRef<MapHandle>(null);
+  const tilt = usePrefsStore((s) => s.mapTilt);
   // One GL map at a time (22 §4.3): it only exists on Home's own paths.
-  const mapOn = homeMapMounted(pathname);
+  const mapOn = homeMapMounted(pathname, RIDE_ON_HOME);
 
   const name = profile?.display_name ?? '';
   const first = firstName(name);
@@ -178,17 +237,45 @@ export default function Home() {
     return () => sub.remove();
   }, [refresh]);
 
+  // An active ride IS Home's map (28 §8), from every entry: when Home learns of one (a refetch, a return from another screen)
+  // the ride view opens on it. Not for a ride the store already knows has ended or that I left.
+  useEffect(() => {
+    if (!RIDE_ON_HOME || !open || open.ride.status !== 'active') return;
+    const live = useLiveUiStore.getState();
+    const rs = useRideStore.getState();
+    if (live.viewRideId) return;
+    if (rs.rideId === open.ride.id && (rs.ride?.status === 'ended' || (!!rs.myUserId && !!rs.members[rs.myUserId]?.leftAt))) return;
+    live.setViewRideId(open.ride.id);
+  }, [open]);
+
+  // I left the ride from the ride view: the cached open ride is dropped at once (no stale resume card, Search-stops bar or group
+  // SOS), then read again.
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+  useEffect(
+    () =>
+      onOpenRideInvalidated(() => {
+        setOpen(null);
+        void refreshRef.current();
+      }),
+    [],
+  );
+
   const hasRide = !!open;
   const active = open?.ride.status === 'active';
   const openLite = useMemo(() => toLite(open), [open]);
   const card = openRideCard(openLite);
   // A stale place or route is never shown under "Back to ride" (22 §3.10).
   useEffect(() => {
-    if (active) usePlanStore.getState().reset();
+    // Never wipes a stop search in progress (the ride's own inline search).
+    if (active && usePlanStore.getState().searchContext !== 'ride-stop') usePlanStore.getState().reset();
   }, [active]);
 
   const startedMs = open?.ride.started_at ? Date.parse(open.ride.started_at) : NaN;
-  const convoy = useHomeConvoy(open?.ride.id ?? null, active, user?.id ?? null);
+  // The ride view shows the convoy itself (live channel): Home's REST poll pauses while it is on.
+  const convoy = useHomeConvoy(open?.ride.id ?? null, active && !rideViewOn, user?.id ?? null);
   const { rides, failed } = useRecentRides();
   // Rides that ended while I was elsewhere: their device-local "I navigate this ride" markers are no longer needed.
   useEffect(() => {
@@ -205,12 +292,21 @@ export default function Home() {
   }, [welcome, name, first]);
 
   // ---------------------------------------------------------------- position (the launch prompt is below; no 1 Hz watch)
-  const { perm, fix, request, servicesEnabled } = usePlanningPosition();
+  // Paused while the ride view is on: background tracking already supplies the ride's fixes (28 §8).
+  const { perm, fix, request, servicesEnabled } = usePlanningPosition(!rideViewOn);
+  const seedLat = fix?.lat;
+  const seedLng = fix?.lng;
+  const seed = useMemo(() => (seedLat !== undefined && seedLng !== undefined ? { lat: seedLat, lng: seedLng } : null), [seedLat, seedLng]);
   // No fix for 2 minutes: the marker goes rather than showing a stale "me" (22 §4.4). `now` ticks every 30 s.
   const shownFix = fix && fixFresh(fix.at, now) ? fix : null;
   const me = useMemo(() => (shownFix ? { lat: shownFix.lat, lng: shownFix.lng, accuracyM: shownFix.accuracyM } : null), [shownFix]);
   const [showMeSheet, setShowMeSheet] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
+  // The inline search (28): the text, chip and results live here, so a place sheet and Back keep them.
+  // The place picked in the ride's stop search: the propose-stop sheet (never a place sheet or a route) opens for it.
+  const [pickedStop, setPickedStop] = useState<Place | null>(null);
+  const hs = useHomeSearch({ mode, stage: searchStage, fix, perm, servicesEnabled, offline, pick: stopSearchOpen ? setPickedStop : null });
+  const { search } = hs;
 
   // ---------------------------------------------------------------- camera
   const [free, setFree] = useState(false);
@@ -218,14 +314,22 @@ export default function Home() {
   const [mapFailed, setMapFailed] = useState(false);
   const lastSavedAt = useRef<number | null>(null);
   // The first frame only: the saved camera, my fix, or India.
-  const [initial, setInitial] = useState(() => initialCamera(usePlanStore.getState().camera, fix));
+  const [frame, setFrame] = useState(() => firstFrame(fix, tilt));
+  const initial = frame.camera;
   // The map unmounts on ride screens and mounts again on return (22 §4.3): the new one starts at the camera the
   // store holds now (not the first-launch frame), centred again, with no stale intent to replay.
+  // The stand-in India view was the first frame (no saved camera, no fix): it is framed in the visible map until a fix or touch.
+  // State: a touch ends it for good, and a return from ride screens sets it again only if that frame is the stand-in.
+  const [fallbackFirst, setFallbackFirst] = useState(() => isFallbackCamera(frame.camera));
+  // Read by `onIdle`, which must not save the framed stand-in as the rider's camera.
+  const frameFallbackRef = useRef(false);
   const [mapWasOn, setMapWasOn] = useState(mapOn);
   if (mapOn !== mapWasOn) {
     setMapWasOn(mapOn);
     if (mapOn) {
-      setInitial(initialCamera(usePlanStore.getState().camera, fix));
+      const next = firstFrame(fix, tilt);
+      setFrame(next);
+      setFallbackFirst(isFallbackCamera(next.camera));
       setFree(false);
       setCmd((c) => ({ intent: { kind: 'none' }, nonce: c.nonce + 1 }));
     }
@@ -239,6 +343,8 @@ export default function Home() {
   useEffect(
     () =>
       usePlanStore.subscribe((s, prev) => {
+        // Whatever leaves search (a pick, Back, a ride starting) leaves no keyboard over the next panel.
+        if (prev.mode === 'search' && s.mode !== 'search') Keyboard.dismiss();
         if (s.mode === 'browse' && prev.mode !== 'browse') {
           setCmd((c) => ({
             intent: { kind: 'restore', camera: s.camera ?? initialCamera(null, null) },
@@ -248,12 +354,36 @@ export default function Home() {
       }),
     [],
   );
+  // Leaving the ride view: the browse camera comes back, north-up and flat (28 §8). It was kept while the ride view had the
+  // map (`HomeMap` never reports a ride camera as the browse one); `free` is left as it was.
+  const fixRef = useRef(fix);
+  useEffect(() => {
+    fixRef.current = fix;
+  });
+  useEffect(
+    () =>
+      useLiveUiStore.subscribe((s, prev) => {
+        if (prev.viewRideId && !s.viewRideId) {
+          // The ride is gone (ended, left): a stop search of it goes with it, never back to Home in search.
+          if (usePlanStore.getState().searchContext === 'ride-stop') usePlanStore.getState().reset();
+          const camera = usePlanStore.getState().camera ?? initialCamera(null, fixRef.current);
+          setCmd((c) => ({ intent: { kind: 'restore', camera }, nonce: c.nonce + 1 }));
+        }
+      }),
+    [],
+  );
   const onUserGesture = useCallback(() => {
-    if (usePlanStore.getState().mode === 'browse') setFree(true);
+    // Only a touch in browse mode: a pan in place or route mode leaves `s.camera` null, and Back would restore the unframed view.
+    if (usePlanStore.getState().mode === 'browse') {
+      setFallbackFirst(false);
+      setFree(true);
+    }
   }, []);
   const onIdle = useCallback((c: { lat: number; lng: number; zoom: number }) => {
     // Signed out (session expired): the camera is location history, never written again (22 §4.2).
     if (!useSessionStore.getState().session) return;
+    // The framed stand-in is not where the rider is: saving it would bring the unframed view back next launch.
+    if (frameFallbackRef.current) return;
     const st = usePlanStore.getState();
     if (st.mode !== 'browse') return;
     st.setCamera(c);
@@ -289,7 +419,9 @@ export default function Home() {
 
   // ---------------------------------------------------------------- banner and floating chrome
   const [bannerLayoutH, setBannerLayoutH] = useState(0);
-  const bannerH = offline ? bannerLayoutH : 0;
+  // The ride's own banners (SOS, approvals) stay over its stop search; otherwise Home's offline banner.
+  const rideBannerH = useRideViewStore((s) => s.searchBannerH);
+  const bannerH = stopSearchOpen ? rideBannerH : offline && !rideViewId ? bannerLayoutH : 0;
   const [panelH, setPanelH] = useState(0);
   const barTop = insets.top + bannerH + space.sm;
   const sheetH = sheetSnap === 'expanded' ? heights.expanded : heights.peek;
@@ -302,10 +434,14 @@ export default function Home() {
   // The route starts where I was when it was asked for: the line does not chase my GPS while I read the
   // screen. A new route takes a fresh start (adjusting state while rendering, as React documents).
   const routeKey = mode === 'route' && place ? place.id : '';
+  // The chosen route is remembered by identity: new routes (the expressway switch) start on the router's pick again, a
+  // rate-limit answer that keeps the old ones keeps the choice too. A new place clears it (below).
+  const [chosenRoute, setChosenRoute] = useState<NavRoute | null>(null);
   const [origin, setOrigin] = useState<LatLng | null>(null);
   const [originKey, setOriginKey] = useState('');
   if (routeKey !== originKey) {
     setOriginKey(routeKey);
+    setChosenRoute(null);
     setOrigin(routeKey ? (readFreshOrigin() ?? (fix ? { lat: fix.lat, lng: fix.lng } : null)) : null);
   } else if (routeKey && origin === null && fix) {
     setOrigin({ lat: fix.lat, lng: fix.lng });
@@ -313,20 +449,33 @@ export default function Home() {
   const { state: routeState, retry } = usePreviewRoute(origin, dest, avoidMotorways);
   const routeMe = fix ?? origin;
   const updating = routeState.status === 'updating';
-  const routeLine = useMemo(
-    () =>
-      mode !== 'route'
-        ? null
-        : navLineFor({
-            route: routeState.status === 'ok' || routeState.status === 'updating' ? routeState.route : null,
-            // Loading, no route and a failed fetch all show the dashed straight line (21 §2.3 states).
-            straightLine:
-              routeMe && routeState.status !== 'ok' && routeState.status !== 'updating' && routeState.status !== 'locating'
-                ? [routeMe, dest]
-                : [],
-          }),
-    [mode, routeState, routeMe, dest],
+  const routes = useMemo<NavRoute[]>(
+    () => (routeState.status === 'ok' || routeState.status === 'updating' ? routeState.routes : NO_ROUTES),
+    [routeState],
   );
+  const chosenIndex = clampRouteIndex(chosenRoute ? routes.indexOf(chosenRoute) : 0, routes.length);
+  const onSelectRoute = useCallback(
+    (i: number) => {
+      const next = routes[i];
+      if (!next) return;
+      haptic('select');
+      setChosenRoute(next);
+    },
+    [routes],
+  );
+  // The preview never draws a straight line (28): while routes load or fail, the map shows the pins only.
+  const routeViews = useMemo(() => (mode === 'route' ? mapRouteViews(routes, chosenIndex) : NO_VIEWS), [mode, routes, chosenIndex]);
+  const routeLabels = useMemo<RouteLabelView[]>(() => {
+    if (mode !== 'route' || routes.length === 0) return [];
+    const anchors = routeLabelAnchors(routes);
+    // Only the words are used here (the arrive time is the panel's): the clock is not read while rendering.
+    const choices = routeChoices(routes, 0);
+    return routes.flatMap((_, i) => {
+      const at = anchors[i];
+      return at ? [{ index: i, lat: at.lat, lng: at.lng, text: choices[i].duration, selected: i === chosenIndex }] : [];
+    });
+  }, [mode, routes, chosenIndex]);
+  const routesLoading = mode === 'route' && (routeState.status === 'loading' || updating);
   const onRetry = () => {
     if (fix) setOrigin({ lat: fix.lat, lng: fix.lng });
     retry();
@@ -350,6 +499,14 @@ export default function Home() {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         // Android back must not leave while a ride is being started (it would still be created, with no screen waiting).
         if (goingRef.current || soloRef.current) return true;
+        // A receiver SOS takeover over Home owns Back (its handler is registered later, but this one runs first).
+        const ride = useRideStore.getState();
+        const sos = useSosStore.getState();
+        if (receiverTakeoverShowing(Object.values(ride.members), ride.myUserId, sos.dismissed, sos.cursor)) return false;
+        // The ride view steps out inside the map first (stop search, a selected rider, full map, the list, then the view).
+        if (runRideBack()) return true;
+        // While a ride is active Home's map is the ride view: nothing to step out to, the OS backgrounds the app.
+        if (currentRideBackState().rideView) return false;
         return usePlanStore.getState().back();
       });
       return () => {
@@ -362,14 +519,29 @@ export default function Home() {
   // ---------------------------------------------------------------- actions
   const [soloLoading, setSoloLoading] = useState(false);
 
-  const openSearch = (from: 'bar' | 'chip', chipKey?: string) => {
+  // Search is inline (28): the plan store switches Home to `search`, no screen is pushed.
+  const openSearch = (from: 'bar' | 'chip', chipKey?: SearchChip['key']) => {
     track('home.search_opened', { from });
-    router.push(href(whereToHref(chipKey ? { chip: chipKey } : { focus: true })));
+    usePlanStore.getState().openSearch(chipKey ? { chip: chipKey } : { wantsFocus: true });
   };
+  // A started ride opens ON this map (28 §8); a lobby is its own screen.
+  const openRide = (r: { id: string; status: OpenRideLite['status'] }) => {
+    if (RIDE_ON_HOME && r.status === 'active') openLiveRide(r.id);
+    else router.push(href(rideHref(r.id, r.status)));
+  };
+  // The ride's stop search is the inline search too (28 §8): a pick runs the propose-stop flow instead of opening a place.
+  const openStopSearch = useCallback(() => {
+    track('home.search_opened', { from: 'ride' });
+    usePlanStore.getState().openSearch({ wantsFocus: true }, 'ride-stop');
+  }, []);
+  // The bar: Where to? normally, the in-ride stop search with a ride in progress.
   const onBar = () => {
     const target = searchBarTarget(openLite);
-    if (target.kind === 'stops') router.push(href(target.href));
-    else openSearch('bar');
+    if (target.kind !== 'stops') openSearch('bar');
+    else if (RIDE_ON_HOME && openLite) {
+      openLiveRide(openLite.id);
+      openStopSearch();
+    } else router.push(href(target.href));
   };
 
   const openRecent = useCallback((p: Pick<RecentPlace, 'id' | 'name' | 'address' | 'lat' | 'lng' | 'category' | 'source'>) => {
@@ -379,7 +551,7 @@ export default function Home() {
   }, []);
 
   const goToOpenRide = () => {
-    if (open) router.push(href(rideHref(open.ride.id, open.ride.status)));
+    if (open) openRide({ id: open.ride.id, status: open.ride.status });
   };
 
   // Every ride gets the normal default name ("Raghu's ride"): it may be shared, and the name is in the invite text.
@@ -416,7 +588,8 @@ export default function Home() {
         // an invited ride: its lobby may wait minutes and a seed counts as just fetched, so it is fetched at Start.
         useNavStore.getState().startSession(
           start.rideId,
-          kind === 'start' && routeState.status === 'ok' ? { key: destKey(dest), route: routeState.route } : null,
+          // The route the rider chose (the router's pick unless they picked another one).
+          kind === 'start' && routeState.status === 'ok' ? { key: destKey(dest), route: routes[chosenIndex] ?? routeState.route } : null,
           avoidMotorways,
         );
         useRecentsStore.getState().add(p);
@@ -493,7 +666,6 @@ export default function Home() {
   // ---------------------------------------------------------------- derived view data
   const recents = useRecentsStore((s) => s.recents);
   const recentCount = shownRecents(recents).length;
-  const peekN = peekRecentCount(windowH, recentCount);
   const locVisible = locationRowVisible(perm, servicesEnabled);
   const blocks = homeSheetBlocks({
     firstRun,
@@ -512,7 +684,7 @@ export default function Home() {
     sheetExpanded: sheetSnap === 'expanded',
   });
   const mapPlace = useMemo(
-    () => (place && mode !== 'browse' ? { lat: place.lat, lng: place.lng, kind: stopKindFor(place.category) } : null),
+    () => (place && mode !== 'browse' ? { lat: place.lat, lng: place.lng, kind: stopKindFor(place.category), category: place.category } : null),
     [place, mode],
   );
   // Terrain adds its credit as the pill's last line (25 §5.1): the pill is taller, the controls above it rise.
@@ -522,16 +694,49 @@ export default function Home() {
   // Place mode names the search provider as well; route mode credits in the panel (24 §4.2), so only Terrain adds a line.
   const overlayKeys = pillLines(mode === 'place' && place ? { kind: 'place', source: place.source } : { kind: 'plain' }, terrain, DEM_PROVIDER);
   const overlayLines = pillLineCount(overlayKeys);
+  const frameFallback = fallbackFirst && mode === 'browse' && !free && !fix;
+  useEffect(() => {
+    frameFallbackRef.current = frameFallback;
+  }, [frameFallback]);
+  // The results panel is a fixed share of the window, so the camera knows its height before it is laid out.
+  const resultsH = resultsPanelHeight(windowH);
   const padding =
     mode === 'browse'
       ? browsePadding({ insetTop: insets.top, bannerH, chipsShown, sheetH, creditLines: browseCreditLines, fontScale })
-      : mode === 'place'
-        ? placePadding(insets.top + bannerH, panelH, overlayLines, fontScale)
-        : previewPadding(insets.top + bannerH, panelH, overlayLines, fontScale);
+      : mode === 'search'
+        ? searchResultsPadding(insets.top + bannerH, resultsH, overlayLines, fontScale)
+        : mode === 'place'
+          ? placePadding(insets.top + bannerH, panelH, overlayLines, fontScale)
+          : previewPadding(insets.top + bannerH, panelH, overlayLines, fontScale);
+  const resultsShown = mode === 'search' && searchStage === 'results';
+  const chipDef = search.chip ? SEARCH_CHIPS.find((c) => c.key === search.chip) : undefined;
+  const typedText = search.text.trim();
+  const searchResultsTitle = chipDef ? copy[chipDef.labelKey] : typedText ? t('homeSearch.resultsFor', { q: typedText }) : copy['homeSearch.noResultsYet'];
+  const placeCount = hs.places.length;
+  const searchResultsCount =
+    search.state.status !== 'results' ? '' : placeCount === 1 ? copy['homeSearch.resultsOne'] : t('homeSearch.resultsCount', { n: placeCount });
   const intent: CameraIntent =
-    mode === 'place' ? { kind: 'place', zoom: HOME_PLACE_ZOOM } : mode === 'route' ? { kind: 'fit' } : cmd.intent;
+    mode === 'place'
+      ? { kind: 'place', zoom: HOME_PLACE_ZOOM }
+      : mode === 'route' || resultsShown
+        ? { kind: 'fit' }
+        : // Typing hides the map behind the list: the camera stays where it is.
+          mode === 'search'
+          ? { kind: 'none' }
+          : cmd.intent;
   const following = mode === 'browse' && !free;
   const planMe = mode === 'route' ? routeMe && { lat: routeMe.lat, lng: routeMe.lng, accuracyM: fix?.accuracyM ?? null } : me;
+  // Search results as pins (results stage only); a pick opens the place sheet.
+  const searchPlaces = hs.places;
+  const pins = useMemo<MapPin[]>(
+    () => (resultsShown ? searchPlaces.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng, category: p.category })) : NO_PINS),
+    [resultsShown, searchPlaces],
+  );
+  // What a 'fit' frames: every route (the chosen and the grey ones), or every result. Never a straight line.
+  const fitPoints = useMemo<LatLng[]>(
+    () => (mode === 'route' && place ? previewFitPoints(routes, routeMe, dest) : resultsShown ? resultsFitPoints(pins, me) : NO_POINTS),
+    [mode, place, routes, routeMe, dest, resultsShown, pins, me],
+  );
   const placeDistanceM = place && me ? haversineM(me, place) : null;
   const straightM = place && routeMe ? haversineM(routeMe, place) : null;
   const animated = !reduceMotion && Platform.OS !== 'web';
@@ -547,6 +752,7 @@ export default function Home() {
   // Plain JS: worked out here, because the animated style below runs on the UI thread and can only read values.
   const meClear = attributionClear(browseCreditLines, fontScale);
   const meSlotStyle = useAnimatedStyle(() => ({ bottom: visible.get() + meClear }));
+  // The stack rides the strip like the me pill, and fades as the sheet is pulled up (it is gone once expanded).
   // Gone before the sheet reaches the search bar; expanded, the attribution is the sheet's own footer row.
   const peekH = heights.peek;
   const expandedH = heights.expanded;
@@ -575,8 +781,6 @@ export default function Home() {
             />
           </View>
         );
-      case 'recentPeek':
-        return <RecentPlacesSection key={b} me={me} header={false} limit={peekN} onPick={openRecent} />;
       case 'rideCard':
         if (!open) return null;
         return (
@@ -585,7 +789,7 @@ export default function Home() {
             entering={animated ? FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System) : undefined}
             style={styles.card}>
             <RideProgressCard
-              variant={sheetSnap === 'expanded' ? 'full' : 'compact'}
+              variant="full"
               name={displayRideName(open.ride.name)}
               role={open.member.role === 'leader' ? copy['home.roleLeader'] : copy['home.roleRider']}
               active={active}
@@ -604,7 +808,6 @@ export default function Home() {
             key={b}
             me={me}
             title={copy['homeMap.recentPlaces']}
-            skip={blocks.peek.includes('recentPeek') ? peekN : 0}
             onPick={openRecent}
             onClear={() => setClearOpen(true)}
           />
@@ -654,15 +857,24 @@ export default function Home() {
         <Reanimated.View
           style={StyleSheet.absoluteFill}
           entering={animated ? FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System) : undefined}>
-          <PlanMap
+          <HomeMap
+            mapRef={mapRef}
+            rideView={rideViewOn}
+            initialPitch={frame.pitch}
             me={planMe}
             place={mapPlace}
-            line={routeLine}
+            routes={routeViews}
+            onSelectRoute={onSelectRoute}
+            routeLabels={routeLabels}
             faded={updating}
+            pins={pins}
+            onPinPress={hs.onPinPress}
+            fitPoints={fitPoints}
             padding={padding}
             intent={intent}
             intentNonce={cmd.nonce}
             initial={initial}
+            frameFallback={frameFallback}
             follow={following && !!me}
             onUserGesture={onUserGesture}
             onIdle={onIdle}
@@ -672,9 +884,15 @@ export default function Home() {
         </Reanimated.View>
       ) : null}
 
-      {mapOn && !offline ? <StatusBarScrim /> : null}
+      {/* The live ride (28 §8): its header, banners, list, controls and stack over this same map. */}
+      {RIDE_ON_HOME && !!rideViewId && mapOn ? (
+        <RideView mapRef={mapRef} seed={seed} onSearchStops={openStopSearch} searching={stopSearchOpen} />
+      ) : null}
 
-      {offline ? (
+      {/* The ride view has its own top (the header covers the status bar) and its own connection banners. */}
+      {mapOn && !offline && !rideViewOn ? <StatusBarScrim /> : null}
+
+      {offline && !rideViewId ? (
         <View
           onLayout={(e) => setBannerLayoutH(e.nativeEvent.layout.height)}
           style={[styles.topBanner, { paddingTop: insets.top, backgroundColor: statusColors('offline').bg }]}>
@@ -682,7 +900,7 @@ export default function Home() {
         </View>
       ) : null}
 
-      {mode === 'browse' ? (
+      {mode === 'browse' && !rideViewOn ? (
         <>
           <HomeSearchBar
             top={barTop}
@@ -704,12 +922,76 @@ export default function Home() {
         </>
       ) : null}
 
+      {mode === 'search' ? (
+        <>
+          {/* Typing: a solid list over the map, under the bar and the chips (28). The results stage leaves the map showing. */}
+          {searchStage === 'typing' ? (
+            <SearchSuggestions top={bannerH} topOffset={chipsTop(insets.top, bannerH) + size.chip + space.md - bannerH} provider={search.provider} typingLocked={hs.locked}>
+              <PlaceResults
+                state={search.state}
+                text={search.text}
+                chip={search.chip}
+                stillLocating={search.stillLocating}
+                servicesOff={servicesEnabled === false}
+                retry={search.retry}
+                header={<LocationRow perm={perm} servicesEnabled={servicesEnabled} onAllow={() => void request()} />}
+                emptyContent={
+                  // Recent places would lead to a second ride (22 §3.10): the ride's stop search has none.
+                  recentCount > 0 && !stopSearchOpen ? (
+                    <RecentPlacesSection me={hs.me} onPick={hs.onPickRecent} onClear={() => setClearOpen(true)} />
+                  ) : (
+                    <View style={styles.searchEmpty}>
+                      <EmptyState icon="mapSearch" title={copy['whereTo.emptyTitle']} body={copy['whereTo.emptyBody']} />
+                    </View>
+                  )
+                }
+                onPick={hs.onPick}
+              />
+            </SearchSuggestions>
+          ) : (
+            <SearchResultsPanel
+              height={resultsH}
+              title={searchResultsTitle}
+              count={searchResultsCount}
+              provider={search.state.status === 'results' ? search.state.provider : search.provider}
+              typingLocked={hs.locked}>
+              <PlaceResults
+                state={search.state}
+                text={search.text}
+                chip={search.chip}
+                stillLocating={search.stillLocating}
+                servicesOff={servicesEnabled === false}
+                retry={search.retry}
+                header={<LocationRow perm={perm} servicesEnabled={servicesEnabled} onAllow={() => void request()} />}
+                onPick={hs.onPick}
+              />
+            </SearchResultsPanel>
+          )}
+          <SearchInputBar
+            top={barTop}
+            value={search.text}
+            onChangeText={hs.onChangeText}
+            onFocus={hs.onFocus}
+            onSubmit={hs.onSubmit}
+            onClear={hs.onClear}
+            onBack={() => {
+              Keyboard.dismiss();
+              usePlanStore.getState().back();
+            }}
+            locked={hs.locked}
+            autoFocus={hs.autoFocus}
+          />
+          <HomeChips top={chipsTop(insets.top, bannerH)} onChip={hs.onChip} selected={search.chip} flat={searchStage === 'typing'} />
+        </>
+      ) : null}
+
       {mode === 'place' && place ? (
         <PlaceBar
           top={barTop}
           name={place.name}
           onBack={() => usePlanStore.getState().back()}
-          onSearchAgain={() => router.push(href(whereToHref({ q: query || place.name })))}
+          // A new search with the text that found the place (the old results come back with Back, from the place sheet).
+          onSearchAgain={() => usePlanStore.getState().openSearch({ q: query || place.name, wantsFocus: true })}
         />
       ) : null}
 
@@ -726,22 +1008,28 @@ export default function Home() {
           <Icon name="back" color={colors.fabIcon} size={28} />
         </Pressable>
       ) : null}
+      {/* Finding routes: the pins only on the map, and this pill level with the back circle (28). */}
+      {routesLoading ? <RoutesLoadingPill top={barTop + (touchTarget - 40) / 2} left={space.md + touchTarget + space.sm} /> : null}
 
       {/* Map type (25 §2.1): under the chips, the place bar, or level with the back circle. Not with the sheet expanded
           (no map to change) or a failed map. */}
-      {mapOn && !mapFailed && !(mode === 'browse' && sheetSnap === 'expanded') ? (
+      {mapOn && !rideViewOn && !mapFailed && !(mode === 'browse' && sheetSnap === 'expanded') && !(mode === 'search' && searchStage === 'typing') ? (
         <MapTypeButton
           layer={mapLayer}
           onPress={() => {
             haptic('select');
             setMapTypeOpen(true);
           }}
-          style={{ position: 'absolute', right: space.md, top: mapTypeTop({ mode, insetTop: insets.top, bannerH, chipsShown }) }}
+          style={{
+            position: 'absolute',
+            right: space.md,
+            top: mapTypeTop({ mode, insetTop: insets.top, bannerH, chipsShown: mode === 'search' ? true : chipsShown }),
+          }}
         />
       ) : null}
 
       {/* Bottom-left: the one me-slot element (browse), then the attribution, which is never hidden. */}
-      {mode === 'browse' && meSlot !== 'none' ? (
+      {mode === 'browse' && !rideViewOn && meSlot !== 'none' ? (
         <Reanimated.View style={[styles.meSlot, meSlotStyle]}>
           <MeSlotPill
             kind={meSlot}
@@ -755,30 +1043,39 @@ export default function Home() {
           />
         </Reanimated.View>
       ) : null}
-      {mapOn ? (
+      {mapOn && !rideViewOn ? (
         mode === 'browse' ? (
           attributionInSheet(sheetSnap) ? null : (
             <MapCreditPill animated lines={browseKeys.map((k) => copy[k])} style={attributionStyle} />
           )
         ) : (
           // Place mode names the search provider on a second line; route mode credits in the panel (24 §4.2).
-          <MapCreditPill
-            style={{ bottom: panelH + space.sm }}
-            lines={overlayKeys.map((k) => copy[k])}
-          />
+          // The typing stage covers the map: no pill under the list (the credit row is the list's footer).
+          mode === 'search' && searchStage === 'typing' ? null : (
+            <MapCreditPill style={{ bottom: (mode === 'search' ? resultsH : panelH) + space.sm }} lines={overlayKeys.map((k) => copy[k])} />
+          )
         )
       ) : null}
 
-      {mode === 'browse' ? (
+      {mode === 'browse' && !rideViewOn ? (
         <HomeSheet
           snap={sheetSnap}
           onSnapChange={setSnap}
           title={title}
+          resume={
+            // No "Back to ride" while a ride is active on this map (28 §8): the map is the ride. A lobby ride still has the row.
+            blocks.strip === 'resume' && open && !(RIDE_ON_HOME && open.ride.status === 'active')
+              ? {
+                  label: t('homeMap.stripResume', { ride: displayRideName(open.ride.name) }),
+                  a11yLabel: t('homeMap.stripResumeA11y', { ride: displayRideName(open.ride.name) }),
+                  onPress: goToOpenRide,
+                }
+              : undefined
+          }
           visible={visible}
           maxHeight={sheetMaxH}
           attribution={mapOn ? browseKeys.map((k) => copy[k]).join('\n') : null}
           onHeights={onHeights}
-          peek={<View style={styles.peek}>{blocks.peek.map(renderBlock)}</View>}
           expanded={<View style={styles.expanded}>{blocks.expanded.map(renderBlock)}</View>}
         />
       ) : null}
@@ -799,6 +1096,8 @@ export default function Home() {
         <RoutePanel
           place={place}
           state={routeState}
+          selected={chosenIndex}
+          onSelectRoute={onSelectRoute}
           straightM={straightM}
           avoidMotorways={avoidMotorways}
           offline={offline}
@@ -812,6 +1111,20 @@ export default function Home() {
             if (!goingRef.current) usePlanStore.getState().back();
           }}
           onLayout={setPanelH}
+        />
+      ) : null}
+
+      {/* The ride's stop search pick (28 §8): the leader sets the stop, a rider proposes it, a ride of one just goes there. */}
+      {rideViewId ? (
+        <StopPickSheet
+          rideId={rideViewId}
+          picked={pickedStop}
+          onClose={() => setPickedStop(null)}
+          onDone={() => {
+            // Back to the ride view; but never undo something else if the rider has moved on meanwhile.
+            const st = usePlanStore.getState();
+            if (st.mode === 'search' && st.searchContext === 'ride-stop') st.back();
+          }}
         />
       ) : null}
 
@@ -903,8 +1216,8 @@ const styles = StyleSheet.create({
   topBanner: { position: 'absolute', top: 0, left: 0, right: 0 },
   sub: { paddingHorizontal: space.lg, paddingBottom: space.sm },
   tiles: { paddingTop: space.xs },
-  peek: {},
   expanded: { gap: 0 },
+  searchEmpty: { paddingHorizontal: space.lg, paddingTop: space.xl },
   card: { paddingHorizontal: space.lg },
   block: { paddingHorizontal: space.lg, paddingTop: space.lg },
   failed: { position: 'absolute', left: space.lg, right: space.lg, alignItems: 'center' },

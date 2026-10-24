@@ -26,6 +26,7 @@ import { runWhenStyleReady } from '@/lib/map-ready-web';
 import { syncHillshade } from '@/lib/hillshade-web';
 import { mapControlVisibility, meSlotKind } from '@/lib/live-chrome';
 import type { Trail } from '@/lib/geo';
+import { liveStartView } from '@/lib/live-camera';
 import { fitBoundsFor, type Bounds } from '@/lib/map-fit';
 import { CLUSTER_DP, drawOrder, meCoversCluster, spreadDp } from '@/lib/marker-cluster';
 import { centerPadding, followPitch, normalizeDeg } from '@/lib/nav-camera';
@@ -36,6 +37,8 @@ import { lineData } from '@/lib/route-style';
 import { splitTrailAt, trimRouteAt } from '@/lib/trail-split';
 import type { NavLine, RideStop } from '@/lib/stop-ui';
 import { track } from '@/lib/telemetry';
+import { useNavStore } from '@/store/nav-store';
+import { usePlanStore } from '@/store/plan-store';
 import { usePrefsStore } from '@/store/prefs-store';
 import { elevate, family, font, palette, radius, size, space } from '@/theme/tokens';
 import { statusColors, useTheme } from '@/theme/use-theme';
@@ -88,7 +91,7 @@ interface RideMapProps {
   /** "Me" slot offset from the overlay bottom (above the attribution, or above the floating SOS). */
   meSlotBottom: number;
   /** The ride's next stop: draws the destination pin. */
-  stop: Pick<RideStop, 'lat' | 'lng' | 'kind'> | null;
+  stop: Pick<RideStop, 'lat' | 'lng' | 'kind' | 'category'> | null;
   /** My route to the stop (drawn under the markers, over the leader trail); null = nothing to draw. */
   navLine: NavLine | null;
   /** Bumps to frame me + the stop once (card tap, or after picking a stop). */
@@ -334,18 +337,25 @@ export function RideMap({
     if (!container) return;
     const first = ridersRef.current;
     const mine = first.find((r) => r.isMe);
-    const initialBounds = fitBoundsFor(first);
+    // Same first frame as the native map: me, everyone, the planning fix, Home's camera, India (never the ocean).
+    const nav = useNavStore.getState();
+    const start = liveStartView({
+      me: mine ?? null,
+      bounds: fitBoundsFor(first),
+      planning: nav.origin,
+      planningAt: nav.originAt,
+      now: Date.now(),
+      saved: usePlanStore.getState().camera,
+    });
     const m = new maplibregl.Map({
       container,
       style: mapStyleFor(styleUrl.current) as unknown as maplibregl.StyleSpecification,
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,
-      ...(mine
-        ? { center: [mine.lng, mine.lat] as [number, number], zoom: 16.5, pitch: followPitch(tilt) }
-        : initialBounds
-          ? { bounds: toLngLatBounds(initialBounds), fitBoundsOptions: { padding: { top: 104, right: 48, bottom: 76, left: 48 }, animate: false } }
-          : { center: [0, 20] as [number, number], zoom: 2 }),
+      ...(start.kind === 'bounds'
+        ? { bounds: toLngLatBounds(start.bounds), fitBoundsOptions: { padding: { top: 104, right: 48, bottom: 76, left: 48 }, animate: false } }
+        : { center: start.center, zoom: start.zoom, pitch: start.kind === 'saved' ? 0 : followPitch(tilt) }),
     });
     m.touchZoomRotate.disableRotation();
     m.touchPitch.disable();
@@ -481,7 +491,7 @@ export function RideMap({
           : null}
         {map && stop ? (
           <MapMarker map={map} lat={stop.lat} lng={stop.lng} zIndex={1} anchor="bottom">
-            <StopPin kind={stop.kind} />
+            <StopPin kind={stop.kind} category={stop.category} />
           </MapMarker>
         ) : null}
         {map && trailStart ? (

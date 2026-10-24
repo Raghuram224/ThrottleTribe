@@ -16,7 +16,8 @@ interface RideHeaderProps {
   connection: ConnectionState;
   /** The phone itself has no network: only then the pill says "Offline" (26 L2). */
   netOffline: boolean;
-  onBack: () => void;
+  /** Left out = nothing to go back to (the ride view on Home is the root): no arrow. */
+  onBack?: () => void;
   onMenu: () => void;
   /** Live rides: stop search (20 C2). Shown only while connected; the connection pill takes its place otherwise. */
   onSearch?: () => void;
@@ -28,13 +29,17 @@ export function RideHeader({ name, meta, connection, netOffline, onBack, onMenu,
   const pill = connectionPill(connection, netOffline);
   return (
     <View style={[styles.root, { backgroundColor: colors.surfaceRaised, borderBottomColor: colors.border }]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={copy['common.back']}
-        onPress={onBack}
-        style={styles.touch}>
-        <Icon name="back" color={colors.text} size={28} />
-      </Pressable>
+      {onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={copy['common.back']}
+          onPress={onBack}
+          style={styles.touch}>
+          <Icon name="back" color={colors.text} size={28} />
+        </Pressable>
+      ) : (
+        <View style={{ width: space.sm }} />
+      )}
       <View style={styles.titles}>
         <AppText variant="bodyStrong" numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {name}

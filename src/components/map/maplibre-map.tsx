@@ -14,6 +14,7 @@ import { TerrainLayer } from '@/components/map/terrain-layer';
 import type { MapHandle, MapLibreMapProps } from '@/components/map/types';
 import type { Bounds } from '@/lib/map-fit';
 import { copy } from '@/lib/copy';
+import { raiseMapCache } from '@/lib/map-cache';
 import { mapStyleJsonFor } from '@/lib/map-styles';
 import { lineData, NAV_DASH } from '@/lib/route-style';
 import { useTheme } from '@/theme/use-theme';
@@ -27,6 +28,7 @@ export function MapLibreMap({
   onGesture,
   onIdle,
   onError,
+  accessibilityLabel,
   ref,
   children,
 }: MapLibreMapProps) {
@@ -37,7 +39,12 @@ export function MapLibreMap({
   const [initialView] = useState<InitialViewState>(() =>
     'bounds' in initialCamera
       ? { bounds: initialCamera.bounds, padding: initialCamera.padding }
-      : { center: initialCamera.center, zoom: initialCamera.zoom },
+      : {
+          center: initialCamera.center,
+          zoom: initialCamera.zoom,
+          ...(initialCamera.pitch !== undefined ? { pitch: initialCamera.pitch } : {}),
+          ...(initialCamera.bearing !== undefined ? { bearing: initialCamera.bearing } : {}),
+        },
   );
 
   useImperativeHandle(
@@ -45,8 +52,12 @@ export function MapLibreMap({
     (): MapHandle => ({
       easeTo: ({ center, zoom, bearing, pitch, padding, durationMs, linear }) =>
         cameraRef.current?.easeTo({ center, zoom, bearing, pitch, padding, duration: durationMs, easing: linear ? 'linear' : 'ease' }),
-      fitBounds: (bounds, { padding, durationMs }) =>
-        cameraRef.current?.fitBounds(bounds, { padding, duration: durationMs, bearing: 0, pitch: 0 }),
+      fitBounds: (bounds, { padding, durationMs, keepView }) =>
+        cameraRef.current?.fitBounds(bounds, {
+          padding,
+          duration: durationMs,
+          ...(keepView ? {} : { bearing: 0, pitch: 0 }),
+        }),
       getZoom: () => last.current.zoom,
       getBounds: () => last.current.bounds,
     }),
@@ -67,7 +78,7 @@ export function MapLibreMap({
   return (
     <View style={styles.root} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <Map
-        accessibilityLabel={copy['map.a11y']}
+        accessibilityLabel={accessibilityLabel ?? copy['map.a11y']}
         mapStyle={mapStyleJsonFor(colors.mapStyle)}
         compass={false}
         dragPan={interactive}
@@ -78,6 +89,7 @@ export function MapLibreMap({
         logo={false}
         attribution={false}
         onPress={onPress}
+        onDidFinishLoadingMap={raiseMapCache}
         onDidFailLoadingMap={onError}
         onRegionWillChange={onRegionChange}
         onRegionIsChanging={onRegionChange}
@@ -86,7 +98,18 @@ export function MapLibreMap({
         <TerrainLayer />
         {lines.map((line) => (
           // Keyed by style and scheme: a switch re-adds the layers below the new style's labels.
-          <GeoJSONSource key={`${line.id}-${style}-${scheme}`} id={line.id} data={lineData(line.coords)}>
+          <GeoJSONSource
+            key={`${line.id}-${line.stack ?? ''}-${style}-${scheme}`}
+            id={line.id}
+            data={lineData(line.coords)}
+            onPress={
+              line.onPress
+                ? (e) => {
+                    e.stopPropagation();
+                    line.onPress?.();
+                  }
+                : undefined
+            }>
             {line.layers.map((layer, i) => {
               const top = i === line.layers.length - 1;
               const dashed = !!line.dashed && top;

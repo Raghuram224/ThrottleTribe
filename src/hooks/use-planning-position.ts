@@ -44,8 +44,9 @@ export interface LocationPerm {
  * instant last-known fix (up to 2 min old), then a Balanced watch every 10 m while the screen is focused.
  * Nothing is requested on its own: `request()` is the explicit "Allow location" tap. The latest fix is also
  * kept in `nav-store.origin` so the preview can route at once. `servicesEnabled` is the phone's location switch.
+ * `enabled` false pauses the watch (the ride view on Home: background tracking already supplies fixes).
  */
-export function usePlanningPosition() {
+export function usePlanningPosition(enabled = true) {
   const focused = useIsFocused();
   const [perm, setPerm] = useState<LocationPerm>({ status: 'unknown', canAskAgain: true });
   const [fix, setFix] = useState<PlanFix | null>(null);
@@ -102,7 +103,7 @@ export function usePlanningPosition() {
 
   const granted = perm.status === 'granted';
   useEffect(() => {
-    if (!planningWatchWanted({ focused, granted, appActive })) return;
+    if (!enabled || !planningWatchWanted({ focused, granted, appActive })) return;
     let cancelled = false;
     let sub: Location.LocationSubscription | null = null;
     // The last-known answer is old: its position is a fine start point, but its speed says nothing about now.
@@ -183,7 +184,7 @@ export function usePlanningPosition() {
       lastFix.current = null;
       gotLive.current = false;
     };
-  }, [focused, granted, appActive]);
+  }, [enabled, focused, granted, appActive]);
 
   return { perm, fix, request, refresh, servicesEnabled };
 }

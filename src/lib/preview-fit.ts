@@ -1,7 +1,6 @@
 // What the route preview camera frames, and the room the floating chrome takes (21 §2.3). Pure.
 import { pillHeight, type PillLines } from '@/lib/credits';
 import type { LatLng } from '@/lib/geo';
-import type { NavLine } from '@/lib/stop-ui';
 
 export interface PreviewPadding {
   top: number;
@@ -30,8 +29,19 @@ export function previewPadding(insetTop: number, panelH: number, creditLines: Pi
   };
 }
 
-/** The points the camera must keep in view: the road route, else me and the destination, else nothing. */
-export function previewFitPoints(line: NavLine | null, me: LatLng | null, dest: LatLng): LatLng[] {
-  if (line && !line.dashed && line.coords.length >= 2) return line.coords;
+/**
+ * The points the camera must keep in view: every road route (the chosen one and the grey alternatives), else me and the
+ * destination (while the routes load, or when none came), else nothing. Never a straight line between them.
+ */
+export function previewFitPoints(routes: readonly { coords: readonly LatLng[] }[], me: LatLng | null, dest: LatLng): LatLng[] {
+  const drawn = routes.filter((r) => r.coords.length >= 2);
+  if (drawn.length > 0) return drawn.flatMap((r) => r.coords);
   return me ? [me, dest] : [];
+}
+
+/** The search results the camera frames: all of them; one alone gets my position beside it so the view has a scale. */
+export function resultsFitPoints(places: readonly LatLng[], me: LatLng | null): LatLng[] {
+  if (places.length === 0) return [];
+  if (places.length === 1 && me) return [places[0], me];
+  return [...places];
 }

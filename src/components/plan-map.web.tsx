@@ -16,7 +16,6 @@ import { syncHillshade } from '@/lib/hillshade-web';
 import { mapStyleFor } from '@/lib/map-styles';
 import { fitBoundsFor } from '@/lib/map-fit';
 import { HOME_ME_ZOOM } from '@/lib/plan-flow';
-import { previewFitPoints } from '@/lib/preview-fit';
 import { syncNavRouteLayers } from '@/lib/route-layers-web';
 import { lineData } from '@/lib/route-style';
 import { useTheme } from '@/theme/use-theme';
@@ -29,18 +28,19 @@ const FOLLOW_MS = 450;
 const PIN_ONLY_ZOOM = 14;
 const FOLLOW_MIN_ZOOM = 10;
 
-export function PlanMap({ me, place, line, padding, intent, intentNonce, initial, follow, onUserGesture, onIdle, onMapError, onMapPress }: PlanMapProps) {
+export function PlanMap({ me, place, routes, fitPoints, padding, intent, intentNonce, initial, follow, onUserGesture, onIdle, onMapError, onMapPress }: PlanMapProps) {
   const { colors, scheme } = useTheme();
   const terrain = useTerrainOn();
   const containerRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<MlMap | null>(null);
   const styleUrl = useRef(colors.mapStyle);
-  const points = useMemo(() => (place ? previewFitPoints(line, me, place) : []), [line, me, place]);
-  const bounds = useMemo(() => fitBoundsFor(points), [points]);
-  const dashed = line?.dashed ?? false;
+  const bounds = useMemo(() => fitBoundsFor([...fitPoints]), [fitPoints]);
+  // The web build draws the chosen route only (no alternatives, pins or duration pills: the native map has them, 28).
+  const chosen = routes.find((r) => r.selected);
+  const dashed = false;
   const geo = useMemo(
-    () => (line && line.coords.length >= 2 ? (lineData(line.coords) as GeoJSON.Feature<GeoJSON.LineString>) : null),
-    [line],
+    () => (chosen && chosen.coords.length >= 2 ? (lineData(chosen.coords) as GeoJSON.Feature<GeoJSON.LineString>) : null),
+    [chosen],
   );
   const layerRef = useRef({ geo, dashed });
   // Callbacks and the first frame are read when the map is created / when its events fire.
@@ -168,7 +168,7 @@ export function PlanMap({ me, place, line, padding, intent, intentNonce, initial
         <>
           {place ? (
             <MapMarker map={map} lat={place.lat} lng={place.lng} zIndex={2} anchor="bottom">
-              <StopPin kind={place.kind} />
+              <StopPin kind={place.kind} category={place.category} />
             </MapMarker>
           ) : null}
           {me ? (

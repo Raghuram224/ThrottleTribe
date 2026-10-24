@@ -144,14 +144,14 @@ describe('credit links', () => {
 
 describe('preview state under a rate limit (24 §3.4)', () => {
   const origin = { lat: 12, lng: 77 };
-  const base = { origin, avoid: false, settled: false, key: 'k', lastRoute: null };
+  const base = { origin, avoid: false, settled: false, key: 'k', lastRoutes: null };
   const limited = { key: 'k', result: { status: 'rate_limited' as const, scope: 'minute' as const, retryAfterS: 30 } };
-  it('no route yet: the busy state (dashed line, note, Try again; Start stays enabled)', () => {
+  it('no route yet: the busy state (note, Try again, no line; Start stays enabled)', () => {
     expect(previewState({ ...base, answer: limited })).toEqual({ status: 'rate_limited', retryAfterS: 30 });
   });
   it('a route already drawn is kept', () => {
     const r = { coords: [], distanceM: 1, durationS: 1 };
-    expect(previewState({ ...base, answer: limited, lastRoute: r })).toEqual({ status: 'ok', route: r });
+    expect(previewState({ ...base, answer: limited, lastRoutes: [r] })).toEqual({ status: 'ok', route: r, routes: [r] });
   });
 });
 

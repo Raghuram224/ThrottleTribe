@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LatLng } from '@/lib/geo';
 import {
   searchErrorKind,
+  searchGate,
   searchPlacesDetailed,
   SEARCH_CHIPS,
   SEARCH_MIN_CHARS,
@@ -15,16 +16,24 @@ import {
 /** 400 ms (was 350): saves Geoapify credits (24 S6). */
 export const SEARCH_DEBOUNCE_MS = 400;
 
+/** How long a chip waits for the first fix before saying it is still looking. */
+export const LOCATING_SLOW_MS = 15_000;
+
 export type PlaceSearchState =
   | { status: 'idle' }
   | { status: 'loading' }
+  /** A chip is chosen and the first fix is not in yet: it runs the moment it arrives (never worldwide). */
+  | { status: 'locating' }
+  /** A chip is chosen and location cannot be found without the rider (denied, off): the chip says so. */
+  | { status: 'needsLocation' }
   /** `provider` credits who answered; `radiusM` is the chip caption's 5 or 25 km (null for typed search). */
   | { status: 'results'; places: Place[]; provider: PlaceSource; radiusM: number | null }
   /** `offline`: "Search needs a connection"; `busy`: a provider said 429 / quota; `slow`: online, but nothing answered in time. */
   | { status: 'error'; kind: SearchErrorKind };
 
 /**
- * Debounced place search. Typed text needs 3+ characters and waits 400 ms; a chip searches at once.
+ * Debounced place search. Typed text needs 3+ characters and waits 400 ms; a chip searches at once, but only with
+ * a position (it waits for the first fix: `locating`), and typed text may run without one.
  * Every new input aborts the request in flight. `retry()` repeats the last search.
  */
 export function usePlaceSearch(
@@ -32,6 +41,8 @@ export function usePlaceSearch(
   initial: { text?: string; chip?: SearchChip['key'] | null } = {},
   /** The phone has no network: no request at all, the error state says so (24 §2.5). */
   offline = false,
+  /** Location can still arrive by itself (granted or not asked, services on); false = the rider has to act. */
+  canLocate = true,
 ) {
   // The map home opens search with a chip or the text of the place being searched again (22 §3.2).
   const [text, setText] = useState(initial.chip ? '' : (initial.text ?? ''));
@@ -45,6 +56,9 @@ export function usePlaceSearch(
   useEffect(() => {
     meRef.current = me;
   }, [me]);
+  // What the effect below depends on, not the position itself: moving, or the first fix arriving, must not re-run a
+  // typed search, and a chip re-runs only when it goes from waiting to running.
+  const gate = searchGate({ chip: !!chip, hasMe: me !== null, canLocate });
 
   useEffect(() => {
     const chipDef = chip ? SEARCH_CHIPS.find((c) => c.key === chip) : undefined;
@@ -57,6 +71,10 @@ export function usePlaceSearch(
     }
     if (offline) {
       setState({ status: 'error', kind: 'offline' });
+      return;
+    }
+    if (gate !== 'run') {
+      setState({ status: gate });
       return;
     }
     const controller = new AbortController();
@@ -82,7 +100,20 @@ export function usePlaceSearch(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [text, chip, attempt, offline]);
+  }, [text, chip, attempt, offline, gate]);
+
+  // A chip that has waited this long for a fix says so (it stays gated: no worldwide fallback).
+  const [slowFor, setSlowFor] = useState<SearchChip['key'] | null>(null);
+  const waiting = state.status === 'locating';
+  useEffect(() => {
+    if (!waiting || !chip) return;
+    const timer = setTimeout(() => setSlowFor(chip), LOCATING_SLOW_MS);
+    return () => {
+      clearTimeout(timer);
+      setSlowFor(null);
+    };
+  }, [waiting, chip]);
+  const stillLocating = waiting && slowFor === chip;
 
   const changeText = useCallback((v: string) => {
     setChip(null); // typing replaces a chip search
@@ -94,5 +125,5 @@ export function usePlaceSearch(
   }, []);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  return { text, setText: changeText, chip, setChip: pickChip, state, retry, provider };
+  return { text, setText: changeText, chip, setChip: pickChip, state, retry, provider, stillLocating };
 }

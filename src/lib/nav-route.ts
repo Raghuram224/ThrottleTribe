@@ -46,6 +46,11 @@ export interface NavRouteOptions {
   steps?: boolean;
   /** Adds `exclude=motorway` (21 expressway decision). */
   avoidMotorways?: boolean;
+  /**
+   * Ask the router for alternative routes too (`alternatives=true`): the route preview only. The answer then holds up to
+   * MAX_ROUTES routes, the router's pick first. Part of the cache key.
+   */
+  alternatives?: boolean;
   /** Start heading in degrees, so a reroute does not send the rider into a U-turn (P2). */
   bearingDeg?: number | null;
   /**
@@ -62,6 +67,7 @@ export function buildOsrmUrl(from: LatLng, to: LatLng, o: NavRouteOptions = {}):
     `${ROUTING_URL}/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson` +
     (o.steps ? '&steps=true' : '') +
     (o.avoidMotorways ? '&exclude=motorway' : '') +
+    (o.alternatives ? '&alternatives=true' : '') +
     bearingsParam(o.bearingDeg)
   );
 }
@@ -75,10 +81,10 @@ export function bearingsParam(bearingDeg: number | null | undefined): string {
   return `&bearings=${Math.round(((bearingDeg % 360) + 360) % 360) % 360},45;`;
 }
 
-/** Reads an OSRM /route response; null when it holds no usable route. */
-export function parseOsrmResponse(json: unknown): NavRoute | null {
-  const r = (json as { routes?: unknown } | null)?.routes;
-  const route = Array.isArray(r) ? (r[0] as Record<string, unknown> | undefined) : undefined;
+/** Routes the preview keeps from an alternatives answer (the router's own pick first). */
+export const MAX_ROUTES = 3;
+
+function parseOneRoute(route: Record<string, unknown> | undefined): NavRoute | null {
   const raw = (route?.geometry as { coordinates?: unknown } | undefined)?.coordinates;
   if (!route || !Array.isArray(raw)) return null;
   const coords: LatLng[] = [];
@@ -91,6 +97,31 @@ export function parseOsrmResponse(json: unknown): NavRoute | null {
   if (coords.length < 2 || typeof distanceM !== 'number' || typeof durationS !== 'number') return null;
   const steps = parseSteps(route.legs, buildPlainTrail(coords).totalM);
   return steps ? { coords, distanceM, durationS, steps } : { coords, distanceM, durationS };
+}
+
+/** Reads an OSRM /route response; null when it holds no usable route. Only the first route (live navigation, stop cards). */
+export function parseOsrmResponse(json: unknown): NavRoute | null {
+  const r = (json as { routes?: unknown } | null)?.routes;
+  return Array.isArray(r) ? parseOneRoute(r[0] as Record<string, unknown> | undefined) : null;
+}
+
+/** Same trip: a router sometimes repeats its pick as an "alternative". */
+const sameRoute = (a: NavRoute, b: NavRoute) => Math.abs(a.distanceM - b.distanceM) < 1 && Math.abs(a.durationS - b.durationS) < 1;
+
+/**
+ * Reads every route of an OSRM /route response, at most `max`, the router's order kept (the first is its
+ * recommendation). Unreadable routes and repeats are skipped; empty when none is usable.
+ */
+export function parseOsrmRoutes(json: unknown, max = MAX_ROUTES): NavRoute[] {
+  const r = (json as { routes?: unknown } | null)?.routes;
+  if (!Array.isArray(r)) return [];
+  const out: NavRoute[] = [];
+  for (const item of r) {
+    if (out.length >= max) break;
+    const route = parseOneRoute(item as Record<string, unknown> | undefined);
+    if (route && !out.some((o) => sameRoute(o, route))) out.push(route);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- exclude support
@@ -146,7 +177,8 @@ export function resetRoutingMemo(): void {
 // ---------------------------------------------------------------- fetch
 
 export type NavRouteResult =
-  | { status: 'ok'; route: NavRoute }
+  /** `routes[0]` is `route`; more only when alternatives were asked for (the preview). */
+  | { status: 'ok'; route: NavRoute; routes: NavRoute[] }
   /** The router answered but there is no road between the points. */
   | { status: 'no_route' }
   /** Offline, timeout, server error or an unreadable answer. */
@@ -180,7 +212,7 @@ export function setRouteRateLimitedListener(fn: typeof rateLimitedListener): voi
 /** In-memory cache (21 §3.1): key `round(from,3)|to|opts`, 5 min, 4 entries. A back-and-forth does not refetch. */
 const CACHE_MAX = 4;
 const CACHE_TTL_MS = 5 * 60_000;
-const cache: { key: string; at: number; route: NavRoute }[] = [];
+const cache: { key: string; at: number; routes: NavRoute[] }[] = [];
 
 export function routeCacheKey(from: LatLng, to: LatLng, o: NavRouteOptions): string {
   const bearing = o.bearingDeg != null && Number.isFinite(o.bearingDeg) ? Math.round(o.bearingDeg / 15) : '';
@@ -191,23 +223,25 @@ export function routeCacheKey(from: LatLng, to: LatLng, o: NavRouteOptions): str
     // Not sent = not part of the key, so flipping the switch back (or a known-unsupported router) hits the cache.
     o.avoidMotorways && excludeEffective(Date.now()) ? 'a' : '',
     bearing,
+    // Appended only when asked, so the keys of plain requests keep their shape.
+    ...(o.alternatives ? ['alt'] : []),
   ].join('|');
 }
 
-function cacheGet(key: string, now: number): NavRoute | null {
+function cacheGet(key: string, now: number): NavRoute[] | null {
   const i = cache.findIndex((e) => e.key === key);
   if (i < 0) return null;
   const hit = cache[i];
   cache.splice(i, 1);
   if (now - hit.at > CACHE_TTL_MS) return null;
   cache.unshift(hit);
-  return hit.route;
+  return hit.routes;
 }
 
-function cacheSet(key: string, route: NavRoute, now: number): void {
+function cacheSet(key: string, routes: NavRoute[], now: number): void {
   const i = cache.findIndex((e) => e.key === key);
   if (i >= 0) cache.splice(i, 1);
-  cache.unshift({ key, at: now, route });
+  cache.unshift({ key, at: now, routes });
   if (cache.length > CACHE_MAX) cache.length = CACHE_MAX;
 }
 
@@ -234,7 +268,7 @@ export async function fetchNavRouteResult(
   const startedAt = Date.now();
   const key = routeCacheKey(from, to, opts);
   const cached = opts.noCache ? null : cacheGet(key, startedAt);
-  if (cached) return { status: 'ok', route: cached };
+  if (cached) return { status: 'ok', route: cached[0], routes: cached };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
@@ -263,6 +297,7 @@ export async function fetchNavRouteResult(
             from,
             to,
             steps: !!o.steps,
+            ...(o.alternatives ? { alternatives: true } : {}),
             ...(o.bearingDeg != null && Number.isFinite(o.bearingDeg) ? { bearingDeg: o.bearingDeg } : {}),
           },
           { timeoutMs: ROUTE_TIMEOUT_MS, signal: controller.signal },
@@ -296,15 +331,17 @@ export async function fetchNavRouteResult(
     const code = (a.body as { code?: unknown } | null)?.code;
     if (code === 'NoRoute') return { status: 'no_route' };
     if (!a.ok) return { status: 'failed' };
-    const route = parseOsrmResponse(a.body);
-    if (!route) return { status: Array.isArray((a.body as { routes?: unknown } | null)?.routes) ? 'no_route' : 'failed' };
+    const found = opts.alternatives ? parseOsrmRoutes(a.body) : [parseOsrmResponse(a.body)].filter((r): r is NavRoute => r !== null);
+    if (found.length === 0) return { status: Array.isArray((a.body as { routes?: unknown } | null)?.routes) ? 'no_route' : 'failed' };
     // A route from `geo` (LocationIQ) never carries `exclude`: it must not claim to have avoided expressways.
     const claim = a.provider === 'locationiq' ? undefined : avoided;
-    const withProvider = a.provider ? { ...route, provider: a.provider } : route;
-    const full = claim === undefined ? withProvider : { ...withProvider, avoidedMotorways: claim };
+    const routes = found.map((route) => {
+      const withProvider = a.provider ? { ...route, provider: a.provider } : route;
+      return claim === undefined ? withProvider : { ...withProvider, avoidedMotorways: claim };
+    });
     // Keyed again now: a rejection just remembered by the memo changes what the key means.
-    if (!opts.noCache) cacheSet(routeCacheKey(from, to, opts), full, Date.now());
-    return { status: 'ok', route: full };
+    if (!opts.noCache) cacheSet(routeCacheKey(from, to, opts), routes, Date.now());
+    return { status: 'ok', route: routes[0], routes };
   };
 
   try {

@@ -1,6 +1,7 @@
 import { Redirect, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 
+import { RideHost } from '@/components/ride/ride-host';
 import { Screen } from '@/components/screen';
 import { href } from '@/lib/nav';
 import { useSessionStore } from '@/store/session-store';
@@ -34,5 +35,11 @@ export default function AppLayout() {
   if (profileLoaded && !profile) return <Redirect href={href('/welcome')} />;
   if (!profileLoaded && !loadFailed) return <Screen>{null}</Screen>;
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false }} />
+      {/* The one ride session and its overlays; a sibling so it survives Back to Home. */}
+      <RideHost />
+    </>
+  );
 }

@@ -79,6 +79,15 @@ export function soloSheet(hasStopCard: boolean, hasError = false, arrived = fals
   return { heights: { collapsed: h, half: h, expanded: h }, snaps: ['half'] };
 }
 
+/**
+ * The same snaps with `inset` dp added to each: Home's sheet reaches the bottom of the screen, so the navigation-bar inset
+ * is part of what it covers (the live screen's sheet sits above its action bar and passes 0).
+ */
+export function withSheetInset(heights: Record<SheetSnap, number>, inset: number): Record<SheetSnap, number> {
+  if (inset <= 0) return heights;
+  return { collapsed: heights.collapsed + inset, half: heights.half + inset, expanded: heights.expanded + inset };
+}
+
 /** A stored snap that is not available (a persisted `expanded` on a short list) shows as `half`; the pref is left alone. */
 export function resolveSnap(snap: SheetSnap, snaps: readonly SheetSnap[]): SheetSnap {
   return snaps.includes(snap) ? snap : snaps.includes('half') ? 'half' : snaps[snaps.length - 1];

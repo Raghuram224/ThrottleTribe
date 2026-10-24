@@ -1,4 +1,4 @@
-// Pure decisions of the map home (docs/design/22): the mode machine, back stack, sheet content, me slot,
+// Pure decisions of the map home (docs/design/22, 28): the mode machine, back stack, sheet content, me slot,
 // when the map is mounted, how a route's two actions branch. No React, no router, no native modules.
 import { attributionClear, pillHeight, type PillLines } from '@/lib/credits';
 import { copy, t } from '@/lib/copy';
@@ -6,7 +6,15 @@ import { formatDistance } from '@/lib/format';
 import type { LatLng } from '@/lib/geo';
 import type { PlaceCategory } from '@/lib/place-search';
 
-export type PlanMode = 'browse' | 'place' | 'route';
+/** `search` is the inline search over Home's own map (28): typing, then the results as pins and a list. */
+export type PlanMode = 'browse' | 'search' | 'place' | 'route';
+/** Inside `search`: the keyboard is up / the rider is typing, or the results are shown (pins on the map plus the list panel). */
+export type SearchStage = 'typing' | 'results';
+/**
+ * Who the inline search is for: Home's places (a pick opens the place sheet and the route), or the live ride's next stop (28 §8:
+ * a pick runs the propose-stop flow; no place or route mode is entered).
+ */
+export type SearchContext = 'home' | 'ride-stop';
 /** How the place came in: decides what Back does from the route (a search result steps back to its place sheet). */
 export type PlanFrom = 'search' | 'recent' | null;
 export type HomeSnap = 'peek' | 'expanded';
@@ -35,7 +43,12 @@ export const HOME_FALLBACK_CAMERA: PlanCamera = { lat: 20.59, lng: 78.96, zoom: 
 export const HOME_ME_ZOOM = 15;
 export const HOME_PLACE_ZOOM = 15;
 export const HOME_CAMERA_SAVE_MS = 5000;
-export const PEEK_TWO_ROWS_MIN_H = 760;
+/** The collapsed sheet: a grab handle and one line (28). Same height as the old header (it keeps the 56 touch target). */
+export const HOME_STRIP_H = 56;
+/** What the strip occupies over the map, gesture inset included. */
+export function homeStripHeight(insetBottom: number): number {
+  return HOME_STRIP_H + insetBottom;
+}
 /** Bottom-left controls clear the credit pill (22 §3.1.1 item 5, 24 §4.2): 40 for one line, 56 for two. */
 export { attributionClear };
 
@@ -53,14 +66,48 @@ export interface PlanBackResult {
 }
 
 /**
- * What Back does: route -> place (picked from a search) or browse (a recent), place -> browse, an expanded
- * sheet -> peek. Null = nothing left to undo (the OS leaves the app).
+ * What Back does: route -> place (picked from a search) or browse (a recent), place -> the search results it was
+ * picked from (query, chip and results kept), search -> browse, an expanded sheet -> peek. Null = nothing left to undo
+ * (the OS leaves the app).
  */
 export function planBack(s: PlanBackInput): PlanBackResult | null {
   if (s.mode === 'route') return { mode: s.from === 'search' ? 'place' : 'browse', sheetSnap: s.sheetSnap };
-  if (s.mode === 'place') return { mode: 'browse', sheetSnap: s.sheetSnap };
+  if (s.mode === 'place') return { mode: 'search', sheetSnap: s.sheetSnap };
+  if (s.mode === 'search') return { mode: 'browse', sheetSnap: s.sheetSnap };
   if (s.sheetSnap === 'expanded') return { mode: 'browse', sheetSnap: 'peek' };
   return null;
+}
+
+// ---------------------------------------------------------------- back in the ride view (28 §8)
+
+/** What is open on Home's ride view, innermost first. */
+export interface RideBackState {
+  /** A ride is shown on Home's map. */
+  rideView: boolean;
+  /** The inline stop search is open over it. */
+  stopSearch: boolean;
+  /** A rider is selected (marker or row): the camera looks at them. */
+  riderSelected: boolean;
+  fullMap: boolean;
+  /** The rider list is pulled up (any snap above the collapsed strip). */
+  stripOpen: boolean;
+}
+
+export type RideBackAction = 'close-stop-search' | 'clear-selection' | 'exit-full-map' | 'collapse-strip' | 'system';
+
+/**
+ * What Back does in the ride view, one step at a time: close the stop search, clear a selected rider, leave full map,
+ * collapse the pulled-up list. After that there is nothing to step out to: while a ride is active Home's map IS the ride
+ * view (28 §8), never browse, so Back is 'system' (the OS backgrounds the app, like a navigation app). Null = not in the
+ * ride view: `planBack` decides (and then the OS).
+ */
+export function rideBack(s: RideBackState): RideBackAction | null {
+  if (s.stopSearch) return 'close-stop-search';
+  if (!s.rideView) return null;
+  if (s.riderSelected) return 'clear-selection';
+  if (s.fullMap) return 'exit-full-map';
+  if (s.stripOpen) return 'collapse-strip';
+  return 'system';
 }
 
 // ---------------------------------------------------------------- the open ride (22 §3.10)
@@ -87,7 +134,10 @@ export function searchBarTarget(open: Pick<OpenRideLite, 'id' | 'status'> | null
   return { kind: 'where-to' };
 }
 
-/** What a Where to? search opened from the bar / a chip / the place bar asks for (route params). */
+/**
+ * What the old `/where-to` route is asked for (route params). Home no longer pushes it (search is inline, 28); it stays
+ * for deep links and old callers, which hand off to the plan store (`parseSearchEntry`).
+ */
 export function whereToHref(o: { focus?: boolean; chip?: string; q?: string }): string {
   const q = new URLSearchParams();
   if (o.q) q.set('q', o.q);
@@ -102,7 +152,6 @@ export function whereToHref(o: { focus?: boolean; chip?: string; q?: string }): 
 export type SheetBlock =
   | 'firstSub'
   | 'tiles'
-  | 'recentPeek'
   | 'rideCard'
   | 'recentPlaces'
   | 'locationRow'
@@ -122,10 +171,13 @@ export interface SheetBlocksInput {
   showRecentRides: boolean;
 }
 
+/** The one line of the collapsed strip: the greeting, or "Back to <ride>" (opens the ride) while a ride is open. */
+export type SheetStrip = 'title' | 'resume';
+
 export interface SheetBlocks {
-  /** Always visible. */
-  peek: SheetBlock[];
-  /** Under the peek block, visible when the sheet is expanded. */
+  /** The collapsed sheet is a thin strip (28): a grab handle and this one line, nothing else. */
+  strip: SheetStrip;
+  /** Everything else, shown when the strip is pulled up. */
   expanded: SheetBlock[];
 }
 
@@ -137,16 +189,17 @@ export function homeSheetBlocks(i: SheetBlocksInput): SheetBlocks {
   if (i.openRide !== 'none') {
     // The tiles and the recent places would start a second ride: hidden. One primary: Back to ride.
     return {
-      peek: ['rideCard'],
-      expanded: [...nudge, ...(i.openRide === 'lobby' && i.recentPlaces > 0 ? (['recentPlaces'] as SheetBlock[]) : []), ...rides],
+      strip: 'resume',
+      expanded: ['rideCard', ...nudge, ...(i.openRide === 'lobby' && i.recentPlaces > 0 ? (['recentPlaces'] as SheetBlock[]) : []), ...rides],
     };
   }
   if (i.firstRun) {
-    return { peek: ['firstSub', 'tiles'], expanded: [...location, 'steps', ...nudge] };
+    return { strip: 'title', expanded: ['firstSub', 'tiles', ...location, 'steps', ...nudge] };
   }
   return {
-    peek: ['tiles', ...(i.recentPlaces > 0 ? (['recentPeek'] as SheetBlock[]) : [])],
+    strip: 'title',
     expanded: [
+      'tiles',
       ...(i.recentPlaces > 0 ? (['recentPlaces'] as SheetBlock[]) : []),
       ...location,
       ...nudge,
@@ -171,12 +224,6 @@ export function firstRunSeenOnSnap(firstRun: boolean, firstRunSeen: boolean, nex
   return firstRun && !firstRunSeen && next === 'peek';
 }
 
-/** Recent place rows in the peek: 2 on a tall phone, 1 on a short one, never more than there are. */
-export function peekRecentCount(windowH: number, available: number): number {
-  const want = windowH >= PEEK_TWO_ROWS_MIN_H ? 2 : 1;
-  return Math.max(0, Math.min(want, available));
-}
-
 /** A release faster than this (dp/s) is a fling: it goes the way it was thrown. Same as the live sheet. */
 export const HOME_FLING_VELOCITY = 800;
 const PROJECT_S = 0.2;
@@ -192,18 +239,29 @@ export function settleHomeSnap(a: { visibleH: number; velocityY: number; peekH: 
   return Math.abs(projected - a.expandedH) < Math.abs(projected - a.peekH) ? 'expanded' : 'peek';
 }
 
-/** Header tap / chevron / screen-reader step: the other snap, or the one asked for. */
+/** Strip tap / screen-reader step: the other snap, or the one asked for. */
 export function toggleHomeSnap(snap: HomeSnap): HomeSnap {
   return snap === 'peek' ? 'expanded' : 'peek';
 }
 
 // ---------------------------------------------------------------- the map (22 §4)
 
-/** Paths where the home map stays mounted (instant return from search); elsewhere only one GL map runs. */
-export function homeMapMounted(pathname: string): boolean {
+/**
+ * Home's map stays mounted on every path except the ride summary, which draws its own map (one GL map at a time, 22 §4.3).
+ * With the ride on Home's map (28 §8) the lobby, invite and the live redirect keep it mounted underneath, so the map
+ * never reloads when a ride starts or opens. With the flag off the old allow-list stands: only Home's own paths.
+ */
+export function homeMapMounted(pathname: string, rideOnHome: boolean): boolean {
   const p = pathname.split('?')[0].replace(/\/+$/, '') || '/';
-  return p === '/home' || p === '/where-to' || p === '/route-preview';
+  if (!rideOnHome) return p === '/home' || p === '/where-to' || p === '/route-preview';
+  return !/^\/ride\/[^/]+\/summary$/.test(p);
 }
+
+/**
+ * The ride view's floating stack (Full map, Search, Speak, SOS): 56 dp circles with a 12 dp gap (dp). Only a ride shows
+ * one; browse keeps its search in the bar and has no SOS (28).
+ */
+export const FAB_STACK = { size: 56, gap: 12, side: 12 } as const;
 
 /**
  * Where the map attribution lives (never hidden while a map shows): on the map, just above the sheet, at peek;
@@ -275,6 +333,28 @@ export function initialCamera(saved: PlanCamera | null, me: LatLng | null): Plan
   if (saved) return saved;
   if (me) return { lat: me.lat, lng: me.lng, zoom: HOME_ME_ZOOM };
   return HOME_FALLBACK_CAMERA;
+}
+
+/**
+ * The stand-in India view, by value: a camera saved from it (or a copy) is still the stand-in, so the next launch
+ * frames it in the visible map again instead of showing the plain view under the sheet. A rider's own camera
+ * (a fix, a pan) is never exactly this centre and zoom.
+ */
+export function isFallbackCamera(c: PlanCamera): boolean {
+  return c.lat === HOME_FALLBACK_CAMERA.lat && c.lng === HOME_FALLBACK_CAMERA.lng && c.zoom === HOME_FALLBACK_CAMERA.zoom;
+}
+
+/** A first-run sheet can leave almost no map: centre India as if at least this much were visible. */
+const FALLBACK_MIN_VISIBLE = 120;
+
+/**
+ * Camera padding for the stand-in view (zoom stays 4: central India, not the whole country at stamp size): the
+ * usual browse padding, with the sheet's share reduced so a visible strip of at least FALLBACK_MIN_VISIBLE remains
+ * for the centre to land in.
+ */
+export function fallbackPadding(padding: PlanPadding, windowHeight: number): PlanPadding {
+  const room = windowHeight - padding.top - FALLBACK_MIN_VISIBLE;
+  return { ...padding, bottom: Math.max(0, Math.min(padding.bottom, room)) };
 }
 
 // ---------------------------------------------------------------- how Start branches (22 §3.4.2, D5)
@@ -396,14 +476,14 @@ export function chipsTop(insetTop: number, bannerH: number): number {
 
 /**
  * Top of Home's map type circle (25 §2.1): browse = under the chip row (or under the bar when the chips are hidden),
- * place = under the place bar, route = level with the floating back circle. Always the
+ * search = under the chip row, place = under the place bar, route = level with the floating back circle. Always the
  * offline banner lower.
  */
 export function mapTypeTop(o: { mode: PlanMode; insetTop: number; bannerH: number; chipsShown: boolean }): number {
   const barTop = o.insetTop + o.bannerH + 8;
   if (o.mode === 'route') return barTop;
-  // The bar's bottom + 8; browse with the chip row shown: the chips' bottom + 8 (152 at 360 x 780, status bar 24).
-  return barTop + BAR_H + 8 + (o.mode === 'browse' && o.chipsShown ? CHIPS_H + 8 : 0);
+  // The bar's bottom + 8; with the chip row shown (browse, and the search results): the chips' bottom + 8 (152 at 360 x 780, status bar 24).
+  return barTop + BAR_H + 8 + ((o.mode === 'browse' || o.mode === 'search') && o.chipsShown ? CHIPS_H + 8 : 0);
 }
 
 /** Browse: everything floating counts: banner, bar, chips (when shown), then the visible sheet and the attribution. */
@@ -421,6 +501,28 @@ export function browsePadding(o: {
     bottom: o.sheetH + attributionClear(o.creditLines ?? 1, o.fontScale),
     left: 16,
     right: 16,
+  };
+}
+
+/** The search results' bottom panel: about 45% of the window (28). */
+export const RESULTS_PANEL_RATIO = 0.45;
+export function resultsPanelHeight(windowH: number): number {
+  return Math.round(windowH * RESULTS_PANEL_RATIO);
+}
+
+/** A map pin is 44 dp tall above its point (StopPin): the top padding clears it. */
+const PIN_H = 44;
+
+/**
+ * Search results: pins fit under the bar and the chip row (and clear of the pin's own height), above the results panel
+ * and the attribution. `insetTop` includes the offline banner.
+ */
+export function searchResultsPadding(insetTop: number, panelH: number, creditLines: PillLines = 1, fontScale = 1): PlanPadding {
+  return {
+    top: insetTop + 8 + BAR_H + 8 + CHIPS_H + 16 + PIN_H,
+    bottom: panelH + 24 + pillHeight(creditLines, fontScale) + 4,
+    left: 48,
+    right: 48,
   };
 }
 

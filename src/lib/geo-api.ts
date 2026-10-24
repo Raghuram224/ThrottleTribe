@@ -24,7 +24,7 @@ export type GeoOutcome = { ok: true; data: unknown } | { ok: false; failure: Geo
 export type GeoRequest =
   | { op: 'autocomplete'; text: string; near?: { lat: number; lng: number } }
   | { op: 'places'; categories: string; near: { lat: number; lng: number }; radiusM: 5000 | 25000 }
-  | { op: 'route'; from: { lat: number; lng: number }; to: { lat: number; lng: number }; steps: boolean; bearingDeg?: number };
+  | { op: 'route'; from: { lat: number; lng: number }; to: { lat: number; lng: number }; steps: boolean; alternatives?: boolean; bearingDeg?: number };
 
 /** What one HTTP exchange with the function looked like, whatever carried it. null status = the network failed. */
 export interface GeoHttp {

@@ -43,13 +43,22 @@ describe('parseRequest: input validation', () => {
   it('route: both points, steps boolean, bearing normalised to 0..359', () => {
     const a = { lat: 12.9, lng: 77.5 };
     const b = { lat: 12.3, lng: 76.6 };
-    expect(parseRequest({ op: 'route', from: a, to: b, steps: true, bearingDeg: -10.4 })).toEqual({ op: 'route', from: a, to: b, steps: true, bearingDeg: 350 });
-    expect(parseRequest({ op: 'route', from: a, to: b })).toEqual({ op: 'route', from: a, to: b, steps: false, bearingDeg: null });
+    expect(parseRequest({ op: 'route', from: a, to: b, steps: true, bearingDeg: -10.4 })).toEqual({ op: 'route', from: a, to: b, steps: true, alternatives: false, bearingDeg: 350 });
+    expect(parseRequest({ op: 'route', from: a, to: b })).toEqual({ op: 'route', from: a, to: b, steps: false, alternatives: false, bearingDeg: null });
     expect(parseRequest({ op: 'route', from: a, to: b, bearingDeg: 360 })).toMatchObject({ bearingDeg: 0 });
     expect(parseRequest({ op: 'route', from: a })).toBeNull();
     expect(parseRequest({ op: 'route', from: a, to: b, steps: 'yes' })).toBeNull();
     expect(parseRequest({ op: 'route', from: a, to: b, bearingDeg: Number.NaN })).toBeNull();
     expect(parseRequest({ op: 'route', from: a, to: { lat: 0, lng: 181 } })).toBeNull();
+  });
+  it('route: alternatives is an optional boolean (the preview asks for them); anything else is a bad request', () => {
+    const a = { lat: 12.9, lng: 77.5 };
+    const b = { lat: 12.3, lng: 76.6 };
+    expect(parseRequest({ op: 'route', from: a, to: b, steps: true, alternatives: true })).toMatchObject({ alternatives: true });
+    expect(parseRequest({ op: 'route', from: a, to: b, alternatives: false })).toMatchObject({ alternatives: false });
+    expect(parseRequest({ op: 'route', from: a, to: b })).toMatchObject({ alternatives: false });
+    expect(parseRequest({ op: 'route', from: a, to: b, alternatives: 'true' })).toBeNull();
+    expect(parseRequest({ op: 'route', from: a, to: b, alternatives: 2 })).toBeNull();
   });
   it('rejects anything else', () => {
     for (const body of [null, 'x', 5, [], {}, { op: 'delete' }, { op: 'geocode' }]) expect(parseRequest(body)).toBeNull();
@@ -139,6 +148,12 @@ describe('upstream requests', () => {
     expect(url).toContain('steps=true');
     expect(url.endsWith('&bearings=90,45;')).toBe(true);
     expect(locationIqUrl({ ...req, bearingDeg: null, steps: false }, 'K', 'eu1')).toMatch(/^https:\/\/eu1\..*steps=false$/);
+  });
+  it('LocationIQ: alternatives=true only when asked, so a plain route URL is unchanged', () => {
+    const base = parseRequest({ op: 'route', from: { lat: 12.9, lng: 77.5 }, to: { lat: 12.3, lng: 76.6 }, steps: true }) as Extract<ParsedRequest, { op: 'route' }>;
+    expect(locationIqUrl(base, 'K', 'us1')).not.toContain('alternatives');
+    const alt = parseRequest({ op: 'route', from: { lat: 12.9, lng: 77.5 }, to: { lat: 12.3, lng: 76.6 }, steps: true, alternatives: true }) as Extract<ParsedRequest, { op: 'route' }>;
+    expect(locationIqUrl(alt, 'K', 'us1')).toContain('alternatives=true');
   });
   it('the region can only be a short lowercase label (it ends up in a hostname)', () => {
     expect(safeRegion('eu1')).toBe('eu1');

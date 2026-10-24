@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { BigButton } from '@/components/big-button';
 import { Icon } from '@/components/icon';
 import { copy, t } from '@/lib/copy';
+import type { PlaceCategory } from '@/lib/place-search';
+import { breakIcon } from '@/lib/stop-ui';
 import { family, font, radius, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
@@ -10,6 +12,7 @@ interface StopApprovalCardProps {
   /** approvalCardModel().text: "Priya suggests a break · Cafe · 2.1 km". */
   text: string;
   kind: 'break' | 'destination';
+  category: PlaceCategory | null;
   moreCount: number;
   /** Which button is in flight; both are disabled meanwhile. */
   busy: 'accept' | 'decline' | null;
@@ -21,7 +24,7 @@ interface StopApprovalCardProps {
  * Leader approval card (19 A): sits in the ride banner stack, never behind the 2-banner cap, and
  * stays until decided. Accept is primary; "+N more" shows when other proposals wait behind it.
  */
-export function StopApprovalCard({ text, kind, moreCount, busy, onAccept, onDecline }: StopApprovalCardProps) {
+export function StopApprovalCard({ text, kind, category, moreCount, busy, onAccept, onDecline }: StopApprovalCardProps) {
   const { colors } = useTheme();
   return (
     <View
@@ -29,7 +32,7 @@ export function StopApprovalCard({ text, kind, moreCount, busy, onAccept, onDecl
       accessibilityLiveRegion="polite"
       style={[styles.root, { backgroundColor: colors.surfaceRaised, borderBottomColor: colors.border }]}>
       <View style={styles.head}>
-        <Icon name={kind === 'destination' ? 'flag' : 'coffee'} color={colors.brandOnBg} size={20} />
+        <Icon name={kind === 'destination' ? 'flag' : breakIcon(category)} color={colors.brandOnBg} size={20} />
         <Text numberOfLines={2} maxFontSizeMultiplier={1.3} style={[styles.text, { color: colors.text }]}>
           {text}
         </Text>

@@ -118,6 +118,61 @@ export function rideRedirect({ status, child, left }: RideRedirectInput): RideRe
   return child === 'lobby' ? null : { to: 'lobby', stopTracking: false, successHaptic: false };
 }
 
+const RIDE_PATH = /^\/ride\/([^/]+)\/(lobby|live|summary|invite|search)\/?$/;
+
+/**
+ * The ride child currently shown. `pathname` is Expo Router's (groups stripped). With a ride view open on
+ * Home (`viewRideId`, the later "ride on the Home map") /home counts as the live child.
+ */
+export function rideChildFor(pathname: string, viewRideId: string | null): RideChild | null {
+  const match = RIDE_PATH.exec(pathname);
+  if (match) return match[2] as RideChild;
+  if (viewRideId && (pathname === '/home' || pathname === '/home/')) return 'live';
+  return null;
+}
+
+/** The ride id in a ride screen's pathname, else null. */
+export function rideIdFromPath(pathname: string): string | null {
+  const match = RIDE_PATH.exec(pathname);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/** Whether the live ride runs on Home's map here: the flag (`LIVE_ON_HOME`), and never on web (its live screen stays). */
+export function rideOnHome(flag: boolean, platform: string): boolean {
+  return flag && platform !== 'web';
+}
+
+/**
+ * The ride id when `target` is a ride's live screen (`/ride/<id>/live`, query ignored), else null. With the ride on Home's
+ * map that screen is only a hand-off: the ride opens on Home (`openLiveRide`).
+ */
+export function liveRideId(target: string): string | null {
+  const match = RIDE_PATH.exec(target.split('?')[0]);
+  return match && match[2] === 'live' ? decodeURIComponent(match[1]) : null;
+}
+
+export interface SessionRideInput {
+  pathname: string;
+  viewRideId: string | null;
+  /** The ride the store holds, and its status / my left flag (undefined while not loaded). */
+  storeRideId: string | null;
+  status: RideStatusName | undefined;
+  left: boolean;
+}
+
+/**
+ * The ride the one ride session (channel, tracking, overlays) runs for, or null. A ride screen or an open
+ * Home ride view always wins (so a summary keeps its data, and a failed load can still redirect); otherwise
+ * the session stays on the stored ride while it is lobby / active and I am in it, so Back to Home keeps the
+ * channel open. Ended, left or unknown releases it.
+ */
+export function sessionRideId(i: SessionRideInput): string | null {
+  const shown = rideIdFromPath(i.pathname) ?? i.viewRideId;
+  if (shown) return shown;
+  if (i.storeRideId && !i.left && (i.status === 'lobby' || i.status === 'active')) return i.storeRideId;
+  return null;
+}
+
 // ---------------------------------------------------------------- permission steps (04)
 
 export type PermissionValue = 'granted' | 'denied' | 'undetermined';

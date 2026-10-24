@@ -134,7 +134,7 @@ export interface Near {
 export type ParsedRequest =
   | { op: 'autocomplete'; text: string; near: Near | null; limit: number }
   | { op: 'places'; categories: string; near: Near; radiusM: 5000 | 25000; limit: number }
-  | { op: 'route'; from: Near; to: Near; steps: boolean; bearingDeg: number | null };
+  | { op: 'route'; from: Near; to: Near; steps: boolean; alternatives: boolean; bearingDeg: number | null };
 
 /** The only category lists the chips may ask for; anything else is a bad request (no open-ended Places queries). */
 export const ALLOWED_CATEGORIES: readonly string[] = [
@@ -201,12 +201,14 @@ export function parseRequest(body: unknown): ParsedRequest | null {
     const to = point(body.to);
     if (!from || !to) return null;
     if (body.steps !== undefined && typeof body.steps !== 'boolean') return null;
+    // Alternatives are the route preview's: absent = false, anything but a boolean is a bad request.
+    if (body.alternatives !== undefined && typeof body.alternatives !== 'boolean') return null;
     let bearingDeg: number | null = null;
     if (body.bearingDeg !== undefined && body.bearingDeg !== null) {
       if (typeof body.bearingDeg !== 'number' || !Number.isFinite(body.bearingDeg)) return null;
       bearingDeg = Math.round(((body.bearingDeg % 360) + 360) % 360) % 360;
     }
-    return { op: 'route', from, to, steps: body.steps === true, bearingDeg };
+    return { op: 'route', from, to, steps: body.steps === true, alternatives: body.alternatives === true, bearingDeg };
   }
   return null;
 }
@@ -239,6 +241,8 @@ export function geoapifyUrl(req: Extract<ParsedRequest, { op: 'autocomplete' | '
 
 export function locationIqUrl(req: Extract<ParsedRequest, { op: 'route' }>, key: string, region: string): string {
   const q = new URLSearchParams({ key, overview: 'full', geometries: 'geojson', steps: String(req.steps) });
+  // Only the preview asks: the plain request (and its URL) is what it always was.
+  if (req.alternatives) q.set('alternatives', 'true');
   const url = `https://${region}.locationiq.com/v1/directions/driving/${req.from.lng},${req.from.lat};${req.to.lng},${req.to.lat}`;
   // `bearings` is value,range per waypoint; the destination is unconstrained (an empty pair).
   const bearings = req.bearingDeg !== null ? `&bearings=${req.bearingDeg},45;` : '';

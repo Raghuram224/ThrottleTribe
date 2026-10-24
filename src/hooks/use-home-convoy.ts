@@ -13,9 +13,9 @@ export interface HomeConvoyState extends HomeConvoy {
 }
 
 /**
- * Live convoy for the Home "ride in progress" card (16 §3). Home has no Realtime channel (that lives
- * in the ride screens), so while Home is focused and the ride is active it re-reads the ride snapshot
- * every 15 s. A failed read keeps the last convoy; the card then simply shows what it had.
+ * Live convoy for the Home "ride in progress" card (16 §3). While Home is focused and the ride is active it
+ * re-reads the ride snapshot every 15 s over REST. That is not a second channel subscription: the Realtime
+ * channel belongs to the ride session in `RideHost` alone. A failed read keeps the last convoy.
  */
 export function useHomeConvoy(rideId: string | null, active: boolean, myUserId: string | null): HomeConvoyState | null {
   const [state, setState] = useState<HomeConvoyState | null>(null);

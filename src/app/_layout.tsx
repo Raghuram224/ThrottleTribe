@@ -1,5 +1,4 @@
-// Side-effect import: defineTask must run at bundle load, including headless background launches.
-import '@/lib/location/background-task';
+// The location task is defined in the root `index.js` entry, before Expo Router loads (headless launches).
 import '@/lib/web/netinfo-config';
 
 import * as Notifications from '@/lib/notifications';
@@ -19,6 +18,8 @@ import { copy } from '@/lib/copy';
 import { setLastAppState } from '@/lib/location/ride-config';
 import { startTrackingRecovery } from '@/lib/location/tracking';
 import { href } from '@/lib/nav';
+import { openLiveRide } from '@/lib/reset-to-ride';
+import { RIDE_ON_HOME } from '@/lib/ride-on-home';
 import { setExcludeRejectedListener, setRouteRateLimitedListener } from '@/lib/nav-route';
 import { setSearchReport } from '@/lib/place-search';
 import { initTelemetry, reportError, setScreen, track } from '@/lib/telemetry';
@@ -82,7 +83,10 @@ export default function RootLayout() {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const rideId = response.notification.request.content.data?.rideId;
-      if (typeof rideId === 'string') router.navigate(href(`/ride/${rideId}/live`));
+      if (typeof rideId !== 'string') return;
+      // The live ride is on Home's map: a tap opens it there (the ride session redirects a lobby ride to its screen).
+      if (RIDE_ON_HOME) openLiveRide(rideId);
+      else router.navigate(href(`/ride/${rideId}/live`));
     });
     return () => sub.remove();
   }, []);

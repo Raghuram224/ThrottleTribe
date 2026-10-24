@@ -80,6 +80,16 @@ export function takeoverTarget(
   return { sos: open[((cursor % open.length) + open.length) % open.length], more: open.length - 1 };
 }
 
+/** True while the receiver takeover is on screen for this member list (Home's Back must then leave Back to it). */
+export function receiverTakeoverShowing(
+  members: SosMember[],
+  myUserId: string | null,
+  dismissed: Readonly<Record<string, true>>,
+  cursor: number,
+): boolean {
+  return takeoverTarget(activeSos(members, myUserId), dismissed, cursor) !== null;
+}
+
 // ---------------------------------------------------------------- navigation
 
 export type NavPlatform = 'android' | 'ios' | string;

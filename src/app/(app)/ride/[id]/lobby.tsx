@@ -24,7 +24,7 @@ import { href } from '@/lib/nav';
 import { firstName } from '@/lib/names';
 import { navRideDest } from '@/lib/nav-rides';
 import { startRide, toRideError } from '@/lib/ride-api';
-import { rideStop } from '@/lib/stop-ui';
+import { breakIcon, rideStop } from '@/lib/stop-ui';
 import { track } from '@/lib/telemetry';
 import { NO_INVITEES, useInviteStore } from '@/store/invite-store'; // invite
 import { useRideStore } from '@/store/ride-store';
@@ -166,7 +166,7 @@ export default function Lobby() {
         {lobbyStop ? (
           // 22 D6: everyone in the lobby, joiners too, sees where the ride is going (set when the leader tapped Invite riders).
           <View style={styles.destLine} accessible accessibilityLabel={t('lobby.destLine', { place: lobbyStop.name })}>
-            <Icon name={lobbyStop.kind === 'break' ? 'coffee' : 'endRide'} color={colors.textMuted} size={16} />
+            <Icon name={lobbyStop.kind === 'break' ? breakIcon(lobbyStop.category) : 'endRide'} color={colors.textMuted} size={16} />
             <AppText variant="caption" muted numberOfLines={1} style={styles.destText}>
               {t('lobby.destLine', { place: lobbyStop.name })}
             </AppText>

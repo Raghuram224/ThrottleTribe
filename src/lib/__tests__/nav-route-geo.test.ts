@@ -160,3 +160,17 @@ describe('fetchNavRouteResult through geo', () => {
     expect(r.status === 'ok' && r.route.avoidedMotorways).toBeUndefined();
   });
 });
+
+describe('alternatives through the geo function', () => {
+  it('asks `geo` for alternatives only for the preview, and reads every route it returns', async () => {
+    const second = { ...liqBody.routes[0], distance: 3600, duration: 200, geometry: { type: 'LineString', coordinates: [[77.5946, 12.9716], [77.62, 12.97], [77.61, 12.99]] } };
+    mockGeoCall.mockResolvedValue({ ok: true, data: { ...liqBody, routes: [liqBody.routes[0], second] } });
+    const r = await fetchNavRouteResult(from, to, { steps: true, alternatives: true });
+    expect(mockGeoCall.mock.calls[0][0]).toMatchObject({ op: 'route', steps: true, alternatives: true });
+    expect(r.status === 'ok' && r.routes.map((x) => x.distanceM)).toEqual([3000, 3600]);
+    expect(r.status === 'ok' && r.routes.every((x) => x.provider === 'locationiq')).toBe(true);
+    mockGeoCall.mockClear();
+    await fetchNavRouteResult(to, from, { steps: true });
+    expect(mockGeoCall.mock.calls[0][0]).not.toHaveProperty('alternatives');
+  });
+});

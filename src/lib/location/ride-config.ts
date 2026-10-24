@@ -2,7 +2,9 @@
 // persistent storage instead of component state.
 import 'expo-sqlite/localStorage/install';
 
-export const LOCATION_TASK_NAME = 'throttle-tribe-location';
+import { LOCATION_TASK_NAME } from './task-name';
+
+export { LOCATION_TASK_NAME };
 
 const KEY_RIDE_ID = 'ride.currentRideId';
 const KEY_TRACKING = 'ride.tracking';

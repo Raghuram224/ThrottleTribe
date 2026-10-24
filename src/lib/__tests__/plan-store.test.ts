@@ -16,6 +16,8 @@ beforeEach(() => {
     place: null,
     from: null,
     query: '',
+    searchStage: 'typing',
+    searchContext: 'home',
     sheetSnap: 'peek',
     camera: null,
     firstRunSeen: false,
@@ -43,16 +45,52 @@ describe('plan store (22 §2.1)', () => {
     expect(usePlanStore.getState()).toMatchObject({ mode: 'route', from: 'recent', query: '' });
   });
 
-  it('back() walks route -> place -> browse and reports false when there is nothing to undo', () => {
+  it('back() walks route -> place -> search results -> browse and reports false when there is nothing to undo', () => {
     const st = usePlanStore.getState();
+    st.openSearch({ q: 'palace' });
     st.openPlace(palace, 'palace');
     st.openRoute(palace, 'search');
     expect(usePlanStore.getState().back()).toBe(true);
     expect(usePlanStore.getState()).toMatchObject({ mode: 'place' });
     expect(usePlanStore.getState().place?.id).toBe('p1');
+    // The search it came from, as results, with its query kept.
+    expect(usePlanStore.getState().back()).toBe(true);
+    expect(usePlanStore.getState()).toMatchObject({ mode: 'search', place: null, searchStage: 'results', query: 'palace' });
+    expect(usePlanStore.getState().back()).toBe(true);
+    expect(usePlanStore.getState()).toMatchObject({ mode: 'browse', place: null, query: '' });
+    expect(usePlanStore.getState().back()).toBe(false);
+  });
+
+  it('openSearch: the bar types, a chip shows its results at once, "search again" seeds the text; every open is a new seed', () => {
+    const st = usePlanStore.getState();
+    st.setSheetSnap('expanded');
+    st.openSearch();
+    let s = usePlanStore.getState();
+    expect(s).toMatchObject({ mode: 'search', searchStage: 'typing', sheetSnap: 'peek', place: null });
+    expect(s.searchSeed).toMatchObject({ q: '', chip: null, wantsFocus: true });
+    const first = s.searchSeed.nonce;
+    st.openSearch({ chip: 'fuel' });
+    s = usePlanStore.getState();
+    expect(s).toMatchObject({ mode: 'search', searchStage: 'results' });
+    expect(s.searchSeed).toMatchObject({ q: '', chip: 'fuel', wantsFocus: false });
+    expect(s.searchSeed.nonce).toBe(first + 1);
+    st.openSearch({ q: 'Mysuru Palace', wantsFocus: true });
+    s = usePlanStore.getState();
+    expect(s).toMatchObject({ mode: 'search', searchStage: 'typing', query: 'Mysuru Palace' });
+    expect(s.searchSeed).toMatchObject({ q: 'Mysuru Palace', chip: null, wantsFocus: true });
+  });
+
+  it('search -> browse on back drops the query and the stage; the sheet is the strip again', () => {
+    usePlanStore.getState().openSearch({ chip: 'coffee' });
+    expect(usePlanStore.getState().back()).toBe(true);
+    expect(usePlanStore.getState()).toMatchObject({ mode: 'browse', query: '', searchStage: 'typing', sheetSnap: 'peek' });
+  });
+
+  it('a recent place from the search list goes to the route and Back leaves for browse (a recent has no place sheet)', () => {
+    usePlanStore.getState().openSearch();
+    usePlanStore.getState().openRoute(palace, 'recent');
     expect(usePlanStore.getState().back()).toBe(true);
     expect(usePlanStore.getState()).toMatchObject({ mode: 'browse', place: null });
-    expect(usePlanStore.getState().back()).toBe(false);
   });
 
   it('back() from a recent route returns to browse and drops the place', () => {
@@ -106,5 +144,21 @@ describe('plan store (22 §2.1)', () => {
     clearHomeDevicePrefs();
     expect(mem.has(STORAGE_KEYS.navRides)).toBe(false);
     expect(mem.has(STORAGE_KEYS.legacyGroupRides)).toBe(false);
+  });
+
+  it('the stop search of the live ride is a search context of its own, and every way back to browse clears it (28 §8)', () => {
+    const st = usePlanStore.getState();
+    st.openSearch({ wantsFocus: true }, 'ride-stop');
+    expect(usePlanStore.getState()).toMatchObject({ mode: 'search', searchContext: 'ride-stop' });
+    expect(usePlanStore.getState().back()).toBe(true);
+    expect(usePlanStore.getState()).toMatchObject({ mode: 'browse', searchContext: 'home' });
+    usePlanStore.getState().openSearch({ chip: 'fuel' }, 'ride-stop');
+    usePlanStore.getState().reset();
+    expect(usePlanStore.getState().searchContext).toBe('home');
+  });
+
+  it('Home\'s own search opens in the home context', () => {
+    usePlanStore.getState().openSearch({ q: 'palace' });
+    expect(usePlanStore.getState().searchContext).toBe('home');
   });
 });

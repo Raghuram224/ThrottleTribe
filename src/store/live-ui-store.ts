@@ -31,6 +31,9 @@ interface LiveUiState {
   /** An SOS hold is in progress; layout changes that would swap the SOS button wait for it (20 C4). */
   sosHolding: boolean;
   setSosHolding: (on: boolean) => void;
+  /** The ride shown on Home's map (the later "ride view on Home"); null = none. Unused until that slice. */
+  viewRideId: string | null;
+  setViewRideId: (id: string | null) => void;
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -71,4 +74,6 @@ export const useLiveUiStore = create<LiveUiState>((set, get) => ({
   setMapBearing: (deg) => set({ mapBearing: deg }),
   sosHolding: false,
   setSosHolding: (on) => set({ sosHolding: on }),
+  viewRideId: null,
+  setViewRideId: (id) => set({ viewRideId: id }),
 }));

@@ -57,7 +57,7 @@ function harness(over: Partial<NavSessionDeps> = {}) {
   };
 }
 const flush = () => new Promise<void>((r) => setImmediate(r));
-const ok = (r: NavRoute = route()): NavRouteResult => ({ status: 'ok', route: r });
+const ok = (r: NavRoute = route()): NavRouteResult => ({ status: 'ok', route: r, routes: [r] });
 
 describe('"starting" cannot last forever (a restored ride with no origin)', () => {
   it('settles to unavailable (no route) when nothing is in flight after the limit', () => {

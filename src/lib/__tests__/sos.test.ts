@@ -4,6 +4,7 @@ import {
   activeSos,
   navigationUrl,
   positionFromPayload,
+  receiverTakeoverShowing,
   sosIsOn,
   sosReduce,
   takeoverTarget,
@@ -128,5 +129,17 @@ describe('map fit', () => {
     const view: [number, number, number, number] = [0, 0, 1, 1];
     expect(anyOutside([{ lat: 0.5, lng: 0.5 }], view)).toBe(false);
     expect(anyOutside([{ lat: 0.5, lng: 0.5 }, { lat: 2, lng: 0.5 }], view)).toBe(true);
+  });
+});
+
+describe('receiverTakeoverShowing (Home Back yields to the takeover)', () => {
+  const m = (userId: string, sos: boolean) => ({ userId, name: userId, sos, sosAt: '2026-10-24T10:00:00Z', leftAt: null });
+  it('is true while another rider\'s SOS is on and not dismissed', () => {
+    expect(receiverTakeoverShowing([m('a', true)], 'me', {}, 0)).toBe(true);
+  });
+  it('is false for my own SOS, no SOS, or a dismissed one', () => {
+    expect(receiverTakeoverShowing([m('me', true)], 'me', {}, 0)).toBe(false);
+    expect(receiverTakeoverShowing([m('a', false)], 'me', {}, 0)).toBe(false);
+    expect(receiverTakeoverShowing([m('a', true)], 'me', { 'a:2026-10-24T10:00:00Z': true }, 0)).toBe(false);
   });
 });

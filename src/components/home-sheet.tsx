@@ -8,22 +8,25 @@ import { Icon } from '@/components/icon';
 import { useReduceMotion } from '@/hooks/use-reduce-motion';
 import { copy } from '@/lib/copy';
 import { haptic } from '@/lib/haptics';
-import { settleHomeSnap, toggleHomeSnap, type HomeSnap } from '@/lib/plan-flow';
+import { homeStripHeight, settleHomeSnap, toggleHomeSnap, type HomeSnap } from '@/lib/plan-flow';
 import { elevate, family, font, motion, radius, size, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
 interface HomeSheetProps {
   snap: HomeSnap;
   onSnapChange: (snap: HomeSnap) => void;
-  /** Header text: the greeting, or the first-run welcome. */
+  /** The strip's one line: the greeting, or the first-run welcome. */
   title: string;
+  /**
+   * A ride is open: the strip's line is a compact "Back to <ride>" row that opens the ride (tapping elsewhere on the strip,
+   * the grab handle, or dragging still expands it).
+   */
+  resume?: { label: string; a11yLabel: string; onPress: () => void };
   /** Visible height right now. Owned by the parent so the map controls follow it; this component animates it. */
   visible: SharedValue<number>;
   /** The expanded sheet stops here (8 dp under the search bar, 22 §3.1.1). */
   maxHeight: number;
-  /** Always visible, under the header. */
-  peek: ReactNode;
-  /** Under the peek block; reached by expanding. */
+  /** Everything but the strip: tiles, ride card, recent places and so on, reached by pulling the strip up. */
   expanded: ReactNode;
   /**
    * The map attribution, shown in a footer row above the gesture inset while the sheet is expanded (it reaches up
@@ -31,27 +34,27 @@ interface HomeSheetProps {
    * One line per `\n` (the licence line, plus the terrain credit while Terrain is on, 25 §5.1).
    */
   attribution?: string | null;
-  /** The two resting heights, once measured (the parent's camera padding follows them). */
+  /** The two resting heights (the strip, and the expanded sheet once measured); the parent's camera padding follows them. */
   onHeights: (heights: { peek: number; expanded: number }) => void;
 }
 
 /**
- * Two-snap bottom sheet of the map home (22 §3.1.1). Mechanics copied from the live group sheet: only the
- * header takes the drag, so the body keeps its own scrolling; release settles by velocity; Reduce Motion
- * snaps without animation; every drag has a tap equivalent (header, chevron) and a screen-reader action.
+ * Two-snap bottom sheet of the map home (22 §3.1.1, 28). Collapsed it is a thin strip, a grab handle and one line, like
+ * Google Maps' "Explore" strip; tapping or pulling it up shows everything. Mechanics copied from the live group sheet:
+ * only the strip takes the drag, so the body keeps its own scrolling; release settles by velocity; Reduce Motion snaps
+ * without animation; every drag has a tap equivalent (the strip) and a screen-reader action.
  */
-export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek, expanded, attribution, onHeights }: HomeSheetProps) {
+export function HomeSheet({ snap, onSnapChange, title, resume, visible, maxHeight, expanded, attribution, onHeights }: HomeSheetProps) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
-  const [peekBlockH, setPeekBlockH] = useState(0);
   const [expandedBlockH, setExpandedBlockH] = useState(0);
 
-  // Header + the peek block, then the gesture inset (the body is clipped above it, so the inset sits after the
-  // last row visible in either snap and the expanded blocks never show through it), then the expanded blocks.
+  // The strip, then the gesture inset (the body is clipped above it, so the inset sits after the last row visible in
+  // either snap and the expanded blocks never show through it), then the expanded blocks.
   // 8 + 16 a line (24 for one, as the map pill).
   const attrRow = attribution ? space.sm + 16 * attribution.split('\n').length : 0;
-  const peekH = size.sheetHeader + peekBlockH + insets.bottom;
+  const peekH = homeStripHeight(insets.bottom);
   const contentH = peekH + expandedBlockH + attrRow;
   const expandedH = Math.max(peekH, Math.min(contentH, maxHeight));
   const target = snap === 'expanded' ? expandedH : peekH;
@@ -128,15 +131,16 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
     onSnapChange(toggleHomeSnap(snap));
   };
   const onA11yAction = (e: AccessibilityActionEvent) => {
-    if (e.nativeEvent.actionName === 'increment') onSnapChange('expanded');
-    else if (e.nativeEvent.actionName === 'decrement') onSnapChange('peek');
+    if (e.nativeEvent.actionName === 'expand') onSnapChange('expanded');
+    else if (e.nativeEvent.actionName === 'collapse') onSnapChange('peek');
   };
   const isExpanded = snap === 'expanded';
+  const stripActions = [
+    { name: 'expand', label: copy['homeMap.sheetExpandA11y'] },
+    { name: 'collapse', label: copy['homeMap.sheetCollapseA11y'] },
+  ];
+  const stripHint = isExpanded ? copy['homeMap.sheetCollapseA11y'] : copy['homeMap.sheetExpandA11y'];
 
-  const onPeekLayout = (e: LayoutChangeEvent) => {
-    const h = Math.round(e.nativeEvent.layout.height);
-    setPeekBlockH((prev) => (prev === h ? prev : h));
-  };
   const onExpandedLayout = (e: LayoutChangeEvent) => {
     const h = Math.round(e.nativeEvent.layout.height);
     setExpandedBlockH((prev) => (prev === h ? prev : h));
@@ -147,28 +151,49 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
       <GestureDetector gesture={pan}>
         <View style={styles.header}>
           <View pointerEvents="none" style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
-          <Pressable
-            accessibilityRole="adjustable"
-            accessibilityLabel={copy['homeMap.sheetA11y']}
-            accessibilityValue={{ text: `${isExpanded ? copy['live.sheetValueExpanded'] : copy['live.sheetValueCollapsed']}. ${title}` }}
-            accessibilityActions={[
-              { name: 'increment', label: copy['homeMap.sheetExpandA11y'] },
-              { name: 'decrement', label: copy['homeMap.sheetCollapseA11y'] },
-            ]}
-            onAccessibilityAction={onA11yAction}
-            onPress={toggle}
-            style={styles.titlePress}>
-            <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>
-              {title}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={isExpanded ? copy['homeMap.sheetCollapseA11y'] : copy['homeMap.sheetExpandA11y']}
-            onPress={toggle}
-            style={styles.chevron}>
-            <Icon name={isExpanded ? 'chevronDown' : 'chevronUp'} color={colors.textMuted} size={24} />
-          </Pressable>
+          {resume ? (
+            <>
+              {/* The handle is the expand control while a ride is open (the line below opens the ride). */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={copy['homeMap.sheetA11y']}
+                accessibilityHint={stripHint}
+                accessibilityActions={stripActions}
+                onAccessibilityAction={onA11yAction}
+                onPress={toggle}
+                style={styles.handleZone}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={resume.a11yLabel}
+                accessibilityActions={stripActions}
+                onAccessibilityAction={onA11yAction}
+                onPress={() => {
+                  haptic('select');
+                  resume.onPress();
+                }}
+                style={styles.resumeRow}>
+                <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>
+                  {resume.label}
+                </Text>
+                <Icon name="chevronRight" color={colors.textMuted} size={24} />
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={copy['homeMap.sheetA11y']}
+              accessibilityValue={{ text: `${isExpanded ? copy['live.sheetValueExpanded'] : copy['live.sheetValueCollapsed']}. ${title}` }}
+              accessibilityHint={stripHint}
+              accessibilityActions={stripActions}
+              onAccessibilityAction={onA11yAction}
+              onPress={toggle}
+              style={styles.titlePress}>
+              <Text numberOfLines={1} maxFontSizeMultiplier={1.3} style={[styles.title, { color: colors.text }]}>
+                {title}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </GestureDetector>
       <Reanimated.View style={[styles.bodyClip, bodyStyle]}>
@@ -179,9 +204,6 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
           bounces={false}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled">
-          <View onLayout={onPeekLayout} style={{ paddingBottom: space.sm }}>
-            {peek}
-          </View>
           <View
             onLayout={onExpandedLayout}
             style={{ paddingBottom: space.lg }}
@@ -207,6 +229,8 @@ export function HomeSheet({ snap, onSnapChange, title, visible, maxHeight, peek,
   );
 }
 
+const HANDLE_ZONE = 24;
+
 const styles = StyleSheet.create({
   sheet: {
     position: 'absolute',
@@ -216,11 +240,14 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
   },
-  header: { height: size.sheetHeader, flexDirection: 'row', alignItems: 'center' },
+  header: { height: size.sheetHeader },
   grabber: { position: 'absolute', top: 6, alignSelf: 'center', left: '50%', marginLeft: -20, width: 40, height: 4, borderRadius: 2 },
-  titlePress: { flex: 1, height: size.sheetHeader, justifyContent: 'center', paddingLeft: space.lg },
-  title: { fontSize: font.md, lineHeight: 22, fontFamily: family.semibold },
-  chevron: { width: size.sheetHeader, height: size.sheetHeader, alignItems: 'center', justifyContent: 'center' },
+  // The whole strip is the button; the line sits below the handle.
+  titlePress: { height: size.sheetHeader, justifyContent: 'center', paddingTop: space.md, paddingHorizontal: space.lg },
+  // With a ride open: a 24 dp handle zone on top, the 32 dp resume row under it.
+  handleZone: { height: HANDLE_ZONE },
+  resumeRow: { height: size.sheetHeader - HANDLE_ZONE, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },
+  title: { flex: 1, fontSize: font.md, lineHeight: 22, fontFamily: family.semibold },
   bodyClip: { overflow: 'hidden' },
   body: { flex: 1 },
   attribution: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },

@@ -10,6 +10,7 @@ import {
 import { cacheOpenRide, cacheProfile } from '@/lib/offline-cache';
 import { unmarkNavRide } from '@/lib/nav-rides';
 import { mapRecentRides, type RecentRide } from '@/lib/recent-rides';
+import type { PlaceCategory } from '@/lib/place-search';
 import { supabase } from '@/lib/supabase';
 import { useLiveUiStore } from '@/store/live-ui-store';
 import { track } from '@/lib/telemetry';
@@ -234,6 +235,8 @@ export interface StopInput {
   lat: number;
   lng: number;
   kind: StopKind;
+  /** What kind of place it is (picks the icon); omitted/null for a stop with none. */
+  category?: PlaceCategory | null;
 }
 
 export interface ProposeStopResult {
@@ -242,18 +245,30 @@ export interface ProposeStopResult {
   eventId: number;
 }
 
+/** PostgREST could not find a function with these arguments (PGRST202). */
+function isFunctionNotFound(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const e = error as { code?: unknown; message?: unknown };
+  return e.code === 'PGRST202' || (typeof e.message === 'string' && /could not find the function/i.test(e.message));
+}
+
 /** Leader: sets the stop now. Rider: sends a proposal the leader must accept. */
 export async function proposeStop(rideId: string, stop: StopInput): Promise<ProposeStopResult> {
-  const data = unwrap(
-    await supabase.rpc('propose_stop', {
-      p_ride_id: rideId,
-      p_name: stop.name,
-      p_address: stop.address ?? '',
-      p_lat: stop.lat,
-      p_lng: stop.lng,
-      p_kind: stop.kind,
-    }),
-  ) as { applied?: boolean; event_id?: number };
+  const args = {
+    p_ride_id: rideId,
+    p_name: stop.name,
+    p_address: stop.address ?? '',
+    p_lat: stop.lat,
+    p_lng: stop.lng,
+    p_kind: stop.kind,
+  };
+  // Left out when unknown: the server default is null.
+  let result = await supabase.rpc('propose_stop', stop.category ? { ...args, p_category: stop.category } : args);
+  // Migration 0012 not applied yet: the 7-argument function does not exist. The stop still works without its icon.
+  if (stop.category && result.error && isFunctionNotFound(result.error)) {
+    result = await supabase.rpc('propose_stop', args);
+  }
+  const data = unwrap(result) as { applied?: boolean; event_id?: number };
   return { applied: !!data.applied, eventId: Number(data.event_id) };
 }
 

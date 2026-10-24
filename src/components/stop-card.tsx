@@ -4,6 +4,8 @@ import { Icon } from '@/components/icon';
 import { copy, t } from '@/lib/copy';
 import { STOP_CARD_H } from '@/lib/live-sheet';
 import { stopCardA11y, type StopCardParts } from '@/lib/nav-route';
+import type { PlaceCategory } from '@/lib/place-search';
+import { breakIcon } from '@/lib/stop-ui';
 import { family, font, fontNumeric, radius, space } from '@/theme/tokens';
 import { useTheme } from '@/theme/use-theme';
 
@@ -15,6 +17,8 @@ interface StopCardProps {
   parts: StopCardParts;
   /** Muted second line when the stop came from a proposal. */
   suggestedBy: string | null;
+  /** The stop's kind of place (its icon); null = the cup. */
+  category?: PlaceCategory | null;
   /** Tap = frame me + the stop. */
   onPress: () => void;
 }
@@ -24,7 +28,7 @@ interface StopCardProps {
  * the fact: distance and ETA at 20 semibold, the place name below it. Removing the stop lives in the
  * leader's menu, not here.
  */
-export function StopCard({ parts, suggestedBy, onPress }: StopCardProps) {
+export function StopCard({ parts, suggestedBy, category, onPress }: StopCardProps) {
   const { colors } = useTheme();
   const { arrived, distance, eta, name } = parts;
   const noFix = !arrived && distance === null;
@@ -33,7 +37,7 @@ export function StopCard({ parts, suggestedBy, onPress }: StopCardProps) {
     : suggestedBy
       ? t('stop.cardSubSuggested', { name, by: suggestedBy })
       : name;
-  const glyph = arrived ? 'checkCircle' : parts.kind === 'destination' ? 'endRide' : 'coffee';
+  const glyph = arrived ? 'checkCircle' : parts.kind === 'destination' ? 'endRide' : breakIcon(category);
   return (
     <Pressable
       accessibilityRole="button"

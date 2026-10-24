@@ -1,4 +1,4 @@
-import { previewFitPoints, previewPadding } from '../preview-fit';
+import { previewFitPoints, previewPadding, resultsFitPoints } from '../preview-fit';
 
 const me = { lat: 12.97, lng: 77.59 };
 const dest = { lat: 12.3, lng: 76.65 };
@@ -24,13 +24,32 @@ describe('previewPadding', () => {
 
 describe('previewFitPoints', () => {
   it('frames the whole road route when there is one', () => {
-    expect(previewFitPoints({ coords: road, dashed: false }, me, dest)).toBe(road);
+    expect(previewFitPoints([{ coords: road }], me, dest)).toEqual(road);
   });
-  it('frames me and the destination for the dashed line or while loading', () => {
-    expect(previewFitPoints({ coords: [me, dest], dashed: true }, me, dest)).toEqual([me, dest]);
-    expect(previewFitPoints(null, me, dest)).toEqual([me, dest]);
+  it('frames every alternative as well, so none is cut off', () => {
+    const other = [me, { lat: 12.8, lng: 76.9 }, dest];
+    expect(previewFitPoints([{ coords: road }, { coords: other }], me, dest)).toEqual([...road, ...other]);
+  });
+  it('frames me and the destination while the routes load or none came: never a straight line', () => {
+    expect(previewFitPoints([], me, dest)).toEqual([me, dest]);
+    expect(previewFitPoints([{ coords: [me] }], me, dest)).toEqual([me, dest]);
   });
   it('has nothing to frame without a start point (the camera sits on the destination)', () => {
-    expect(previewFitPoints(null, null, dest)).toEqual([]);
+    expect(previewFitPoints([], null, dest)).toEqual([]);
+  });
+});
+
+describe('resultsFitPoints', () => {
+  const a = { lat: 12.9, lng: 77.5 };
+  const b = { lat: 12.95, lng: 77.6 };
+  it('frames every result', () => {
+    expect(resultsFitPoints([a, b], me)).toEqual([a, b]);
+  });
+  it('a lone result is framed with me, for a sense of scale; without a fix it is alone', () => {
+    expect(resultsFitPoints([a], me)).toEqual([a, me]);
+    expect(resultsFitPoints([a], null)).toEqual([a]);
+  });
+  it('no results, nothing to frame', () => {
+    expect(resultsFitPoints([], me)).toEqual([]);
   });
 });

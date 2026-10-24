@@ -2,6 +2,7 @@
 // no React, no store, so it is unit-tested.
 import { t } from '@/lib/copy';
 import { firstName } from '@/lib/names';
+import { asPlaceCategory, type PlaceCategory } from '@/lib/place-search';
 import type { EventRow, StopKind } from '@/lib/ride-api';
 
 export interface StopPayload {
@@ -10,6 +11,8 @@ export interface StopPayload {
   lat: number;
   lng: number;
   kind: StopKind;
+  /** Null when the proposer's app sent none. */
+  category: PlaceCategory | null;
 }
 
 export interface PendingProposal {
@@ -35,11 +38,11 @@ function asObject(v: unknown): Record<string, unknown> {
 /** Reads a stop_proposed / stop_set payload; null when a field is missing or invalid. */
 export function parseStopPayload(payload: unknown): StopPayload | null {
   const p = asObject(payload);
-  const { name, address, lat, lng, kind } = p;
+  const { name, address, lat, lng, kind, category } = p;
   if (typeof name !== 'string' || !name.trim()) return null;
   if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (kind !== 'break' && kind !== 'destination') return null;
-  return { name, address: typeof address === 'string' && address ? address : null, lat, lng, kind };
+  return { name, address: typeof address === 'string' && address ? address : null, lat, lng, kind, category: asPlaceCategory(category) };
 }
 
 function proposalIdOf(e: EventRow): number | null {

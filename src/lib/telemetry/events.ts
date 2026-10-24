@@ -41,7 +41,7 @@ export const EVENTS = [
   'nav.voice_muted', // muted: boolean (true = muted)
   'nav.voice_skipped', // reason: session (the audio session could not start)
   'nav.fix_latency', // n, avg_ms, max_ms, max_batch, app_state: fix time vs engine receipt, per minute of navigation
-  'home.search_opened', // from: bar | chip
+  'home.search_opened', // from: bar | chip | fab | ride (the ride view's stop search, 28 §8)
   'home.place_opened', // from: search | recent
   'home.directions',
   'error.shown',

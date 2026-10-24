@@ -45,6 +45,8 @@ interface SosState {
   /** Refreshes `myContacts`; keeps the cached list when offline. */
   loadMyContacts: () => Promise<void>;
   setMyContacts: (rows: EmergencyContact[]) => void;
+  /** Sign-out: drop the cached contacts (reset() keeps them). */
+  clearContacts: () => void;
 }
 
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -157,10 +159,10 @@ export const useSosStore = create<SosState>((set, get) => {
         cursor: 0,
         onMyWaySent: {},
         panelOpen: false,
-        myContacts: [],
-        myContactsLoaded: false,
       });
     },
+    // My contacts belong to the account, not the ride: a ride reset keeps them (Home's emergency sheet needs them).
+    clearContacts: () => set({ myContacts: [], myContactsLoaded: false }),
   };
 });
 

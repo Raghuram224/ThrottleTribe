@@ -19,6 +19,7 @@ import {
   type SheetSnap,
   stepSnap,
   summaryLine,
+  withSheetInset,
 } from '../live-sheet';
 
 const rider = (id: string, status: RiderItem['status']): RiderItem => ({
@@ -218,5 +219,15 @@ describe('summary and pinned alerts', () => {
   });
   it('pins nothing when everyone is moving', () => {
     expect(pinnedAlerts([rider('a', 'moving'), { kind: 'me', key: 'me' }])).toEqual([]);
+  });
+});
+
+describe('withSheetInset (28 §8)', () => {
+  const heights = { collapsed: 72, half: 300, expanded: 500 };
+  it('adds the navigation-bar inset to every snap, where the sheet reaches the bottom of the screen', () => {
+    expect(withSheetInset(heights, 24)).toEqual({ collapsed: 96, half: 324, expanded: 524 });
+  });
+  it('no inset (the live screen: the sheet sits above its action bar) leaves the heights as they are', () => {
+    expect(withSheetInset(heights, 0)).toBe(heights);
   });
 });

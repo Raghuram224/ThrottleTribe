@@ -24,6 +24,7 @@ type RideRow = {
   stop_lat: number | null;
   stop_lng: number | null;
   stop_kind: string | null;
+  stop_category: string | null;
   stop_set_by: string | null;
   stop_set_at: string | null;
 };
@@ -371,6 +372,7 @@ export type Database = {
           stop_lat?: number | null;
           stop_lng?: number | null;
           stop_kind?: string | null;
+          stop_category?: string | null;
           stop_set_by?: string | null;
           stop_set_at?: string | null;
         };
@@ -389,6 +391,7 @@ export type Database = {
           stop_lat?: number | null;
           stop_lng?: number | null;
           stop_kind?: string | null;
+          stop_category?: string | null;
           stop_set_by?: string | null;
           stop_set_at?: string | null;
         };
@@ -419,7 +422,15 @@ export type Database = {
       };
       leave_ride: { Args: { p_ride_id: string }; Returns: undefined };
       propose_stop: {
-        Args: { p_address: string; p_kind: string; p_lat: number; p_lng: number; p_name: string; p_ride_id: string };
+        Args: {
+          p_address: string;
+          p_category?: string;
+          p_kind: string;
+          p_lat: number;
+          p_lng: number;
+          p_name: string;
+          p_ride_id: string;
+        };
         Returns: Json;
       };
       rename_ride: {

@@ -7,21 +7,28 @@ import {
   chipsTop,
   firstRunSeenOnSnap,
   HOME_CAMERA_SAVE_MS,
+  fallbackPadding,
   HOME_FALLBACK_CAMERA,
   homeMapMounted,
   homeTiles,
   homeSheetBlocks,
   initialCamera,
   initialSheetSnap,
+  isFallbackCamera,
   isFirstRun,
   meSlotForHome,
   openRideCard,
   parseCamera,
-  peekRecentCount,
   placePadding,
+  FAB_STACK,
+  HOME_STRIP_H,
+  homeStripHeight,
+  resultsPanelHeight,
+  searchResultsPadding,
   placeSubline,
   placeSummaryA11y,
   planBack,
+  rideBack,
   roundCamera,
   searchBarTarget,
   settleHomeSnap,
@@ -32,6 +39,7 @@ import {
   startStep,
   toggleHomeSnap,
   whereToHref,
+  type PlanMode,
   type SheetBlocksInput,
 } from '../plan-flow';
 import { copy } from '../copy';
@@ -44,18 +52,21 @@ describe('planBack (22 §2.1, §5.1)', () => {
     expect(planBack({ mode: 'route', from: 'recent', sheetSnap: 'peek' })).toEqual({ mode: 'browse', sheetSnap: 'peek' });
     expect(planBack({ mode: 'route', from: null, sheetSnap: 'peek' })).toEqual({ mode: 'browse', sheetSnap: 'peek' });
   });
-  it('place goes back to browse', () => {
-    expect(planBack({ mode: 'place', from: 'search', sheetSnap: 'peek' })).toEqual({ mode: 'browse', sheetSnap: 'peek' });
+  it('place goes back to the search results it was picked from (28)', () => {
+    expect(planBack({ mode: 'place', from: 'search', sheetSnap: 'peek' })).toEqual({ mode: 'search', sheetSnap: 'peek' });
+  });
+  it('search goes back to browse', () => {
+    expect(planBack({ mode: 'search', from: null, sheetSnap: 'peek' })).toEqual({ mode: 'browse', sheetSnap: 'peek' });
   });
   it('browse: an expanded sheet collapses first, then the OS leaves the app', () => {
     expect(planBack({ mode: 'browse', from: null, sheetSnap: 'expanded' })).toEqual({ mode: 'browse', sheetSnap: 'peek' });
     expect(planBack({ mode: 'browse', from: null, sheetSnap: 'peek' })).toBeNull();
   });
-  it('walks the whole stack: route(search) -> place -> browse -> collapse -> leave', () => {
-    type Cur = { mode: 'browse' | 'place' | 'route'; from: 'search' | 'recent' | null; sheetSnap: 'peek' | 'expanded' };
+  it('walks the whole stack: route(search) -> place -> search -> browse -> collapse -> leave', () => {
+    type Cur = { mode: PlanMode; from: 'search' | 'recent' | null; sheetSnap: 'peek' | 'expanded' };
     let cur: Cur = { mode: 'route', from: 'search', sheetSnap: 'expanded' };
     const steps: string[] = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       const next = planBack(cur);
       if (!next) {
         steps.push('leave');
@@ -64,7 +75,7 @@ describe('planBack (22 §2.1, §5.1)', () => {
       steps.push(`${next.mode}/${next.sheetSnap}`);
       cur = { ...cur, ...next };
     }
-    expect(steps).toEqual(['place/expanded', 'browse/expanded', 'browse/peek', 'leave']);
+    expect(steps).toEqual(['place/expanded', 'search/expanded', 'browse/expanded', 'browse/peek', 'leave']);
   });
 });
 
@@ -98,41 +109,80 @@ describe('homeSheetBlocks (22 §3.1.2)', () => {
     hasStats: true,
     showRecentRides: true,
   };
-  it('first run: sub + tiles in the peek; location row, steps, nudge expanded', () => {
+  it('first run: the strip is the title; sub, tiles, location row, steps and nudge are all expanded', () => {
     expect(homeSheetBlocks({ ...base, firstRun: true, locationGranted: false })).toEqual({
-      peek: ['firstSub', 'tiles'],
-      expanded: ['locationRow', 'steps', 'nudge'],
+      strip: 'title',
+      expanded: ['firstSub', 'tiles', 'locationRow', 'steps', 'nudge'],
     });
     expect(homeSheetBlocks({ ...base, firstRun: true, hasNudge: false })).toEqual({
-      peek: ['firstSub', 'tiles'],
-      expanded: ['steps'],
+      strip: 'title',
+      expanded: ['firstSub', 'tiles', 'steps'],
     });
   });
-  it('returning: tiles + recent peek; then recents, location, nudge, stats, rides', () => {
+  it('returning: tiles, then every recent place, location, nudge, stats, rides (28: nothing is left in the strip)', () => {
     expect(homeSheetBlocks({ ...base, locationGranted: false })).toEqual({
-      peek: ['tiles', 'recentPeek'],
-      expanded: ['recentPlaces', 'locationRow', 'nudge', 'stats', 'recentRides'],
+      strip: 'title',
+      expanded: ['tiles', 'recentPlaces', 'locationRow', 'nudge', 'stats', 'recentRides'],
     });
   });
-  it('returning with no recent places has only the tiles in the peek', () => {
+  it('returning with no recent places has no recents block', () => {
     const b = homeSheetBlocks({ ...base, recentPlaces: 0 });
-    expect(b.peek).toEqual(['tiles']);
+    expect(b.expanded[0]).toBe('tiles');
     expect(b.expanded).not.toContain('recentPlaces');
   });
-  it('an open ride hides the tiles; the card is the only peek block', () => {
-    expect(homeSheetBlocks({ ...base, openRide: 'active' })).toEqual({ peek: ['rideCard'], expanded: ['nudge', 'recentRides'] });
+  it('an open ride makes the strip a "Back to ride" row and hides the tiles; the ride card leads the expanded sheet', () => {
+    expect(homeSheetBlocks({ ...base, openRide: 'active' })).toEqual({ strip: 'resume', expanded: ['rideCard', 'nudge', 'recentRides'] });
     expect(homeSheetBlocks({ ...base, openRide: 'lobby' })).toEqual({
-      peek: ['rideCard'],
-      expanded: ['nudge', 'recentPlaces', 'recentRides'],
+      strip: 'resume',
+      expanded: ['rideCard', 'nudge', 'recentPlaces', 'recentRides'],
     });
     for (const openRide of ['active', 'lobby'] as const) {
-      const b = homeSheetBlocks({ ...base, openRide });
-      expect([...b.peek, ...b.expanded]).not.toContain('tiles');
+      expect(homeSheetBlocks({ ...base, openRide }).expanded).not.toContain('tiles');
     }
   });
-  it('never offers the tiles and "Back to ride" together (one primary)', () => {
-    const b = homeSheetBlocks({ ...base, openRide: 'lobby' });
-    expect(b.peek.includes('tiles') && b.peek.includes('rideCard')).toBe(false);
+  it('the strip never carries tiles or recents: there are no peek blocks at all', () => {
+    for (const openRide of ['none', 'active', 'lobby'] as const) {
+      for (const firstRun of [false, true]) {
+        expect(homeSheetBlocks({ ...base, openRide, firstRun })).not.toHaveProperty('peek');
+      }
+    }
+  });
+});
+
+describe('the thin strip (28)', () => {
+  it('is the 56 dp header (grab handle + one line) plus the gesture inset; no chevron, no body', () => {
+    expect(HOME_STRIP_H).toBe(56);
+    expect(homeStripHeight(0)).toBe(56);
+    expect(homeStripHeight(24)).toBe(80);
+  });
+  it('the camera padding follows the strip height: a smaller sheet leaves more map', () => {
+    const strip = browsePadding({ insetTop: 24, bannerH: 0, chipsShown: true, sheetH: homeStripHeight(24) });
+    const old = browsePadding({ insetTop: 24, bannerH: 0, chipsShown: true, sheetH: homeStripHeight(24) + 200 });
+    expect(strip.bottom).toBe(80 + 40);
+    expect(old.bottom - strip.bottom).toBe(200);
+  });
+});
+
+describe('floating buttons (28)', () => {
+  it('the ride view\'s stack is 56 dp circles with a 12 dp gap', () => {
+    expect(FAB_STACK.size).toBe(56);
+    expect(FAB_STACK.gap).toBe(12);
+  });
+  it('browse has no floating stack: the camera keeps the usual 16 dp on the right', () => {
+    expect(browsePadding({ insetTop: 24, bannerH: 0, chipsShown: true, sheetH: 80 }).right).toBe(16);
+  });
+});
+
+describe('search results layout (28)', () => {
+  it('the results panel is about 45% of the window', () => {
+    expect(resultsPanelHeight(800)).toBe(360);
+    expect(resultsPanelHeight(640)).toBe(288);
+  });
+  it('the pins fit under the bar and chips (clearing a pin\'s own height) and above the panel and attribution', () => {
+    // 360 x 780: status bar 24, panel 351.
+    expect(searchResultsPadding(24, 351)).toEqual({ top: 24 + 8 + 56 + 8 + 48 + 16 + 44, bottom: 351 + 24 + 24 + 4, left: 48, right: 48 });
+    expect(searchResultsPadding(24 + 40, 351).top).toBe(searchResultsPadding(24, 351).top + 40);
+    expect(searchResultsPadding(24, 351, 2).bottom).toBeGreaterThan(searchResultsPadding(24, 351, 1).bottom);
   });
 });
 
@@ -156,26 +206,46 @@ describe('first run (22 §3.1.2)', () => {
   });
 });
 
-describe('peekRecentCount', () => {
-  it('2 rows on a tall phone, 1 on a short one, never more than there are', () => {
-    expect(peekRecentCount(800, 5)).toBe(2);
-    expect(peekRecentCount(760, 5)).toBe(2);
-    expect(peekRecentCount(759, 5)).toBe(1);
-    expect(peekRecentCount(800, 1)).toBe(1);
-    expect(peekRecentCount(800, 0)).toBe(0);
+describe('homeMapMounted (22 §4.3, 28 §8)', () => {
+  it('flag off: only Home, search and the preview redirect keep the map', () => {
+    for (const p of ['/home', '/where-to', '/route-preview', '/home/', '/home?welcome=1']) {
+      expect(homeMapMounted(p, false)).toBe(true);
+    }
+  });
+  it('flag off: every ride screen and everything else unmounts it (one GL map at a time)', () => {
+    for (const p of ['/ride/abc/live', '/ride/abc/lobby', '/ride/abc/search', '/permissions', '/profile', '/join', '/rides', '/new-ride', '/']) {
+      expect(homeMapMounted(p, false)).toBe(false);
+    }
+  });
+  it('ride on Home: a deny-list, only the ride summary (it draws its own map) unmounts it', () => {
+    for (const p of ['/ride/abc/summary', '/ride/abc/summary/', '/ride/abc/summary?x=1']) {
+      expect(homeMapMounted(p, true)).toBe(false);
+    }
+  });
+  it('ride on Home: the lobby, invite, live hand-off and every other screen keep the map under them', () => {
+    for (const p of ['/home', '/ride/abc/live', '/ride/abc/lobby', '/ride/abc/invite', '/ride/abc/search', '/profile', '/join', '/permissions', '/where-to']) {
+      expect(homeMapMounted(p, true)).toBe(true);
+    }
   });
 });
 
-describe('homeMapMounted (22 §4.3)', () => {
-  it('only Home, search and the preview redirect keep the map', () => {
-    for (const p of ['/home', '/where-to', '/route-preview', '/home/', '/home?welcome=1']) {
-      expect(homeMapMounted(p)).toBe(true);
-    }
+describe('rideBack (28 §8): one step at a time inside the ride view', () => {
+  const open = { rideView: true, stopSearch: false, riderSelected: false, fullMap: false, stripOpen: false };
+  it('outside the ride view it is not its business: planBack and the OS decide', () => {
+    expect(rideBack({ ...open, rideView: false })).toBeNull();
+    expect(rideBack({ ...open, rideView: false, fullMap: true, riderSelected: true })).toBeNull();
   });
-  it('every ride screen and everything else unmounts it (one GL map at a time)', () => {
-    for (const p of ['/ride/abc/live', '/ride/abc/lobby', '/ride/abc/search', '/permissions', '/profile', '/join', '/rides', '/new-ride', '/']) {
-      expect(homeMapMounted(p)).toBe(false);
-    }
+  it('closes the stop search first, whatever else is open', () => {
+    expect(rideBack({ ...open, stopSearch: true, riderSelected: true, fullMap: true, stripOpen: true })).toBe('close-stop-search');
+  });
+  it('then clears a selected rider, leaves full map and collapses the list', () => {
+    const state = { ...open, riderSelected: true, fullMap: true, stripOpen: true };
+    expect(rideBack(state)).toBe('clear-selection');
+    expect(rideBack({ ...state, riderSelected: false })).toBe('exit-full-map');
+    expect(rideBack({ ...state, riderSelected: false, fullMap: false })).toBe('collapse-strip');
+  });
+  it('a bare ride view hands Back to the system: there is no browse to go to while a ride is active', () => {
+    expect(rideBack(open)).toBe('system');
   });
 });
 
@@ -325,6 +395,8 @@ describe('camera padding counts everything that floats (22 §4.2)', () => {
     expect(mapTypeTop({ mode: 'browse', insetTop: 24, bannerH: 0, chipsShown: false })).toBe(96);
     expect(mapTypeTop({ mode: 'place', insetTop: 24, bannerH: 0, chipsShown: false })).toBe(96);
     expect(mapTypeTop({ mode: 'route', insetTop: 24, bannerH: 0, chipsShown: false })).toBe(32);
+    // The search results: under the chip row, like browse.
+    expect(mapTypeTop({ mode: 'search', insetTop: 24, bannerH: 0, chipsShown: true })).toBe(152);
     // The offline banner pushes it down by its height, like the bar.
     expect(mapTypeTop({ mode: 'browse', insetTop: 24, bannerH: 40, chipsShown: true })).toBe(192);
     expect(mapTypeTop({ mode: 'route', insetTop: 24, bannerH: 40, chipsShown: false })).toBe(72);
@@ -395,5 +467,38 @@ describe('the launch location prompt (D5, D6: once per app run, never on web)', 
     expect(launchPromptWanted({ ...base, status: 'granted' })).toBe(false);
     expect(launchPromptWanted({ ...base, status: 'denied' })).toBe(false);
     expect(launchPromptWanted({ ...base, canAskAgain: false })).toBe(false);
+  });
+});
+
+describe('fallback frame (audit 4)', () => {
+  it('recognises the stand-in by value, so a camera saved from it is still the stand-in', () => {
+    expect(isFallbackCamera(initialCamera(null, null))).toBe(true);
+    expect(isFallbackCamera({ ...HOME_FALLBACK_CAMERA })).toBe(true);
+    expect(isFallbackCamera(parseCamera(JSON.stringify(HOME_FALLBACK_CAMERA))!)).toBe(true);
+  });
+
+  it("never mistakes a rider's own camera for it", () => {
+    expect(isFallbackCamera(initialCamera(null, { lat: 1, lng: 2 }))).toBe(false);
+    expect(isFallbackCamera({ ...HOME_FALLBACK_CAMERA, zoom: 4.1 })).toBe(false);
+    expect(isFallbackCamera({ lat: 12.9, lng: 77.5, zoom: 15 })).toBe(false);
+  });
+
+  it('keeps the zoom at 4: central India, not the whole country at stamp size', () => {
+    expect(HOME_FALLBACK_CAMERA.zoom).toBe(4);
+  });
+
+  it('passes the sheet as padding while a strip stays visible', () => {
+    const pad = { top: 96, bottom: 500, left: 16, right: 16 };
+    expect(fallbackPadding(pad, 800)).toEqual(pad);
+  });
+
+  it('shrinks the sheet share so at least 120 dp remain for the centre to land in', () => {
+    const p = fallbackPadding({ top: 96, bottom: 700, left: 16, right: 16 }, 800);
+    expect(p.bottom).toBe(800 - 96 - 120);
+    expect(p).toMatchObject({ top: 96, left: 16, right: 16 });
+  });
+
+  it('never goes negative when the bar alone fills the screen', () => {
+    expect(fallbackPadding({ top: 900, bottom: 300, left: 0, right: 0 }, 800).bottom).toBe(0);
   });
 });

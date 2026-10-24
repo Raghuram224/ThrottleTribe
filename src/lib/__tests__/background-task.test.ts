@@ -7,6 +7,9 @@ const mockIngest = jest.fn();
 const mockEnqueue = jest.fn();
 const mockFlush = jest.fn(async () => {});
 let mockTask: TaskFn | null = null;
+const mockDefine = jest.fn();
+// One shared fake for telemetry's reportError: a mock registered by an earlier test may be reused by a later one.
+const mockReport = jest.fn();
 let mockStore: Map<string, string>;
 let mockSosPhase = 'idle';
 const mockTrack = jest.fn();
@@ -14,8 +17,9 @@ const mockTrack = jest.fn();
 jest.mock('expo-sqlite/localStorage/install', () => ({}));
 jest.mock('expo-battery', () => ({ getBatteryLevelAsync: jest.fn(async () => 0.8) }));
 jest.mock('expo-task-manager', () => ({
-  defineTask: (_name: string, fn: TaskFn) => {
+  defineTask: (name: string, fn: TaskFn) => {
     mockTask = fn;
+    mockDefine(name, fn);
   },
 }));
 jest.mock('@/lib/nav-session', () => ({ navSession: { ingest: (...a: unknown[]) => mockIngest(...a) } }));
@@ -33,12 +37,13 @@ const loc = (t: number, over: Record<string, unknown> = {}) => ({
   coords: { latitude: 12.5, longitude: 77.5, accuracy: 6, speed: 14, heading: 90, ...over },
 });
 
+// A fresh copy of the task body per test (its latency window is module state).
 function load() {
-  mockTask = null;
+  let run: TaskFn | null = null;
   jest.isolateModules(() => {
-    jest.requireActual('../location/background-task');
+    run = jest.requireActual('../location/location-task').runLocationTask;
   });
-  return mockTask as unknown as TaskFn;
+  return run as unknown as TaskFn;
 }
 
 beforeEach(() => {
@@ -172,5 +177,94 @@ describe('background task', () => {
     const task = load();
     await task({ data: { locations: [loc(Date.now() - 5000)] } });
     expect(mockTrack).not.toHaveBeenCalled();
+  });
+});
+
+describe('boot-time definition', () => {
+  it('registers the task without loading the heavy modules, and runs the body on the first fix', async () => {
+    mockTask = null;
+    mockDefine.mockClear();
+    mockIngest.mockClear();
+    mockStore.set('ride.currentRideId', 'ride-1');
+    jest.isolateModules(() => {
+      // Evaluating the body module at registration would touch expo-battery and the rest at bundle load.
+      jest.doMock('../location/location-task', () => {
+        throw new Error('loaded at bundle load');
+      });
+      expect(() => jest.requireActual('../location/background-task')).not.toThrow();
+    });
+    expect(mockDefine).toHaveBeenCalledWith('throttle-tribe-location', expect.any(Function));
+    jest.dontMock('../location/location-task');
+    // Isolated, so the lazy require inside the callback lands in the same registry as the registration.
+    let first: Promise<void> | null = null;
+    jest.isolateModules(() => {
+      jest.requireActual('../location/background-task');
+      first = (mockTask as unknown as TaskFn)({ data: { locations: [loc(1000)] } });
+    });
+    await first;
+    expect(mockIngest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a body that fails to load', () => {
+  it('reports it once to telemetry (op: load) and rethrows, so the failure is not silent', async () => {
+    mockReport.mockClear();
+    mockTask = null;
+    let first: Promise<void> | null = null;
+    jest.isolateModules(() => {
+      jest.doMock('../location/location-task', () => {
+        throw new Error('native module missing');
+      });
+      jest.doMock('@/lib/telemetry', () => ({ reportError: (...a: unknown[]) => mockReport(...a), track: jest.fn() }));
+      jest.requireActual('../location/background-task');
+      first = Promise.resolve().then(() => (mockTask as unknown as TaskFn)({ data: { locations: [] } }));
+    });
+    await expect(first).rejects.toThrow('native module missing');
+    expect(mockReport).toHaveBeenCalledWith(expect.any(Error), { kind: 'background_task', extra: { op: 'load' } });
+    jest.dontMock('../location/location-task');
+  });
+
+  it('still rethrows when telemetry cannot load either', async () => {
+    mockTask = null;
+    let first: Promise<void> | null = null;
+    jest.isolateModules(() => {
+      jest.doMock('../location/location-task', () => {
+        throw new Error('native module missing');
+      });
+      jest.doMock('@/lib/telemetry', () => {
+        throw new Error('telemetry down');
+      });
+      jest.requireActual('../location/background-task');
+      first = Promise.resolve().then(() => (mockTask as unknown as TaskFn)({ data: { locations: [] } }));
+    });
+    await expect(first).rejects.toThrow('native module missing');
+    jest.dontMock('../location/location-task');
+    jest.dontMock('@/lib/telemetry');
+  });
+
+  it('reports once per process however many fixes hit the cached failure, and rethrows every time', async () => {
+    mockReport.mockClear();
+    mockTask = null;
+    const errors: unknown[] = [];
+    jest.isolateModules(() => {
+      jest.doMock('../location/location-task', () => {
+        throw new Error('native module missing');
+      });
+      jest.doMock('@/lib/telemetry', () => ({ reportError: (...a: unknown[]) => mockReport(...a), track: jest.fn() }));
+      jest.requireActual('../location/background-task');
+      // Called inside the isolated registry, where the lazy requires resolve to these mocks.
+      for (let i = 0; i < 3; i++) {
+        try {
+          void (mockTask as unknown as TaskFn)({ data: { locations: [] } });
+        } catch (e) {
+          errors.push(e);
+        }
+      }
+    });
+    expect(errors).toHaveLength(3);
+    for (const e of errors) expect((e as Error).message).toBe('native module missing');
+    expect(mockReport).toHaveBeenCalledTimes(1);
+    jest.dontMock('../location/location-task');
+    jest.dontMock('@/lib/telemetry');
   });
 });

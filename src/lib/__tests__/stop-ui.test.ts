@@ -1,11 +1,11 @@
 import type { PendingProposal } from '../stop-proposals';
-import { approvalCardModel, categoryIcon, navLineFor, rideStop, suggestedByName, withStop } from '../stop-ui';
+import { approvalCardModel, breakIcon, categoryIcon, navLineFor, rideStop, suggestedByName, withStop } from '../stop-ui';
 
 const prop = (id: number, userId: string, name = 'Cafe', kind: 'break' | 'destination' = 'break'): PendingProposal => ({
   id,
   userId,
   createdAt: '2026-01-01T00:00:00Z',
-  stop: { name, address: null, lat: 12.9, lng: 77.5, kind },
+  stop: { name, address: null, lat: 12.9, lng: 77.5, kind, category: null },
 });
 const members = {
   priya: { name: 'Priya Nair' },
@@ -24,7 +24,13 @@ describe('rideStop', () => {
     stop_set_by: 'priya',
   };
   it('reads the columns, with an empty address as null', () => {
-    expect(rideStop(cols)).toEqual({ name: 'Cafe', address: null, lat: 12.9, lng: 77.5, kind: 'destination', setBy: 'priya' });
+    expect(rideStop(cols)).toEqual({ name: 'Cafe', address: null, lat: 12.9, lng: 77.5, kind: 'destination', category: null, setBy: 'priya' });
+  });
+  it('reads the category, and ignores a missing or unknown one (old rides, cached rows)', () => {
+    expect(rideStop({ ...cols, stop_kind: 'break', stop_category: 'fuel' })?.category).toBe('fuel');
+    expect(rideStop({ ...cols, stop_category: null })?.category).toBeNull();
+    expect(rideStop({ ...cols, stop_category: 'spaceport' })?.category).toBeNull();
+    expect(rideStop(cols)?.category).toBeNull();
   });
   it('is null without a stop, and an unknown kind falls back to break', () => {
     expect(rideStop(null)).toBeNull();
@@ -98,13 +104,30 @@ describe('withStop', () => {
   const ride = { id: 'r', stop_name: null, stop_address: null, stop_lat: null, stop_lng: null, stop_kind: null, stop_set_by: null, stop_set_at: null };
   it('sets every stop column together and reads back through rideStop, leaving the input alone', () => {
     const next = withStop(ride, { name: 'Palace', address: 'Mysuru', lat: 12.3, lng: 76.6, kind: 'destination' }, 'me', '2026-10-14T10:00:00Z');
-    expect(rideStop(next)).toEqual({ name: 'Palace', address: 'Mysuru', lat: 12.3, lng: 76.6, kind: 'destination', setBy: 'me' });
+    expect(rideStop(next)).toEqual({ name: 'Palace', address: 'Mysuru', lat: 12.3, lng: 76.6, kind: 'destination', category: null, setBy: 'me' });
     expect(next.stop_set_at).toBe('2026-10-14T10:00:00Z');
     expect(next.id).toBe('r');
     expect(ride.stop_name).toBeNull();
   });
+  it('keeps the category the stop was set with', () => {
+    const next = withStop(ride, { name: 'Shell', lat: 1, lng: 2, kind: 'break', category: 'fuel' }, 'me', 't');
+    expect(rideStop(next)?.category).toBe('fuel');
+  });
   it('replaces an earlier stop', () => {
     const first = withStop(ride, { name: 'A', lat: 1, lng: 2, kind: 'break' }, 'me', 't1');
     expect(rideStop(withStop(first, { name: 'B', lat: 3, lng: 4, kind: 'break' }, 'me', 't2'))?.name).toBe('B');
+  });
+});
+
+describe('breakIcon', () => {
+  it('shows the icon of the kind of place for a break, so a fuel stop is not a coffee cup', () => {
+    expect(breakIcon('fuel')).toBe('fuel');
+    expect(breakIcon('cafe')).toBe('coffee');
+    expect(breakIcon('toilets')).toBe('toilets');
+  });
+  it('keeps the cup when the category is unknown (old rides)', () => {
+    expect(breakIcon(null)).toBe('coffee');
+    expect(breakIcon(undefined)).toBe('coffee');
+    expect(breakIcon('other')).toBe('coffee');
   });
 });

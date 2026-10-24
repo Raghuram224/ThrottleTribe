@@ -9,6 +9,14 @@ import { createOncePerWindow, geoCall, type GeoFailure, type GeoOutcome, type Ge
 
 export type PlaceCategory = 'cafe' | 'fuel' | 'restaurant' | 'parking' | 'toilets' | 'other';
 
+/** Same list as the `rides.stop_category` check in supabase/migrations/0012. */
+const PLACE_CATEGORIES: readonly PlaceCategory[] = ['cafe', 'fuel', 'restaurant', 'parking', 'toilets', 'other'];
+
+/** A category read from the server (a ride column or an event payload): null when absent or not one of ours. */
+export function asPlaceCategory(v: unknown): PlaceCategory | null {
+  return PLACE_CATEGORIES.find((c) => c === v) ?? null;
+}
+
 /** Who answered a search; the credit line names it (24 §2.4). Recents saved before Geoapify were Photon. */
 export type PlaceSource = 'geoapify' | 'photon';
 
@@ -195,10 +203,32 @@ export function parseGeoapifyPlaces(data: unknown, me?: LatLng | null, opts: { r
   return out;
 }
 
-/** Chip results: nearest first by the exact fix, optionally nothing beyond `maxM`, at most the nearest 10. */
+/**
+ * Chip results: nearest first by the exact fix, at most the nearest 10. With `maxM`, nothing beyond it and nothing
+ * whose distance is unknown (a row we cannot place is not "within" anything).
+ */
 export function rankChipPlaces(places: readonly Place[], maxM?: number): Place[] {
-  const within = maxM === undefined ? [...places] : places.filter((p) => p.distanceM === null || p.distanceM <= maxM);
+  const within = maxM === undefined ? [...places] : places.filter((p) => p.distanceM !== null && p.distanceM <= maxM);
   return sortByDistance(within).slice(0, CHIP_SHOWN);
+}
+
+/** A chip lists what is near me, so it cannot run without me; typed searches can (they only bias towards me). */
+export type SearchGate = 'run' | 'locating' | 'needsLocation';
+
+/** What a search may do right now: run, wait for the first fix, or wait for the rider to allow location. */
+export function searchGate(o: { chip: boolean; hasMe: boolean; canLocate: boolean }): SearchGate {
+  if (!o.chip || o.hasMe) return 'run';
+  return o.canLocate ? 'locating' : 'needsLocation';
+}
+
+/** Location can still arrive without the rider doing anything: permission granted (or not read yet) and the phone's switch not off. */
+export function canLocateAlone(permStatus: 'unknown' | 'granted' | 'denied' | 'undetermined', servicesEnabled: boolean | null): boolean {
+  return (permStatus === 'granted' || permStatus === 'unknown') && servicesEnabled !== false;
+}
+
+/** The position a search starts from: this screen's own fix, else the one Home had a moment ago. */
+export function searchPosition(fix: LatLng | null, seed: LatLng | null): LatLng | null {
+  return fix ?? seed;
 }
 
 /** True when a chip's first (5 km) set is too thin and the search should widen once to 25 km. */
@@ -466,6 +496,8 @@ export async function runSearch(
     // Photon answered while the function could not be reached: stop trying it for 5 minutes.
     if (geoFailure?.kind === 'unreachable') state.stickyUntil = Math.max(state.stickyUntil, deps.now() + STICKY_UNREACHABLE_MS);
     if (!isChip(req)) return { places: found, provider: 'photon', radiusM: null };
+    // The 25 km caption is only true when the filter ran, which needs a position to measure from.
+    if (!req.me) return { places: rankChipPlaces(found), provider: 'photon', radiusM: null };
     return { places: rankChipPlaces(found, CHIP_WIDE_RADIUS_M), provider: 'photon', radiusM: CHIP_WIDE_RADIUS_M };
   } catch (e) {
     if (!(e instanceof PlaceSearchError)) throw e; // AbortError: the caller cancelled

@@ -35,6 +35,7 @@ function stopInput(place: NavPlace) {
     lat: place.lat,
     lng: place.lng,
     kind: stopKindFor(place.category),
+    category: place.category,
   };
 }
 

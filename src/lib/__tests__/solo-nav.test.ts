@@ -82,6 +82,7 @@ describe('startNavigationRide', () => {
     expect(mockPropose).toHaveBeenCalledWith('r1', {
       name: 'Mysuru Palace',
       address: 'Sayyaji Rao Rd, Mysuru',
+      category: 'other',
       lat: 12.3052,
       lng: 76.6552,
       kind: 'destination',
@@ -107,6 +108,11 @@ describe('startNavigationRide', () => {
   it('uses the break kind for a fuel stop', async () => {
     await startNavigationRide({ ...place, category: 'fuel' }, 60, { rideName: RIDE });
     expect(mockPropose.mock.calls[0][1].kind).toBe('break');
+  });
+
+  it('passes the place category on, so the stop shows its own icon', async () => {
+    await startNavigationRide({ ...place, category: 'fuel' }, 60, { rideName: RIDE });
+    expect(mockPropose.mock.calls[0][1].category).toBe('fuel');
   });
 
   it('clips the name and address to the RPC limits', async () => {
@@ -199,6 +205,7 @@ describe('startInviteRide (Invite riders on the route preview, 22 D6)', () => {
     expect(mockPropose).toHaveBeenCalledWith('r1', {
       name: 'Mysuru Palace',
       address: 'Sayyaji Rao Rd, Mysuru',
+      category: 'other',
       lat: 12.3052,
       lng: 76.6552,
       kind: 'destination',

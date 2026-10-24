@@ -41,13 +41,16 @@ export function useTypingLockJudged(speedMps: number | null, fixAtMs: number | n
 /** Longest Where to? waits for a live fix before focusing anyway (a still rider, a slow first fix). */
 const SETTLE_MS = 1500;
 
-/** True once `live` or, with location on, after SETTLE_MS: whichever first. */
-export function useSettleTimeout(waiting: boolean): boolean {
-  const [timedOut, setTimedOut] = useState(false);
+/**
+ * True once SETTLE_MS has passed while `waiting`. `token` names the wait (Home passes each search open's id): the answer
+ * is for that token only, so a new open is judged fresh instead of inheriting an old timeout.
+ */
+export function useSettleTimeout(waiting: boolean, token: number = 0): boolean {
+  const [doneFor, setDoneFor] = useState<number | null>(null);
   useEffect(() => {
     if (!waiting) return;
-    const id = setTimeout(() => setTimedOut(true), SETTLE_MS);
+    const id = setTimeout(() => setDoneFor(token), SETTLE_MS);
     return () => clearTimeout(id);
-  }, [waiting]);
-  return timedOut;
+  }, [waiting, token]);
+  return doneFor === token;
 }

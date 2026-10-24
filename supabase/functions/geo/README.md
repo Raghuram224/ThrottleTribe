@@ -46,7 +46,7 @@ boundary can fall in one real second: hence 1 / s and 50 / min.
 |---|---|---|
 | `autocomplete` | `{ text (3..100 chars), near?: {lat,lng} }` | `{ provider: 'geoapify', places }` |
 | `places` | `{ categories, near: {lat,lng}, radiusM: 5000 \| 25000 }` | `{ provider: 'geoapify', places }` |
-| `route` | `{ from, to, steps?, bearingDeg? }` | LocationIQ OSRM-shaped JSON as is |
+| `route` | `{ from, to, steps?, alternatives?, bearingDeg? }` (`alternatives`: boolean, the route preview's extra routes) | LocationIQ OSRM-shaped JSON as is |
 
 Errors: `400 bad_request`, `401 unauthorized`, `429 rate_limited { scope, retryAfterS }` (`scope: 'day'` = quota used up),
 `502 upstream`, `504 timeout`, `503 not_configured`.
